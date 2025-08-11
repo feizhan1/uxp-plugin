@@ -1,0 +1,144 @@
+.todo-list {
+  /* 全屏容器，允许滚动，背景与留白 */
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  background: #f7f7f8;
+  overflow: auto;
+}
+
+/* 右上角登录徽标 */
+.login-badge {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  padding: 6px 10px;
+  height: 28px;
+  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #fff;
+  background-color: var(--theme-color, #ec6608);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(236, 102, 8, 0.25);
+  font-weight: 700;
+  pointer-events: none; /* 指示标识仅用于展示，不阻挡交互 */
+}
+
+.list {
+  /* 居中内容容器 */
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-top: 56px; /* 预留徽标高度，避免顶部被遮挡 */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.list .item {
+  /* 卡片化条目 */
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 80px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.list .item:hover {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  border-color: rgba(236, 102, 8, 0.2);
+}
+
+/* 占据剩余空间 */
+.list .item .left {
+  flex: 1;
+  min-width: 0; /* 确保flex项目可以收缩到内容宽度以下 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+}
+
+.left .id,
+.left .name {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.left .id .label,
+.left .name .label {
+  width: 68px;
+  font-weight: 600;
+  color: #000;
+}
+
+.left .id .value,
+.left .name .value {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 超出2行显示省略号 */
+.left .value {
+  width: 100%;
+  max-height: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.list .item .right {
+  margin-left: 12px;
+  width: 120px;
+  flex-shrink: 0; /* 防止右侧元素被压缩 */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.list .item .right button {
+  width: 100%;
+  height: 32px;
+  background-color: var(--theme-color, #ec6608);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.list .item .right button:hover {
+  filter: brightness(0.95);
+  box-shadow: 0 2px 8px rgba(236, 102, 8, 0.25);
+}
+
+.right button:first-child {
+  margin-bottom: 10px;
+}

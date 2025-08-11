@@ -1,0 +1,121 @@
+/* Badge组件样式 */
+.custom-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+/* Badge尺寸 */
+.badge-small {
+  padding: 0.25em 0.75em;
+  font-size: 0.75em;
+  min-width: 1.5em;
+  height: 1.5em;
+}
+
+.badge-medium {
+  padding: 0.35em 0.85em;
+  font-size: 0.875em;
+  min-width: 1.75em;
+  height: 1.75em;
+}
+
+.badge-large {
+  padding: 0.5em 1em;
+  font-size: 1em;
+  min-width: 2em;
+  height: 2em;
+}
+
+/* Badge变体 */
+.badge-default {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.badge-primary {
+  background: linear-gradient(45deg, #646cff, #61dafb);
+  color: white;
+  border: 1px solid rgba(100, 108, 255, 0.3);
+}
+
+.badge-secondary {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.badge-success {
+  background: linear-gradient(45deg, #4caf50, #66bb6a);
+  color: white;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.badge-warning {
+  background: linear-gradient(45deg, #ff9800, #ffb74d);
+  color: white;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.badge-danger {
+  background: linear-gradient(45deg, #f44336, #ef5350);
+  color: white;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.badge-info {
+  background: linear-gradient(45deg, #2196f3, #42a5f5);
+  color: white;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.badge-light {
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.badge-dark {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+/* 悬停效果 */
+.custom-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 圆点样式 */
+.badge-dot {
+  border-radius: 50%;
+  padding: 0;
+  min-width: auto;
+  width: 0.5em;
+  height: 0.5em;
+}
+
+.badge-dot.badge-small {
+  width: 0.4em;
+  height: 0.4em;
+}
+
+.badge-dot.badge-large {
+  width: 0.6em;
+  height: 0.6em;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .badge-large {
+    padding: 0.4em 0.8em;
+    font-size: 0.9em;
+  }
+} 

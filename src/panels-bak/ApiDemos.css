@@ -1,0 +1,486 @@
+/**
+ * API演示面板样式
+ * 使用Adobe Spectrum设计系统的样式规范
+ */
+
+.api-demos {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--spectrum-global-color-gray-50);
+}
+
+/* 头部 */
+.api-demos-header {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--spectrum-global-color-gray-200);
+}
+
+.api-demos-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--spectrum-global-color-gray-900);
+}
+
+.api-demos-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--spectrum-global-color-gray-700);
+}
+
+/* 标签页导航 */
+.api-demos-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background: var(--spectrum-global-color-gray-75);
+  border-radius: 6px;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+}
+
+/* 标签页内容 */
+.api-demos-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.tab-content {
+  height: 100%;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+.section h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--spectrum-global-color-gray-900);
+}
+
+.section p {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--spectrum-global-color-gray-700);
+}
+
+/* 测试结果 */
+.test-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+
+.test-result.success {
+  background: var(--spectrum-global-color-green-100);
+  border: 1px solid var(--spectrum-global-color-green-300);
+  color: var(--spectrum-global-color-green-800);
+}
+
+.test-result.error {
+  background: var(--spectrum-global-color-red-100);
+  border: 1px solid var(--spectrum-global-color-red-300);
+  color: var(--spectrum-global-color-red-800);
+}
+
+.result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.response-time {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* 配置操作 */
+.config-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.config-actions sp-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 端点选择器 */
+.endpoint-selector {
+  margin-bottom: 16px;
+}
+
+.endpoint-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.endpoint-description {
+  font-size: 11px;
+  color: var(--spectrum-global-color-gray-600);
+}
+
+/* 数据操作 */
+.data-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.data-actions sp-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 数据展示容器 */
+.data-display-container {
+  margin-top: 16px;
+}
+
+/* 配置警告 */
+.config-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--spectrum-global-color-orange-100);
+  border: 1px solid var(--spectrum-global-color-orange-300);
+  border-radius: 6px;
+  color: var(--spectrum-global-color-orange-800);
+}
+
+.config-warning sp-icon {
+  color: var(--spectrum-global-color-orange-600);
+  margin-top: 2px;
+}
+
+.warning-content h4 {
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.warning-content p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 统计网格 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--spectrum-global-color-gray-75);
+  border: 1px solid var(--spectrum-global-color-gray-200);
+  border-radius: 6px;
+}
+
+.stat-item sp-icon {
+  color: var(--spectrum-global-color-blue-600);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--spectrum-global-color-gray-900);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--spectrum-global-color-gray-600);
+}
+
+/* 活跃请求 */
+.active-requests {
+  margin-bottom: 20px;
+}
+
+.active-requests h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--spectrum-global-color-gray-900);
+}
+
+.request-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--spectrum-global-color-blue-100);
+  border: 1px solid var(--spectrum-global-color-blue-300);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.request-info {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.request-method {
+  padding: 2px 6px;
+  background: var(--spectrum-global-color-blue-600);
+  color: white;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.request-endpoint {
+  font-family: monospace;
+  color: var(--spectrum-global-color-gray-800);
+}
+
+.request-time {
+  color: var(--spectrum-global-color-gray-600);
+}
+
+/* 请求历史 */
+.request-history {
+  margin-bottom: 20px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.history-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--spectrum-global-color-gray-900);
+}
+
+.history-list {
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--spectrum-global-color-gray-200);
+  border-radius: 4px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--spectrum-global-color-gray-200);
+  font-size: 12px;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-info {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-method {
+  padding: 2px 6px;
+  background: var(--spectrum-global-color-gray-400);
+  color: white;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.history-endpoint {
+  font-family: monospace;
+  color: var(--spectrum-global-color-gray-800);
+}
+
+.history-status {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.history-status.success {
+  background: var(--spectrum-global-color-green-600);
+  color: white;
+}
+
+.history-status.error {
+  background: var(--spectrum-global-color-red-600);
+  color: white;
+}
+
+.history-time {
+  color: var(--spectrum-global-color-gray-600);
+}
+
+/* 状态操作 */
+.status-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.status-actions sp-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .api-demos {
+    padding: 12px;
+  }
+  
+  .api-demos-tabs {
+    flex-direction: column;
+  }
+  
+  .tab-button {
+    justify-content: flex-start;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .config-actions,
+  .data-actions,
+  .status-actions {
+    flex-direction: column;
+  }
+  
+  .request-item,
+  .history-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .history-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .api-demos {
+    background: var(--spectrum-global-color-gray-100);
+  }
+  
+  .api-demos-header {
+    border-bottom-color: var(--spectrum-global-color-gray-300);
+  }
+  
+  .api-demos-header h2 {
+    color: var(--spectrum-global-color-gray-50);
+  }
+  
+  .api-demos-header p,
+  .section p {
+    color: var(--spectrum-global-color-gray-300);
+  }
+  
+  .api-demos-tabs {
+    background: var(--spectrum-global-color-gray-200);
+  }
+  
+  .section h3 {
+    color: var(--spectrum-global-color-gray-50);
+  }
+  
+  .stat-item {
+    background: var(--spectrum-global-color-gray-200);
+    border-color: var(--spectrum-global-color-gray-400);
+  }
+  
+  .stat-value {
+    color: var(--spectrum-global-color-gray-50);
+  }
+  
+  .history-list {
+    border-color: var(--spectrum-global-color-gray-400);
+  }
+  
+  .history-item {
+    border-bottom-color: var(--spectrum-global-color-gray-400);
+  }
+}
+
+/* 动画效果 */
+.tab-content {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-item {
+  transition: all 0.2s ease-in-out;
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.request-item,
+.history-item {
+  transition: background-color 0.2s ease-in-out;
+}
+
+.request-item:hover {
+  background: var(--spectrum-global-color-blue-200);
+}
+
+.history-item:hover {
+  background: var(--spectrum-global-color-gray-100);
+}

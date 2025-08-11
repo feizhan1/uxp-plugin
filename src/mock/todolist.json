@@ -1,0 +1,292 @@
+{
+  "message": null,
+  "statusCode": 200,
+  "dataClass": [
+    {
+        "applyCode": "test_2508060009",
+        "productName": "test_2508060009",
+        "originalImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_1.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_2.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_3.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_4.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_5.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_6.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_7.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_8.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_9.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_10.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_11.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_12.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_13.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_14.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_15.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_16.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_17.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_18.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_19.jpg"
+            }
+        ],
+        "publishSkus": [
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "黑色"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://picsum.photos/500/500",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://picsum.photos/500/500",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_5.jpg",
+                        "index": 3
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_6.jpg",
+                        "index": 4
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/15.jpg",
+                        "index": 5
+                    }
+                ],
+                "skuIndex": 1
+            },
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "荧光黄"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_7.jpg",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_2.jpg",
+                        "index": 2
+                    }
+                ],
+                "skuIndex": 2
+            }
+        ],
+        "senceImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/80503ed71be5463f98689dd75592a847.jpg",
+                "index": 1
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/edf13d997a9d4272af6c599bc998705e.jpg",
+                "index": 2
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/fc3e8e0799524597a88f3d33d9517bd7.jpg",
+                "index": 3
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/53a86e1005f446d98029fca78051bb03.jpg",
+                "index": 4
+            }
+        ]
+    },
+    {
+        "applyCode": "test_2508060010",
+        "productName": "test_2508060010",
+        "originalImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_1.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_2.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_3.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_4.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_5.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_6.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_7.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_8.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_9.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_10.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_11.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_12.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_13.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_14.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_15.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_16.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_17.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_18.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/old_19.jpg"
+            }
+        ],
+        "publishSkus": [
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "黑色"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_1.jpg",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_1.jpg",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_2.jpg",
+                        "index": 3
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_5.jpg",
+                        "index": 4
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_6.jpg",
+                        "index": 5
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/15.jpg",
+                        "index": 6
+                    }
+                ],
+                "skuIndex": 1
+            },
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "荧光黄"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_7.jpg",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_1.jpg",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_2.jpg",
+                        "index": 3
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_5.jpg",
+                        "index": 4
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_6.jpg",
+                        "index": 5
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/15.jpg",
+                        "index": 6
+                    }
+                ],
+                "skuIndex": 2
+            }
+        ],
+        "senceImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/80503ed71be5463f98689dd75592a847.jpg",
+                "index": 1
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/edf13d997a9d4272af6c599bc998705e.jpg",
+                "index": 2
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/fc3e8e0799524597a88f3d33d9517bd7.jpg",
+                "index": 3
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/53a86e1005f446d98029fca78051bb03.jpg",
+                "index": 4
+            }
+        ]
+    }
+]
+}

@@ -1,0 +1,185 @@
+{
+  "id": "react-plugin",
+  "name": "react",
+  "version": "1.0.0",
+  "main": "index.html",
+  "manifestVersion": 5,
+  "host": [
+    {
+      "app": "PS",
+      "minVersion": "23.5.0"
+    }
+  ],
+  "requiredPermissions": {
+    "allowCodeGenerationFromStrings": true,
+    "localFileSystem": "request",
+    "launchProcess": {
+      "schemes": [
+        "https"
+      ],
+      "extensions": [
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".json"
+      ]
+    },
+    "webview": {
+      "allow": "yes",
+      "domains": [
+        "https://*.adobe.com",
+        "https://*.google.com",
+        "https://jsonplaceholder.typicode.com",
+        "https://api.github.com",
+        "https://httpbin.org",
+        "https://reqres.in",
+        "https://dummyjson.com",
+        "https://fakestoreapi.com",
+        "https://randomuser.me",
+        "https://*.example.com",
+        "https://*.test.com",
+        "https://*.localhost",
+        "https://localhost:*",
+        "https://*.trusted-domain.com",
+        "https://api.example.com",
+        "https://*.apifoxmock.com",
+        "http://127.0.0.1:4523",
+        "https://picsum.photos",
+        "https://img.tvcmall.com",
+        "https://src.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002,"
+      ]
+    },
+    "network": {
+      "domains": [
+        "https://*.adobe.com",
+        "https://*.google.com",
+        "https://jsonplaceholder.typicode.com",
+        "https://api.github.com",
+        "https://httpbin.org",
+        "https://reqres.in",
+        "https://dummyjson.com",
+        "https://fakestoreapi.com",
+        "https://randomuser.me",
+        "https://*.example.com",
+        "https://*.test.com",
+        "https://*.localhost",
+        "https://localhost:*",
+        "https://*.trusted-domain.com",
+        "https://api.example.com",
+        "https://*.apifoxmock.com",
+        "http://127.0.0.1:4523",
+        "https://picsum.photos",
+        "https://img.tvcmall.com",
+        "https://src.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002"
+      ]
+    }
+  },
+  "entrypoints": [
+    {
+      "type": "command",
+      "id": "showAbout",
+      "label": {
+        "default": "About React Demo"
+      },
+      "shortcut": {
+        "mac": "shift+cmd+A",
+        "win": "ctrl+alt+A"
+      }
+    },
+    {
+      "type": "panel",
+      "id": "todoList",
+      "label": {
+        "default": "Todo List"
+      },
+      "minimumSize": {
+        "width": 230,
+        "height": 200
+      },
+      "maximumSize": {
+        "width": 2000,
+        "height": 2000
+      },
+      "preferredDockedSize": {
+        "width": 230,
+        "height": 300
+      },
+      "preferredFloatingSize": {
+        "width": 230,
+        "height": 300
+      },
+      "icons": [
+        {
+          "width": 32,
+          "height": 32,
+          "path": "icons/icon_D.png",
+          "scale": [
+            1,
+            2
+          ],
+          "theme": [
+            "dark",
+            "darkest"
+          ],
+          "species": [
+            "generic"
+          ]
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "path": "icons/icon_N.png",
+          "scale": [
+            1,
+            2
+          ],
+          "theme": [
+            "lightest",
+            "light"
+          ],
+          "species": [
+            "generic"
+          ]
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "width": 32,
+      "height": 32,
+      "path": "icons/icon_D.png",
+      "scale": [
+        1,
+        2
+      ],
+      "theme": [
+        "dark",
+        "darkest"
+      ],
+      "species": [
+        "generic"
+      ]
+    },
+    {
+      "width": 32,
+      "height": 32,
+      "path": "icons/icon_N.png",
+      "scale": [
+        1,
+        2
+      ],
+      "theme": [
+        "lightest",
+        "light"
+      ],
+      "species": [
+        "generic"
+      ]
+    }
+  ]
+}

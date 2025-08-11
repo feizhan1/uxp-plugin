@@ -1,0 +1,127 @@
+/* Card组件样式 */
+.custom-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.custom-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* 可点击卡片 */
+.card-clickable {
+  cursor: pointer;
+}
+
+.card-clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+}
+
+/* 卡片变体 */
+.card-default {
+  /* 默认样式已在上面定义 */
+}
+
+.card-elevated {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.card-elevated:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.card-outlined {
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.card-outlined:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.card-primary {
+  background: linear-gradient(135deg, rgba(100, 108, 255, 0.1), rgba(97, 218, 251, 0.1));
+  border-color: rgba(100, 108, 255, 0.3);
+}
+
+.card-primary:hover {
+  background: linear-gradient(135deg, rgba(100, 108, 255, 0.15), rgba(97, 218, 251, 0.15));
+  border-color: rgba(100, 108, 255, 0.5);
+}
+
+.card-success {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(102, 187, 106, 0.1));
+  border-color: rgba(76, 175, 80, 0.3);
+}
+
+.card-success:hover {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(102, 187, 106, 0.15));
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+.card-warning {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 183, 77, 0.1));
+  border-color: rgba(255, 152, 0, 0.3);
+}
+
+.card-warning:hover {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.15), rgba(255, 183, 77, 0.15));
+  border-color: rgba(255, 152, 0, 0.5);
+}
+
+.card-danger {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(239, 83, 80, 0.1));
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+.card-danger:hover {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.15), rgba(239, 83, 80, 0.15));
+  border-color: rgba(244, 67, 54, 0.5);
+}
+
+/* 卡片头部 */
+.card-header {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.card-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.card-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+}
+
+/* 卡片内容 */
+.card-content {
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.6;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .custom-card {
+    padding: 1rem;
+  }
+  
+  .card-title {
+    font-size: 1.125rem;
+  }
+} 

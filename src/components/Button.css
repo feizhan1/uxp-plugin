@@ -1,0 +1,97 @@
+/* Button组件样式 */
+.custom-button {
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+/* 按钮尺寸 */
+.button-small {
+  padding: 0.4em 0.8em;
+  font-size: 0.875em;
+}
+
+.button-medium {
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+}
+
+.button-large {
+  padding: 0.8em 1.6em;
+  font-size: 1.125em;
+}
+
+/* 按钮变体 */
+.button-primary {
+  background: linear-gradient(45deg, #646cff, #61dafb);
+  color: white;
+}
+
+.button-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.4);
+}
+
+.button-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.button-success {
+  background: linear-gradient(45deg, #4caf50, #66bb6a);
+  color: white;
+}
+
+.button-success:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.button-danger {
+  background: linear-gradient(45deg, #f44336, #ef5350);
+  color: white;
+}
+
+.button-danger:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+}
+
+.button-warning {
+  background: linear-gradient(45deg, #ff9800, #ffb74d);
+  color: white;
+}
+
+.button-warning:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+}
+
+/* 禁用状态 */
+.custom-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* 焦点状态 */
+.custom-button:focus {
+  outline: 2px solid #646cff;
+  outline-offset: 2px;
+} 
