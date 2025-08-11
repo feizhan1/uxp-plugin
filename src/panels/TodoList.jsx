@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
 import { Todo } from '../components'
+import { useState, useEffect } from 'react'
 import './TodoList.css'
 import Login from '../components/Login'
 import todolist from '../mock/todolist.json'
@@ -12,12 +12,12 @@ const TodoList = () => {
   // 读取登录信息
   useEffect(() => {
     const raw = localStorage.getItem('loginInfo')
+    console.log('raw', raw)
     if (raw) {
       try {
         const obj = JSON.parse(raw)
         if (obj?.success) setLoginInfo(obj)
       } catch (e) {
-        // 解析失败时给出告警，便于排查
         console.warn('解析登录信息失败：localStorage.loginInfo 不是合法的 JSON 字符串', e)
       }
     }

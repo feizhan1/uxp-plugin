@@ -74,11 +74,11 @@
                 ],
                 "skuImages": [
                     {
-                        "imageUrl": "https://picsum.photos/500/500",
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_1.jpg",
                         "index": 1
                     },
                     {
-                        "imageUrl": "https://picsum.photos/500/500",
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508060009/main_2.jpg",
                         "index": 2
                     },
                     {
