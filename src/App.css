@@ -1,0 +1,84 @@
+* {
+  --theme-color: #ec6608;
+  --theme-rgb: 236, 102, 8;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+/* 重置所有input的样式 */
+input {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  outline: none;
+}
+
+/* 重置所有button的样式 */
+button {
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-weight: bold;
+  text-align: center;
+}
+button:hover {
+  color: var(--theme-color);
+  border-color: var(--theme-color) !important;
+}
+
+button:focus, button:focus-visible {
+  outline: none !important;
+}
+
+
+
+.action-btn {
+  margin: 0;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  text-align: center;
+}
+
+.action-btn + .action-btn {
+  margin-left: 12px;
+}
+
+.action-btn.primary {
+  background-color: #ec6608;
+  color: white;
+}
+
+.action-btn.primary:hover {
+  background-color: #d55a07;
+}
+
+.action-btn.secondary {
+  background-color: #f5f5f5;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.action-btn.secondary:hover {
+  background-color: #e8e8e8;
+}
+
+.action-btn.disabled {
+  background-color: #ccc;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.action-btn.disabled:hover {
+  background-color: #ccc;
+}

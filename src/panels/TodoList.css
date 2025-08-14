@@ -8,14 +8,15 @@
   font-size: 12px;
   background: #f7f7f8;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-end;
 }
 
 /* 右上角登录徽标 */
 .login-badge {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 1000;
+  margin: 10px 10px 0 0;
   padding: 6px 10px;
   height: 28px;
   line-height: 16px;
@@ -25,32 +26,27 @@
   gap: 6px;
   color: #fff;
   background-color: var(--theme-color, #ec6608);
-  border-radius: 999px;
+  border-radius: 6px;
   box-shadow: 0 2px 10px rgba(236, 102, 8, 0.25);
   font-weight: 700;
-  pointer-events: none; /* 指示标识仅用于展示，不阻挡交互 */
+  cursor: pointer;
 }
+
+.login-badge:hover { filter: brightness(0.95); }
 
 .list {
   /* 居中内容容器 */
-  max-width: 960px;
   margin: 0 auto;
-  padding: 16px;
-  padding-top: 56px; /* 预留徽标高度，避免顶部被遮挡 */
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  min-height: 100vh;
-  box-sizing: border-box;
 }
 
 .list .item {
   /* 卡片化条目 */
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  width: 100%;
+  align-items: center;
   min-height: 80px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -74,7 +70,6 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 6px;
 }
 
 .left .id,
@@ -113,7 +108,6 @@
 
 .list .item .right {
   margin-left: 12px;
-  width: 120px;
   flex-shrink: 0; /* 防止右侧元素被压缩 */
   display: flex;
   flex-direction: column;
@@ -121,24 +115,14 @@
   justify-content: flex-start;
 }
 
-.list .item .right button {
-  width: 100%;
-  height: 32px;
-  background-color: var(--theme-color, #ec6608);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  transition: filter 0.15s ease, box-shadow 0.15s ease;
-}
-
-.list .item .right button:hover {
-  filter: brightness(0.95);
-  box-shadow: 0 2px 8px rgba(236, 102, 8, 0.25);
-}
-
-.right button:first-child {
-  margin-bottom: 10px;
+/* 状态信息（加载中/打开中/错误）全屏水平垂直居中显示 */
+.loading, .empty {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

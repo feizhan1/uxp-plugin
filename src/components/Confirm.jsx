@@ -22,18 +22,18 @@ const Confirm = ({
         <div className="confirm-title">{title}</div>
         <div className="confirm-message">{message}</div>
         <div className="confirm-actions">
-          <button
-            className="confirm-btn secondary"
+          <div
+            className="action-btn secondary"
             onClick={onCancel}
           >
             {cancelText}
-          </button>
-          <button
-            className="confirm-btn primary"
+          </div>
+          <div
+            className="action-btn primary"
             onClick={onConfirm}
           >
             {confirmText}
-          </button>
+          </div>
         </div>
       </div>
     </div>

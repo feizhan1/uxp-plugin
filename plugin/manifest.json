@@ -1,7 +1,7 @@
 {
-  "id": "react-plugin",
-  "name": "react",
-  "version": "1.0.0",
+  "id": "7d40622e",
+  "name": "IC产品上架图片处理助手",
+  "version": "1.0.1",
   "main": "index.html",
   "manifestVersion": 5,
   "host": [
@@ -49,7 +49,11 @@
         "https://picsum.photos",
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
-        "https://openapi.sjlpj.cn:5002,"
+        "https://*.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002",
+        "https://www.tvcmall.com",
+        "https://tvc-site.s3.amazonaws.com",
+        "https://sts.sjlpj.cn"
       ]
     },
     "network": {
@@ -74,7 +78,11 @@
         "https://picsum.photos",
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
-        "https://openapi.sjlpj.cn:5002"
+        "https://*.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002",
+        "https://www.tvcmall.com",
+        "https://tvc-site.s3.amazonaws.com",
+        "https://sts.sjlpj.cn"
       ]
     }
   },
@@ -83,7 +91,7 @@
       "type": "command",
       "id": "showAbout",
       "label": {
-        "default": "About React Demo"
+        "default": "About photoshop plugin"
       },
       "shortcut": {
         "mac": "shift+cmd+A",
@@ -94,11 +102,11 @@
       "type": "panel",
       "id": "todoList",
       "label": {
-        "default": "Todo List"
+        "default": "待处理产品图片"
       },
       "minimumSize": {
-        "width": 230,
-        "height": 200
+        "width": 400,
+        "height": 700
       },
       "maximumSize": {
         "width": 2000,

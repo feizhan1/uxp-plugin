@@ -1,7 +1,117 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import './Todo.css'
 import Confirm from './Confirm'
 import UploadToS3 from './UploadToS3'
+import { placeImageInPS, canPlaceImage, showPSAlert, exportAndUploadCanvas } from '../panels/photoshop-api'
+
+// 单个待处理图片：使用 React.memo，避免与该单元无关的状态变更导致重渲染
+const WaitImageItem = React.memo(
+  ({
+    item,
+    flatIndex,
+    isDragging,
+    isDragOver,
+    isUXP,
+    supportsPointer,
+    isPSPlacing,
+    isCanvasReplacing,
+    replaceProgress,
+    refSetter,
+    suppressClickRef,
+    onOpenPreview,
+    onRequestDelete,
+    onBeginPointerMaybeDrag,
+    onBeginMouseMaybeDrag,
+    onDragStart,
+    onDragEnd,
+    onDragEnter,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    onReplaceWithCanvas,
+    onDragToPhotoshop,
+    onImageError,
+  }) => {
+    const itemClass = `image-item${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}`
+    return (
+      <div
+        key={item.id}
+        className={itemClass}
+        ref={refSetter}
+        draggable={!isUXP}
+        onDragStart={!isUXP ? (e) => onDragStart(e, flatIndex) : undefined}
+        onDragEnd={!isUXP ? onDragEnd : undefined}
+        onDragEnter={!isUXP ? (e) => onDragEnter(e, flatIndex) : undefined}
+        onDragOver={!isUXP ? (e) => onDragOver(e, flatIndex) : undefined}
+        onDragLeave={!isUXP ? onDragLeave : undefined}
+        onDrop={!isUXP ? (e) => onDrop(e, flatIndex) : undefined}
+        onPointerDown={isUXP && supportsPointer ? (e) => onBeginPointerMaybeDrag(e, flatIndex) : undefined}
+        onMouseDown={isUXP && !supportsPointer ? (e) => onBeginMouseMaybeDrag(e, flatIndex) : undefined}
+        onClick={() => { if (suppressClickRef.current) return; onOpenPreview(flatIndex) }}
+      >
+        <button
+          className="delete-btn"
+          title="删除图片"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDelete(flatIndex) }}
+          draggable={false}
+        >
+          ×
+        </button>
+        {isUXP && (
+          <>
+            <button
+              className="canvas-replace-btn"
+              title={isCanvasReplacing ? `替换中: ${replaceProgress || '处理中...'}` : '用Photoshop画布图片替换当前图片'}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReplaceWithCanvas(flatIndex) }}
+              disabled={isCanvasReplacing}
+              draggable={false}
+            >
+              {isCanvasReplacing ? '⋯' : 'T'}
+            </button>
+            <button
+              className="ps-drag-btn"
+              title="同步到Photoshop画布"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDragToPhotoshop(item.url, flatIndex) }}
+              disabled={isPSPlacing}
+              draggable={false}
+            >
+              {isPSPlacing ? '⋯' : 'P'}
+            </button>
+          </>
+        )}
+        <img
+          src={item.url}
+          alt={`待处理图片 ${flatIndex + 1}`}
+          loading="lazy"
+          decoding="async"
+          onError={onImageError}
+          draggable={false}
+        />
+        <div className="image-error" style={{display: 'none'}}>
+          <span>图片加载失败</span>
+        </div>
+        <div className="drag-hint">
+          <span>拖拽排序</span>
+        </div>
+      </div>
+    )
+  },
+  (prev, next) => {
+    // 仅在与当前单元相关的字段变化时才更新
+    return (
+      prev.item?.id === next.item?.id &&
+      prev.item?.url === next.item?.url &&
+      prev.flatIndex === next.flatIndex &&
+      prev.isDragging === next.isDragging &&
+      prev.isDragOver === next.isDragOver &&
+      prev.isUXP === next.isUXP &&
+      prev.supportsPointer === next.supportsPointer &&
+      prev.isPSPlacing === next.isPSPlacing &&
+      prev.isCanvasReplacing === next.isCanvasReplacing &&
+      prev.replaceProgress === next.replaceProgress
+    )
+  }
+)
 
 const toObjectImages = (arr) => {
   const now = Date.now()
@@ -41,16 +151,18 @@ const buildFlatWaitFromData = (data) => {
 const computeWaitGroups = (data, waitImages) => {
   const groups = []
   const skus = Array.isArray(data?.publishSkus) ? data.publishSkus : []
+  // 始终生成所有 SKU 分组（即使没有图片）
   skus.forEach((sku, i) => {
     const pairs = (sku?.attrClasses || []).map(a => `${a.attrName}:${a.attrValue}`).filter(Boolean)
     const title = pairs.length > 0 ? pairs.join('、') : `分组${i+1}`
     const indices = []
     waitImages.forEach((img, idx) => { if (img?.groupKey === `sku-${i}`) indices.push(idx) })
-    if (indices.length > 0) groups.push({ key: `sku-${i}`, title, indices })
+    groups.push({ key: `sku-${i}`, title, indices })
   })
+  // 场景图分组：始终存在，便于空态上传
   const sceneIndices = []
   waitImages.forEach((img, idx) => { if (img?.groupKey === 'scene') sceneIndices.push(idx) })
-  if (sceneIndices.length > 0) groups.push({ key: 'scene', title: '场景图', indices: sceneIndices })
+  groups.push({ key: 'scene', title: '场景图', indices: sceneIndices })
   return groups
 }
 
@@ -72,6 +184,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [originImages, setOriginImages] = useState([]) // 本地原图对象数组 [{id,url}]
   const [waitImages, setWaitImages] = useState([]) // 本地待处理对象数组 [{id,url,groupKey}]
 
+
   // 预览相关状态
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
@@ -81,13 +194,117 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingDeleteIndex, setPendingDeleteIndex] = useState(null)
 
-  // 放大镜相关
-  const previewImgRef = useRef(null)
-  const previewWrapRef = useRef(null)
-  const [lensVisible, setLensVisible] = useState(false)
-  const [lensStyle, setLensStyle] = useState({})
-  const LENS_SIZE = 160
-  const LENS_ZOOM = 2
+  // Photoshop 拖拽放置相关状态
+  const [isPSPlacing, setIsPSPlacing] = useState(false)
+  const [psError, setPSError] = useState(null)
+  
+  // 画布替换图片相关状态
+  const [isCanvasReplacing, setIsCanvasReplacing] = useState(false)
+  const [replaceProgress, setReplaceProgress] = useState('')
+  // 审核提交处理中
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 放大镜相关（已取消）
+
+  console.log('Todo data', data)
+
+  // UXP 环境检测（保守特征探测）
+  const isUXP = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const ua = (navigator?.userAgent || '').toLowerCase()
+    return Boolean(window.uxp) || ua.includes('uxp') || ua.includes('adobe')
+  }, [])
+
+  // 拖拽调试开关：localStorage.DEBUG_DRAG 为 '1' 或 'true' 时启用；或 window.__DEBUG_DRAG__ 为真
+  const DRAG_DEBUG = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const flag = localStorage.getItem('DEBUG_DRAG')
+      if (flag && (flag === '1' || flag.toLowerCase() === 'true')) return true
+    } catch { void 0 }
+    return Boolean(window.__DEBUG_DRAG__)
+  }, [])
+
+  const debugEnabled = isUXP ? true : DRAG_DEBUG
+  const debugBufferRef = useRef([])
+  const pushDebug = (text) => {
+    // 仅保存字符串，避免对象在不同环境中展示不一致
+    debugBufferRef.current.push(String(text))
+    if (debugBufferRef.current.length > 50) debugBufferRef.current.shift()
+  }
+  // 上传调试开关（与 UploadToS3 保持一致）
+  const uploadDebugEnabled = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const flag = localStorage.getItem('DEBUG_UPLOAD')
+      if (flag && (flag === '1' || flag.toLowerCase() === 'true')) return true
+    } catch { /* 忽略 */ }
+    return Boolean(window.__DEBUG_UPLOAD__)
+  }, [])
+  const uploadLog = (...args) => {
+    if (!uploadDebugEnabled) return
+    try { console.log('[上传调试][Todo]', ...args) } catch { /* 忽略 */ }
+  }
+  const formatArgForLog = (arg) => {
+    const type = typeof arg
+    if (arg == null) return String(arg) // null / undefined
+    if (type === 'string' || type === 'number' || type === 'boolean') return String(arg)
+    if (Array.isArray(arg)) return `[${arg.map(a => (typeof a === 'object' ? '[obj]' : String(a))).join(', ')}]`
+    if (type === 'function') return '[fn]'
+    if (arg instanceof Event) return `[event type=${arg.type}]`
+    // 普通对象：仅一层 key=value 展开，值为基本类型，否则标记为 [obj]
+    try {
+      const pairs = Object.keys(arg).map(k => {
+        const v = arg[k]
+        const vt = typeof v
+        if (v == null) return `${k}=null`
+        if (vt === 'string' || vt === 'number' || vt === 'boolean') return `${k}=${v}`
+        return `${k}=[obj]`
+      })
+      return pairs.length ? pairs.join(' ') : '[obj]'
+    } catch {
+      return '[obj]'
+    }
+  }
+  const debugDragLog = (...args) => {
+    if (!debugEnabled) return
+    // 统一格式化为单行字符串；不直接打印对象
+    const line = `[拖拽调试] ${args.map(formatArgForLog).join(' ')}`
+    try { console.log(line) } catch { /* 在某些环境中 console 可能不可用 */ }
+    pushDebug(line)
+  }
+
+  // 能力探测：Pointer 事件支持情况
+  const supportsPointer = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return ('onpointerdown' in window) || typeof window.PointerEvent !== 'undefined'
+  }, [])
+
+  // 一次性环境提示（不受 DRAG_DEBUG 开关影响）
+  useEffect(() => {
+    if (isUXP) {
+      try {
+        console.info('[拖拽提示] 当前为 UXP 环境: supportsPointer=', supportsPointer, '，日志开关 DEBUG_DRAG=', DRAG_DEBUG)
+        if (!DRAG_DEBUG) console.info('[拖拽提示] 如需查看详细日志，请在控制台执行 localStorage.DEBUG_DRAG = "1" 或 window.__DEBUG_DRAG__ = true')
+      } catch { /* 忽略 */ }
+    }
+  }, [isUXP, supportsPointer, DRAG_DEBUG])
+  
+  // Pointer 拖拽所需引用：每个扁平项的 DOM、以及临时拖拽上下文
+  const itemRefs = useRef([])
+  const pendingPointerDragRef = useRef(null) // { fromIndex, startX, startY }
+  const activePointerDragRef = useRef(null) // { fromIndex, groupKey, groupIndices:number[], rects: Map(index->DOMRect) }
+  const pointerCaptureTargetRef = useRef(null)
+  const pointerIdRef = useRef(null)
+  const latestPointerPosRef = useRef({ x: 0, y: 0 })
+  const dragOverIndexRef = useRef(null)
+
+  // Mouse 降级所需引用（当不支持 Pointer 事件时）
+  const pendingMouseDragRef = useRef(null) // { fromIndex, startX, startY }
+  const activeMouseDragRef = useRef(null) // 复用与 pointer 相同结构
+
+  // 拖拽期间抑制点击（避免误触打开预览）
+  const suppressClickRef = useRef(false)
 
   // 同步父级数据到本地状态（当data变化时刷新）
   useEffect(() => {
@@ -107,78 +324,80 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     return map
   }, [waitImages])
 
-  // 放大镜移动事件（根据鼠标位置计算镜片背景）
-  const handleLensMove = (e) => {
-    const img = previewImgRef.current
-    const wrap = previewWrapRef.current
-    if (!img || !wrap) return
-
-    const rect = img.getBoundingClientRect()
-    const wrapRect = wrap.getBoundingClientRect()
-
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-
-    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
-      setLensVisible(false)
+  // 抽取：在同一分组内应用重排，并同步父组件
+  const applyReorderWithinSameGroup = (fromIndex, toIndex) => {
+    if (fromIndex == null || toIndex == null || fromIndex === toIndex) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setDraggedGroupKey(null)
+      return
+    }
+    const sourceGroup = indexToGroupKey.get(fromIndex)
+    const targetGroup = indexToGroupKey.get(toIndex)
+    uploadLog('应用重排：', { fromIndex, toIndex, sourceGroup, targetGroup })
+    if (!sourceGroup || sourceGroup !== targetGroup) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setDraggedGroupKey(null)
       return
     }
 
-    const half = LENS_SIZE / 2
-    const cx = Math.max(half, Math.min(x, rect.width - half))
-    const cy = Math.max(half, Math.min(y, rect.height - half))
+    const next = [...waitImages]
+    const [draggedItem] = next.splice(fromIndex, 1)
+    const insertIndex = toIndex
+    next.splice(insertIndex, 0, draggedItem)
 
-    const left = wrapRect.left + cx - half - wrapRect.left
-    const top = wrapRect.top + cy - half - wrapRect.top
+    setWaitImages(next)
 
-    const bgX = cx * LENS_ZOOM - half
-    const bgY = cy * LENS_ZOOM - half
+    // 同步父组件：仅更新该分组（基于 groupKey 过滤）
+    const newUrls = next.filter(img => img?.groupKey === sourceGroup).map(img => img.url)
+    const skuIdx = parseSkuIndexFromKey(sourceGroup)
+    if (skuIdx != null) {
+      const newPublishSkus = (data.publishSkus || []).map((sku, i) => i === skuIdx ? { ...sku, skuImages: toIndexedImageObjs(newUrls) } : sku)
+      onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
+      uploadLog('已同步父组件 publishSkus（重排）：', { skuIdx, 图片数量: newUrls.length })
+    } else {
+      onReorder && onReorder(data.id ?? data.applyCode, { senceImages: toIndexedImageObjs(newUrls) })
+      uploadLog('已同步父组件 senceImages（重排）：', { 图片数量: newUrls.length })
+    }
 
-    const bgSizeX = rect.width * LENS_ZOOM
-    const bgSizeY = rect.height * LENS_ZOOM
-
-    setLensStyle({
-      left: `${left}px`,
-      top: `${top}px`,
-      width: `${LENS_SIZE}px`,
-      height: `${LENS_SIZE}px`,
-      backgroundImage: `url(${previewList[previewIndex]})`,
-      backgroundPosition: `-${bgX}px -${bgY}px`,
-      backgroundSize: `${bgSizeX}px ${bgSizeY}px`,
-    })
-    setLensVisible(true)
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+    setDraggedGroupKey(null)
+    // 拖拽完成后，短暂抑制一次点击
+    suppressClickRef.current = true
+    setTimeout(() => { suppressClickRef.current = false }, 0)
   }
 
   // 处理图片加载错误
-  const handleImageError = (e) => {
+  const handleImageError = useCallback((e) => {
     e.target.style.display = 'none'
     e.target.nextSibling.style.display = 'flex'
-  }
+  }, [])
 
   // 打开图片预览（type 对应到扁平 waitImages 或 originImages）
-  const openPreview = (type, index) => {
+  const openPreview = useCallback((type, index) => {
     const list = type === 'origin' ? originImages : waitImages
     if (!list || list.length === 0) return
     setPreviewList(list.map(i => i.url))
     setPreviewIndex(index)
     setIsPreviewOpen(true)
-  }
+  }, [originImages, waitImages])
 
   // 关闭图片预览
   const closePreview = () => {
     setIsPreviewOpen(false)
-    setLensVisible(false)
   }
 
   // 上一张 / 下一张
-  const showPrev = (e) => {
+  const showPrev = useCallback((e) => {
     if (e) e.stopPropagation()
     setPreviewIndex((i) => (i - 1 + previewList.length) % previewList.length)
-  }
-  const showNext = (e) => {
+  }, [previewList.length])
+  const showNext = useCallback((e) => {
     if (e) e.stopPropagation()
     setPreviewIndex((i) => (i + 1) % previewList.length)
-  }
+  }, [previewList.length])
 
   // 预览层键盘快捷键（Esc 关闭，左右切换）
   useEffect(() => {
@@ -186,7 +405,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     const onKey = (e) => {
       if (e.key === 'Escape') {
         setIsPreviewOpen(false)
-        setLensVisible(false)
       } else if (e.key === 'ArrowLeft') {
         showPrev()
       } else if (e.key === 'ArrowRight') {
@@ -195,10 +413,11 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isPreviewOpen, previewList.length])
+  }, [isPreviewOpen, showPrev, showNext])
 
   // 删除待处理图片（触发确认）
   const requestDeleteWaitImage = (flatIndex) => {
+    uploadLog('请求删除图片：', { flatIndex, groupKey: indexToGroupKey.get(flatIndex) })
     setPendingDeleteIndex(flatIndex)
     setConfirmOpen(true)
   }
@@ -206,6 +425,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const confirmDelete = () => {
     if (pendingDeleteIndex == null) return
     const groupKey = indexToGroupKey.get(pendingDeleteIndex)
+    uploadLog('确认删除：', { flatIndex: pendingDeleteIndex, groupKey })
 
     const next = waitImages.filter((_, i) => i !== pendingDeleteIndex)
     setWaitImages(next)
@@ -216,8 +436,10 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       const skuIdx = parseSkuIndexFromKey(groupKey)
       if (skuIdx != null) {
         const newPublishSkus = (data.publishSkus || []).map((sku, i) => i === skuIdx ? { ...sku, skuImages: toIndexedImageObjs(newUrls) } : sku)
+        uploadLog('同步 publishSkus（删除）：', { skuIdx, 图片数量: newUrls.length })
         onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
       } else {
+        uploadLog('同步 senceImages（删除）：', { 图片数量: newUrls.length })
         onReorder && onReorder(data.id ?? data.applyCode, { senceImages: toIndexedImageObjs(newUrls) })
       }
     }
@@ -231,24 +453,163 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     setConfirmOpen(false)
   }
 
-  // 处理拖拽开始（使用扁平索引）
+  // 处理用画布图片替换当前图片
+  const handleReplaceWithCanvas = async (currentImageIndex) => {
+    // 检查是否可以导出画布
+    const { canPlace, reason } = canPlaceImage()
+    if (!canPlace) {
+      uploadLog('无法导出画布:', reason)
+      setPSError(reason)
+      showPSAlert(`无法导出画布: ${reason}`)
+      return
+    }
+
+    // 设置加载状态
+    setIsCanvasReplacing(true)
+    setPSError(null)
+    uploadLog('开始用画布替换图片:', { currentImageIndex })
+
+    try {
+      // 使用与UploadToS3组件相同的上传URL
+      const UPLOAD_URL = 'https://www.tvcmall.com/api/tools/upload_file'
+      
+      const result = await exportAndUploadCanvas(UPLOAD_URL, {
+        filename: `canvas-replacement-${Date.now()}.png`,
+        onStepChange: (step) => {
+          setReplaceProgress(step)
+          uploadLog('替换进度:', step)
+        }
+      })
+      let uploadUrl = ''
+      if(result.code === 200) {
+        uploadUrl = result.data[0].remote_url
+      }
+
+      if (uploadUrl) {
+        // 获取当前图片所在的分组和位置
+        const currentImage = waitImages[currentImageIndex]
+        if (!currentImage) {
+          throw new Error('找不到要替换的图片')
+        }
+
+        const groupKey = currentImage.groupKey
+        uploadLog('替换图片成功，更新本地状态:', { groupKey, newUrl: uploadUrl })
+
+        // 更新本地waitImages数组
+        const newWaitImages = [...waitImages]
+        newWaitImages[currentImageIndex] = { ...currentImage, url: uploadUrl }
+        setWaitImages(newWaitImages)
+
+        // 同步父组件数据结构
+        const newUrls = newWaitImages.filter(img => img?.groupKey === groupKey).map(img => img.url)
+        const skuIdx = parseSkuIndexFromKey(groupKey)
+        
+        if (skuIdx != null) {
+          const newPublishSkus = (data.publishSkus || []).map((sku, i) => 
+            i === skuIdx ? { ...sku, skuImages: toIndexedImageObjs(newUrls) } : sku
+          )
+          onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
+          uploadLog('已同步父组件 publishSkus（替换）:', { skuIdx, 图片数量: newUrls.length })
+        } else {
+          onReorder && onReorder(data.id ?? data.applyCode, { senceImages: toIndexedImageObjs(newUrls) })
+          uploadLog('已同步父组件 senceImages（替换）:', { 图片数量: newUrls.length })
+        }
+
+        // 更新预览列表
+        const newPreviewList = [...previewList]
+        newPreviewList[previewIndex] = uploadUrl
+        setPreviewList(newPreviewList)
+
+        if (isUXP) {
+          showPSAlert('画布图片已成功替换原图片')
+        }
+      } else {
+        throw new Error('上传响应中没有找到图片URL')
+      }
+      
+    } catch (error) {
+      const errorMsg = error.message || '替换图片时发生未知错误'
+      uploadLog('画布替换失败:', error)
+      setPSError(errorMsg)
+      showPSAlert(`替换图片失败: ${errorMsg}`)
+    } finally {
+      setIsCanvasReplacing(false)
+      setReplaceProgress('')
+    }
+  }
+
+  // 处理拖拽图片到Photoshop画布
+  const handleDragToPhotoshop = async (imageUrl, imageIndex) => {
+    // 检查是否可以放置图片
+    const { canPlace, reason } = canPlaceImage()
+    if (!canPlace) {
+      uploadLog('无法放置图片到Photoshop:', reason)
+      setPSError(reason)
+      showPSAlert(`无法放置图片: ${reason}`)
+      return
+    }
+
+    // 设置加载状态
+    setIsPSPlacing(true)
+    setPSError(null)
+    uploadLog('开始拖拽图片到Photoshop:', { imageUrl, imageIndex })
+
+    try {
+      // 构造图片信息对象
+      const imageInfo = {
+        type: 'remote',
+        url: imageUrl,
+        filename: `image_${imageIndex + 1}.jpg`
+      }
+
+      await placeImageInPS(imageInfo)
+      uploadLog('图片成功放置到Photoshop')
+      
+      // 可选：显示成功提示
+      if (isUXP) {
+        showPSAlert('图片已成功放置到Photoshop画布')
+      }
+      
+    } catch (error) {
+      const errorMsg = error.message || '放置图片时发生未知错误'
+      uploadLog('拖拽到Photoshop失败:', error)
+      setPSError(errorMsg)
+      showPSAlert(`放置图片失败: ${errorMsg}`)
+    } finally {
+      setIsPSPlacing(false)
+    }
+  }
+
+  // 处理拖拽开始（使用扁平索引）- 浏览器原生 DnD
   const handleDragStart = (e, flatIndex) => {
+    debugDragLog('HTML5 拖拽开始', { index: flatIndex, groupKey: indexToGroupKey.get(flatIndex) })
     setDraggedIndex(flatIndex)
     setDraggedGroupKey(indexToGroupKey.get(flatIndex) || null)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', String(flatIndex))
+    suppressClickRef.current = true
+    if (e?.dataTransfer) {
+      try {
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', String(flatIndex))
+      } catch {
+        // UXP 环境可能不允许访问 dataTransfer，这里忽略即可
+        void 0
+      }
+    }
   }
 
   // 处理拖拽结束
   const handleDragEnd = () => {
+    debugDragLog('HTML5 拖拽结束')
     setDraggedIndex(null)
     setDragOverIndex(null)
     setDraggedGroupKey(null)
+    setTimeout(() => { suppressClickRef.current = false }, 0)
   }
 
-  // 处理拖拽进入/悬停（使用扁平索引）
+  // 处理拖拽进入/悬停（使用扁平索引）- 浏览器原生 DnD
   const handleDragEnter = (e, flatIndex) => {
     e.preventDefault()
+    debugDragLog('HTML5 拖拽进入', { targetIndex: flatIndex })
     const targetGroup = indexToGroupKey.get(flatIndex)
     if (draggedIndex !== null && draggedIndex !== flatIndex && draggedGroupKey && targetGroup === draggedGroupKey) {
       setDragOverIndex(flatIndex)
@@ -258,56 +619,355 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     e.preventDefault()
     const targetGroup = indexToGroupKey.get(flatIndex)
     if (draggedGroupKey && targetGroup !== draggedGroupKey) {
-      e.dataTransfer.dropEffect = 'none'
+      if (e?.dataTransfer) e.dataTransfer.dropEffect = 'none'
       return
     }
-    e.dataTransfer.dropEffect = 'move'
-    if (draggedIndex !== null && draggedIndex !== flatIndex) setDragOverIndex(flatIndex)
+    if (e?.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    if (draggedIndex !== null && draggedIndex !== flatIndex) {
+      if (dragOverIndex !== flatIndex) debugDragLog('HTML5 悬停变更', { targetIndex: flatIndex })
+      setDragOverIndex(flatIndex)
+    }
   }
 
   // 处理拖拽离开
   const handleDragLeave = () => { setDragOverIndex(null) }
 
-  // 处理拖拽放置（按扁平顺序重排，保持原有逻辑；并同步父组件结构，仅影响所在分组）
+  // 处理拖拽放置（按扁平顺序重排，保持原有逻辑；并同步父组件结构，仅影响所在分组）- 统一到函数
   const handleDrop = (e, dropFlatIndex) => {
     e.preventDefault()
+    debugDragLog('HTML5 放置', { from: draggedIndex, to: dropFlatIndex, targetGroup: indexToGroupKey.get(dropFlatIndex) })
     if (draggedIndex === null || draggedIndex === dropFlatIndex) return
-    const targetGroup = indexToGroupKey.get(dropFlatIndex)
-    if (draggedGroupKey && targetGroup !== draggedGroupKey) return
+    applyReorderWithinSameGroup(draggedIndex, dropFlatIndex)
+  }
 
-    const next = [...waitImages]
-    const [draggedItem] = next.splice(draggedIndex, 1)
-    // 规则：
-    // - 从前往后拖动：插入到目标之后（insertIndex = dropFlatIndex）
-    // - 从后往前拖动：插入到目标位置（insertIndex = dropFlatIndex）
-    // 统一简化为 insertIndex = dropFlatIndex
-    const insertIndex = dropFlatIndex
-    next.splice(insertIndex, 0, draggedItem)
+  // ===== UXP 降级：Pointer 事件拖拽排序 =====
+  const computeNearestIndexAtPosition = (rectsMap, indices, x, y) => {
+    // 首先检查是否有图片区域包含拖拽点
+    let containingIndex = null
+    indices.forEach(i => {
+      const r = rectsMap.get(i)
+      if (!r) return
+      // 检查点是否在矩形区域内
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        containingIndex = i
+      }
+    })
+    
+    // 如果有图片区域包含拖拽点，直接返回
+    if (containingIndex !== null) {
+      return containingIndex
+    }
+    
+    // 如果没有区域包含拖拽点，检查是否在任何区域的合理范围内（扩展20px容差）
+    const TOLERANCE = 20
+    let bestIndex = null
+    let bestDist = Infinity
+    
+    indices.forEach(i => {
+      const r = rectsMap.get(i)
+      if (!r) return
+      
+      // 扩展矩形边界
+      const expandedRect = {
+        left: r.left - TOLERANCE,
+        right: r.right + TOLERANCE,
+        top: r.top - TOLERANCE,
+        bottom: r.bottom + TOLERANCE
+      }
+      
+      // 检查点是否在扩展区域内
+      if (x >= expandedRect.left && x <= expandedRect.right && 
+          y >= expandedRect.top && y <= expandedRect.bottom) {
+        // 计算到原始矩形边缘的最短距离
+        const distToEdge = Math.min(
+          Math.abs(x - r.left),   // 到左边距离
+          Math.abs(x - r.right),  // 到右边距离
+          Math.abs(y - r.top),    // 到上边距离
+          Math.abs(y - r.bottom)  // 到下边距离
+        )
+        
+        if (distToEdge < bestDist) {
+          bestDist = distToEdge
+          bestIndex = i
+        }
+      }
+    })
+    
+    // 如果仍然没有找到合适的目标，返回null（不触发排序）
+    return bestIndex
+  }
 
-    setWaitImages(next)
+  const teardownPointerListeners = () => {
+    document.removeEventListener('pointermove', onPointerMove, true)
+    document.removeEventListener('pointerup', onPointerUp, true)
+    document.removeEventListener('pointercancel', onPointerCancel, true)
+  }
 
-    // 同步父组件：仅更新该分组（基于 groupKey 过滤）
-    if (draggedGroupKey) {
-      const newUrls = next.filter(img => img?.groupKey === draggedGroupKey).map(img => img.url)
-      const skuIdx = parseSkuIndexFromKey(draggedGroupKey)
-      if (skuIdx != null) {
-        const newPublishSkus = (data.publishSkus || []).map((sku, i) => i === skuIdx ? { ...sku, skuImages: toIndexedImageObjs(newUrls) } : sku)
-        onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
+  const beginPointerMaybeDrag = (e, flatIndex) => {
+    // 不阻止点击，让点击仍可触发预览
+    debugDragLog('Pointer 按下', { index: flatIndex })
+    try { e.preventDefault() } catch { /* 某些环境下不可用 */ }
+    pendingPointerDragRef.current = {
+      fromIndex: flatIndex,
+      startX: e.clientX,
+      startY: e.clientY,
+    }
+    // 捕获当前目标，保证持续接收 move/up
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+      pointerCaptureTargetRef.current = e.currentTarget
+      pointerIdRef.current = e.pointerId
+    } catch { /* 忽略 */ }
+    document.addEventListener('pointermove', onPointerMove, { capture: true })
+    document.addEventListener('pointerup', onPointerUp, { capture: true })
+    document.addEventListener('pointercancel', onPointerCancel, { capture: true })
+  }
+
+  const ensurePointerDragContext = () => {
+    if (!pendingPointerDragRef.current) return false
+    if (activePointerDragRef.current) return true
+
+    const { fromIndex } = pendingPointerDragRef.current
+    const groupKey = indexToGroupKey.get(fromIndex) || null
+    if (!groupKey) return false
+
+    const group = waitGroups.find(g => g.key === groupKey)
+    const groupIndices = group ? group.indices.slice() : []
+    const rects = new Map()
+    groupIndices.forEach(i => {
+      const el = itemRefs.current[i]
+      if (el) rects.set(i, el.getBoundingClientRect())
+    })
+
+    // 标记进入拖拽态
+    setDraggedIndex(fromIndex)
+    setDraggedGroupKey(groupKey)
+    debugDragLog('进入 Pointer 拖拽态', { fromIndex, groupKey, groupSize: groupIndices.length })
+    suppressClickRef.current = true
+
+    activePointerDragRef.current = { fromIndex, groupKey, groupIndices, rects }
+    return true
+  }
+
+  const onPointerMove = (e) => {
+    const pending = pendingPointerDragRef.current
+    const active = activePointerDragRef.current
+
+    // 若尚未进入拖拽，判断是否超过阈值再初始化拖拽上下文
+    if (!active && pending) {
+      const dx = Math.abs(e.clientX - pending.startX)
+      const dy = Math.abs(e.clientY - pending.startY)
+      if (dx < 3 && dy < 3) return
+      debugDragLog('Pointer 拖拽启动阈值通过')
+      const ok = ensurePointerDragContext()
+      if (!ok) return
+    }
+
+    const ctx = activePointerDragRef.current
+    if (!ctx) return
+
+    // 记录最新坐标，并在同组内寻找最近目标
+    latestPointerPosRef.current = { x: e.clientX, y: e.clientY }
+    // 为避免 hover/dragging transform 影响，实时刷新目标项矩形
+    ctx.groupIndices.forEach(i => {
+      const el = itemRefs.current[i]
+      if (el) ctx.rects.set(i, el.getBoundingClientRect())
+    })
+    const bestIndex = computeNearestIndexAtPosition(ctx.rects, ctx.groupIndices, e.clientX, e.clientY)
+    if (bestIndex != null) {
+      if (bestIndex !== dragOverIndex) debugDragLog('Pointer 目标索引变更', { bestIndex })
+      setDragOverIndex(bestIndex)
+      dragOverIndexRef.current = bestIndex
+    } else {
+      // 如果没有找到合适的目标区域，清除拖拽悬停状态
+      if (dragOverIndex !== null) debugDragLog('Pointer 离开有效拖拽区域')
+      setDragOverIndex(null)
+      dragOverIndexRef.current = null
+    }
+  }
+
+  const onPointerUp = (e) => {
+    const active = activePointerDragRef.current
+    teardownPointerListeners()
+    try {
+      if (pointerIdRef.current != null) {
+        pointerCaptureTargetRef.current?.releasePointerCapture?.(pointerIdRef.current)
+      }
+    } catch { /* 忽略 */ }
+    pointerCaptureTargetRef.current = null
+    pointerIdRef.current = null
+
+    if (active) {
+      // 优先使用 ref 中的悬停索引；若没有，则基于最后坐标重新计算
+      let dropIndex = dragOverIndexRef.current
+      if (dropIndex == null && e) {
+        const pos = latestPointerPosRef.current
+        dropIndex = computeNearestIndexAtPosition(active.rects, active.groupIndices, pos.x, pos.y)
+      }
+      
+      debugDragLog('Pointer 抬起', { fromIndex: active?.fromIndex, dropIndex, hasValidTarget: dropIndex != null })
+      
+      // 只有在找到有效目标位置时才执行排序
+      if (dropIndex != null) {
+        applyReorderWithinSameGroup(active.fromIndex, dropIndex)
       } else {
-        onReorder && onReorder(data.id ?? data.applyCode, { senceImages: toIndexedImageObjs(newUrls) })
+        // 没有有效目标，只清理拖拽状态
+        setDraggedIndex(null)
+        setDragOverIndex(null)
+        setDraggedGroupKey(null)
       }
     }
 
+    pendingPointerDragRef.current = null
+    activePointerDragRef.current = null
+    dragOverIndexRef.current = null
+    setTimeout(() => { suppressClickRef.current = false }, 0)
+  }
+
+  const onPointerCancel = () => {
+    debugDragLog('Pointer 取消')
+    teardownPointerListeners()
+    try {
+      if (pointerIdRef.current != null) {
+        pointerCaptureTargetRef.current?.releasePointerCapture?.(pointerIdRef.current)
+      }
+    } catch { /* 忽略 */ }
+    pointerCaptureTargetRef.current = null
+    pointerIdRef.current = null
+    pendingPointerDragRef.current = null
+    activePointerDragRef.current = null
     setDraggedIndex(null)
     setDragOverIndex(null)
+    dragOverIndexRef.current = null
     setDraggedGroupKey(null)
+    setTimeout(() => { suppressClickRef.current = false }, 0)
   }
+
+  // ===== 鼠标事件降级（当不支持 Pointer 事件时） =====
+  const teardownMouseListeners = () => {
+    document.removeEventListener('mousemove', onMouseMove, true)
+    document.removeEventListener('mouseup', onMouseUp, true)
+  }
+
+  const beginMouseMaybeDrag = (e, flatIndex) => {
+    debugDragLog('Mouse 按下', { index: flatIndex })
+    pendingMouseDragRef.current = {
+      fromIndex: flatIndex,
+      startX: e.clientX,
+      startY: e.clientY,
+    }
+    document.addEventListener('mousemove', onMouseMove, { capture: true })
+    document.addEventListener('mouseup', onMouseUp, { capture: true })
+  }
+
+  const ensureMouseDragContext = () => {
+    if (!pendingMouseDragRef.current) return false
+    if (activeMouseDragRef.current) return true
+
+    const { fromIndex } = pendingMouseDragRef.current
+    const groupKey = indexToGroupKey.get(fromIndex) || null
+    if (!groupKey) return false
+
+    const group = waitGroups.find(g => g.key === groupKey)
+    const groupIndices = group ? group.indices.slice() : []
+    const rects = new Map()
+    groupIndices.forEach(i => {
+      const el = itemRefs.current[i]
+      if (el) rects.set(i, el.getBoundingClientRect())
+    })
+
+    setDraggedIndex(fromIndex)
+    setDraggedGroupKey(groupKey)
+    debugDragLog('进入 Mouse 拖拽态', { fromIndex, groupKey, groupSize: groupIndices.length })
+    suppressClickRef.current = true
+
+    activeMouseDragRef.current = { fromIndex, groupKey, groupIndices, rects }
+    return true
+  }
+
+  const onMouseMove = (e) => {
+    const pending = pendingMouseDragRef.current
+    const active = activeMouseDragRef.current
+    if (!active && pending) {
+      const dx = Math.abs(e.clientX - pending.startX)
+      const dy = Math.abs(e.clientY - pending.startY)
+      if (dx < 3 && dy < 3) return
+      debugDragLog('Mouse 拖拽启动阈值通过')
+      const ok = ensureMouseDragContext()
+      if (!ok) return
+    }
+
+    const ctx = activeMouseDragRef.current
+    if (!ctx) return
+
+    latestPointerPosRef.current = { x: e.clientX, y: e.clientY }
+    // 为避免 hover/dragging transform 影响，实时刷新目标项矩形
+    ctx.groupIndices.forEach(i => {
+      const el = itemRefs.current[i]
+      if (el) ctx.rects.set(i, el.getBoundingClientRect())
+    })
+    const bestIndex = computeNearestIndexAtPosition(ctx.rects, ctx.groupIndices, e.clientX, e.clientY)
+    if (bestIndex != null) {
+      if (bestIndex !== dragOverIndex) debugDragLog('Mouse 目标索引变更', { bestIndex })
+      setDragOverIndex(bestIndex)
+      dragOverIndexRef.current = bestIndex
+    } else {
+      // 如果没有找到合适的目标区域，清除拖拽悬停状态
+      if (dragOverIndex !== null) debugDragLog('Mouse 离开有效拖拽区域')
+      setDragOverIndex(null)
+      dragOverIndexRef.current = null
+    }
+  }
+
+  const onMouseUp = (e) => {
+    const active = activeMouseDragRef.current
+    teardownMouseListeners()
+    if (active) {
+      // 优先使用 ref 中的悬停索引；若没有，则基于最后坐标重新计算
+      let dropIndex = dragOverIndexRef.current
+      if (dropIndex == null && e) {
+        const pos = latestPointerPosRef.current
+        dropIndex = computeNearestIndexAtPosition(active.rects, active.groupIndices, pos.x, pos.y)
+      }
+      
+      debugDragLog('Mouse 抬起', { fromIndex: active?.fromIndex, dropIndex, hasValidTarget: dropIndex != null })
+      
+      // 只有在找到有效目标位置时才执行排序
+      if (dropIndex != null) {
+        applyReorderWithinSameGroup(active.fromIndex, dropIndex)
+      } else {
+        // 没有有效目标，只清理拖拽状态
+        setDraggedIndex(null)
+        setDragOverIndex(null)
+        setDraggedGroupKey(null)
+      }
+    }
+    pendingMouseDragRef.current = null
+    activeMouseDragRef.current = null
+    dragOverIndexRef.current = null
+    setTimeout(() => { suppressClickRef.current = false }, 0)
+  }
+
+  // 组件卸载时，确保移除全局 Pointer 监听
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    return () => {
+      teardownPointerListeners()
+      teardownMouseListeners()
+    }
+  }, [])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // 分组上传：只追加到当前分组尾部，并同步父组件原始结构
   const handleUploadedToGroup = (groupKey) => (info) => {
-    if (!info?.url) return
+    uploadLog('收到上传成功回调：', { groupKey, info })
+    if (!info?.url) {
+      uploadLog('忽略：无 url 字段')
+      return
+    }
 
     const skuIdx = parseSkuIndexFromKey(groupKey)
+    uploadLog('解析分组：', { groupKey, skuIdx })
 
     if (skuIdx != null) {
       // 更新父组件 publishSkus 结构
@@ -316,22 +976,48 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       const prevUrls = (target.skuImages || []).map(x => x?.imageUrl).filter(Boolean)
       const nextUrls = [...prevUrls, info.url]
       const newPublishSkus = prevSkus.map((sku, i) => i === skuIdx ? { ...sku, skuImages: toIndexedImageObjs(nextUrls) } : sku)
+      uploadLog('更新 publishSkus：', { skuIdx, prevCount: prevUrls.length, nextCount: nextUrls.length })
+      
+      // 通知父组件数据更新
       onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
+      uploadLog('已通知父组件 publishSkus 更新')
 
       // 同步本地扁平 waitImages：使用新结构重建并注入 groupKey
       const newData = { ...data, publishSkus: newPublishSkus }
       setWaitImages(buildFlatWaitFromData(newData))
+      uploadLog('已同步本地 waitImages（SKU）')
+      
+      // 如果有 onUpdate 回调，也通知状态变更
+      if (onUpdate) {
+        uploadLog('通知父组件状态更新（SKU）')
+        // 这里可以根据需要传递状态信息，比如"图片已添加"
+        // onUpdate(data.id ?? data.applyCode, '图片已添加')
+      }
     } else {
       // 场景图分组
       const prevScenes = (data?.senceImages || []).map(x => x?.imageUrl).filter(Boolean)
       const nextUrls = [...prevScenes, info.url]
       const newScenes = toIndexedImageObjs(nextUrls)
+      uploadLog('更新 senceImages：', { prevCount: prevScenes.length, nextCount: nextUrls.length })
+      
+      // 通知父组件数据更新
       onReorder && onReorder(data.id ?? data.applyCode, { senceImages: newScenes })
+      uploadLog('已通知父组件 senceImages 更新')
 
       // 同步本地扁平 waitImages：使用新结构重建并注入 groupKey
       const newData = { ...data, senceImages: newScenes }
       setWaitImages(buildFlatWaitFromData(newData))
+      uploadLog('已同步本地 waitImages（场景）')
+      
+      // 如果有 onUpdate 回调，也通知状态变更
+      if (onUpdate) {
+        uploadLog('通知父组件状态更新（场景）')
+        // 这里可以根据需要传递状态信息，比如"场景图已添加"
+        // onUpdate(data.id ?? data.applyCode, '场景图已添加')
+      }
     }
+    
+    uploadLog('上传处理完成，数据已更新')
   }
 
   // 渲染原图网格（保持不变）
@@ -344,69 +1030,50 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       )
     }
 
-    const canDrag = type !== 'origin'
-
-    return (
-      <div className="image-grid">
-        {images.map((item, index) => {
-          const itemClass = `image-item${canDrag && draggedIndex === index ? ' dragging' : ''}${canDrag && dragOverIndex === index ? ' drag-over' : ''}${!canDrag ? ' no-drag' : ''}`
-          return (
-            <div 
+    // 原图：完全移除拖拽排序相关逻辑，仅保留预览与 Photoshop 相关按钮
+    if (type === 'origin') {
+      return (
+        <div className="image-grid">
+          {images.map((item, index) => (
+            <div
               key={item.id}
-              className={itemClass}
-              draggable={canDrag}
-              onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
-              onDragEnd={canDrag ? handleDragEnd : undefined}
-              onDragEnter={canDrag ? (e) => handleDragEnter(e, index) : undefined}
-              onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
-              onDragLeave={canDrag ? handleDragLeave : undefined}
-              onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
-              onClick={() => openPreview(type, index)}
+              className="image-item no-drag"
+              onClick={() => { if (suppressClickRef.current) return; openPreview('origin', index) }}
             >
-              {type === 'wait' && (
-                <button
-                  className="delete-btn"
-                  title="删除图片"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); requestDeleteWaitImage(index) }}
-                  draggable={false}
-                >
-                  ×
-                </button>
+              {isUXP && (
+                <>
+                  {/* 可扩展：画布替换按钮如需恢复可在此处开启 */}
+                  <button
+                    className="ps-drag-btn"
+                    title="添加到Photoshop画布"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDragToPhotoshop(item.url, index) }}
+                    disabled={isPSPlacing}
+                    draggable={false}
+                  >
+                    {isPSPlacing ? '⋯' : 'P'}
+                  </button>
+                </>
               )}
-              <img 
-                src={item.url} 
-                alt={`${type === 'origin' ? '原图' : '待处理图片'} ${index + 1}`} 
+              <img
+                src={item.url}
+                alt={`原图 ${index + 1}`}
                 loading="lazy"
-                onError={handleImageError}
+                decoding="async"
                 draggable={false}
               />
               <div className="image-error" style={{display: 'none'}}>
                 <span>图片加载失败</span>
               </div>
-              {canDrag && (
-                <div className="drag-hint">
-                  <span>拖拽排序</span>
-                </div>
-              )}
             </div>
-          )
-        })}
-        {type === 'wait' && (
-          <div className="image-item no-drag upload-tile" key="upload-tile">
-            <UploadToS3
-              onUploaded={handleUploadedToGroup('scene')}
-              buttonText="选择图片"
-              uploadingText="上传中..."
-            />
-          </div>
-        )}
-      </div>
-    )
+          ))}
+        </div>
+      )
+    }
   }
 
   // 渲染带分组标题的待处理图片（按归属分组，不改变底层扁平顺序和交互）；每组末尾有独立上传按钮
   const renderWaitImagesGrouped = () => {
-    if (!waitImages || waitImages.length === 0) {
+    if (!waitGroups || waitGroups.length === 0) {
       return (
         <div className="no-images">
           <p>暂无待处理图片</p>
@@ -423,46 +1090,41 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               <div className="group-header"><span>{title}</span></div>
               {indices.map((flatIndex) => {
                 const item = waitImages[flatIndex]
-                const itemClass = `image-item${draggedIndex === flatIndex ? ' dragging' : ''}${dragOverIndex === flatIndex ? ' drag-over' : ''}`
                 return (
-                  <div 
+                  <WaitImageItem
                     key={item.id}
-                    className={itemClass}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, flatIndex)}
+                    item={item}
+                    flatIndex={flatIndex}
+                    isDragging={draggedIndex === flatIndex}
+                    isDragOver={dragOverIndex === flatIndex}
+                    isUXP={isUXP}
+                    supportsPointer={supportsPointer}
+                    isPSPlacing={isPSPlacing}
+                    isCanvasReplacing={isCanvasReplacing}
+                    replaceProgress={replaceProgress}
+                    refSetter={(el) => { itemRefs.current[flatIndex] = el }}
+                    suppressClickRef={suppressClickRef}
+                    onOpenPreview={(idx) => openPreview('wait', idx)}
+                    onRequestDelete={requestDeleteWaitImage}
+                    onBeginPointerMaybeDrag={beginPointerMaybeDrag}
+                    onBeginMouseMaybeDrag={beginMouseMaybeDrag}
+                    onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
-                    onDragEnter={(e) => handleDragEnter(e, flatIndex)}
-                    onDragOver={(e) => handleDragOver(e, flatIndex)}
+                    onDragEnter={handleDragEnter}
+                    onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, flatIndex)}
-                    onClick={() => openPreview('wait', flatIndex)}
-                  >
-                    <button
-                      className="delete-btn"
-                      title="删除图片"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); requestDeleteWaitImage(flatIndex) }}
-                      draggable={false}
-                    >
-                      ×
-                    </button>
-                    <img 
-                      src={item.url} 
-                      alt={`待处理图片 ${flatIndex + 1}`} 
-                      loading="lazy"
-                      onError={handleImageError}
-                      draggable={false}
-                    />
-                    <div className="image-error" style={{display: 'none'}}>
-                      <span>图片加载失败</span>
-                    </div>
-                    <div className="drag-hint">
-                      <span>拖拽排序</span>
-                    </div>
-                  </div>
+                    onDrop={handleDrop}
+                    onReplaceWithCanvas={handleReplaceWithCanvas}
+                    onDragToPhotoshop={handleDragToPhotoshop}
+                    onImageError={handleImageError}
+                  />
                 )
               })}
               <div className="image-item no-drag upload-tile" key={`upload-${key}`}>
                 <UploadToS3
+                  applyCode={data.applyCode}
+                  userId={data.userId}
+                  userCode={data.userCode}
                   onUploaded={handleUploadedToGroup(key)}
                   buttonText="选择图片"
                   uploadingText="上传中..."
@@ -476,19 +1138,13 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   }
 
   return (
-    <div className="todo-modal">
+    <div className={`todo-modal${isUXP ? ' uxp-mode' : ''}${draggedIndex != null ? ' is-dragging' : ''}`}>
       <div className="todo-content">
         {/* 右上角关闭按钮 */}
         <button className="close-btn" onClick={onClose}>×</button>
 
         {/* 无数据时显示简单提示 */}
-        {!data ? (
-          <>
-            <h3>待处理项目</h3>
-            <p>请选择一个项目进行处理</p>
-            <button onClick={onClose}>关闭</button>
-          </>
-        ) : (
+        {data && (
           <>
             {/* Tab切换 */}
             <div className="todo-tabs">
@@ -512,20 +1168,36 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               {activeTab === 'wait' && renderWaitImagesGrouped()}
             </div>
             
-            <div className="todo-actions">
-              <button 
-                className="action-btn primary"
-                onClick={() => onUpdate && onUpdate(data.id ?? data.applyCode, '审核完成')}
+            {/* Photoshop错误提示 */}
+            {psError && (
+              <div className="ps-error-message">
+                <span>⚠️ Photoshop错误: {psError}</span>
+                <button onClick={() => setPSError(null)}>×</button>
+              </div>
+            )}
+            
+            {activeTab === 'wait' && (<div className="todo-actions">
+              <div 
+                className={`action-btn primary ${isSubmitting ? 'disabled' : ''}`}
+                onClick={async () => {
+                  try {
+                    if(isSubmitting) return
+                    setIsSubmitting(true)
+                    await onUpdate(data.id ?? data.applyCode, '审核完成')
+                  } finally {
+                    setIsSubmitting(false)
+                  }
+                }}
               >
-                审核完成
-              </button>
-              <button 
+                提交
+              </div>
+              <div 
                 className="action-btn secondary"
                 onClick={onClose}
               >
                 取消
-              </button>
-            </div>
+              </div>
+            </div>)}
           </>
         )}
 
@@ -536,29 +1208,16 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
             <div className="preview-stage" onClick={(e) => e.stopPropagation()}>
               {previewList.length > 1 && (
                 <>
-                  <button className="preview-nav preview-prev" onClick={showPrev}>‹</button>
-                  <button className="preview-nav preview-next" onClick={showNext}>›</button>
+                  <button className="preview-nav preview-prev" style={{fontSize: '16px', fontWeight: 'bold'}} onClick={showPrev}>‹</button>
+                  <button className="preview-nav preview-next" style={{fontSize: '16px', fontWeight: 'bold'}} onClick={showNext}>›</button>
                 </>
               )}
-              <div
-                className="preview-image-wrap"
-                ref={previewWrapRef}
-                onMouseEnter={() => setLensVisible(true)}
-                onMouseLeave={() => setLensVisible(false)}
-                onMouseMove={handleLensMove}
-              >
+              <div className="preview-image-wrap">
                 <img
-                  ref={previewImgRef}
                   className="preview-image"
                   src={previewList[previewIndex]}
                   alt={`预览 ${previewIndex + 1}`}
                 />
-                {lensVisible && (
-                  <div
-                    className="magnifier-lens"
-                    style={lensStyle}
-                  />
-                )}
               </div>
             </div>
           </div>

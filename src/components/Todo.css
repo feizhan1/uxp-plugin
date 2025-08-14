@@ -6,7 +6,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: #f5f5f5;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -97,14 +97,12 @@
 
 .tab-btn {
   background: none;
-  border: none;
   border-radius: 0;
   padding: 12px 20px;
   cursor: pointer;
   font-size: 14px;
   color: #666;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  border-bottom: 2px solid #fff;
   position: relative;
 }
 
@@ -114,8 +112,8 @@
 }
 
 .tab-btn.active {
-  color: var(--theme-color);
-  border-bottom-color: var(--theme-color);
+  color: #ec6608;
+  border-bottom: 2px solid #ec6608;
   font-weight: 500;
 }
 
@@ -128,14 +126,14 @@
 .todo-images {
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 80px; /* 为底部固定的actions留出空间 */
+  padding: 0 10px 80px; /* 为底部固定的actions留出空间 */
 }
 
 .image-grid {
   width: 100%;
   display: flex;
   flex-wrap: wrap;
-  margin: 6px -6px;
+  margin: 0 -6px;
 }
 
 /* 分组标题：跨整行 */
@@ -169,8 +167,15 @@
   transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
   cursor: grab;
-  /* 固定纵横比，防止图片加载时高度坍塌 */
-  aspect-ratio: 1 / 1;
+  /* UXP 兼容：使用 padding-top 技术实现 1:1 占位 */
+  /* aspect-ratio: 1 / 1; */
+}
+
+/* UXP 兼容：通过伪元素占位确保 1:1 比例 */
+.image-item::before {
+  content: '';
+  display: block;
+  padding-top: 100%;
 }
 
 .image-item:active {
@@ -180,6 +185,14 @@
 .image-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 防止按钮悬停时导致容器hover状态变化 */
+.image-item:hover .ps-drag-btn,
+.image-item:hover .delete-btn {
+  /* 确保按钮悬停时不影响父容器的hover状态 */
+  pointer-events: auto;
+  color: #fff;
 }
 
 /* 拖拽状态样式 */
@@ -220,6 +233,11 @@
 }
 
 .image-item img {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -228,7 +246,11 @@
 }
 
 .image-error {
-  width: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -236,6 +258,8 @@
   color: #999;
   font-size: 14px;
   border-radius: 8px;
+  text-align: center;
+  padding: 8px;
 }
 
 .no-images {
@@ -267,36 +291,6 @@
   z-index: 1001;
 }
 
-/* 重新添加按钮样式 */
-.action-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background-color 0.2s;
-  margin-left: 10px;
-}
-
-.action-btn.primary {
-  background-color: var(--theme-color);
-  color: white;
-}
-
-.action-btn.primary:hover {
-  background-color: #cf5f07; /* 接近主题色的深色 */
-}
-
-.action-btn.secondary {
-  background-color: #f5f5f5;
-  color: #333;
-  border: 1px solid #ddd;
-}
-
-.action-btn.secondary:hover {
-  background-color: #e8e8e8;
-}
 
 .image-item.no-drag {
   cursor: default;
@@ -333,21 +327,138 @@
   padding: 0;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
-.image-item:hover .delete-btn {
+/* 优化悬停检测，防止按钮闪动 */
+.image-item:hover .delete-btn,
+.image-item .delete-btn:hover,
+.delete-btn:focus {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 添加一个稳定的悬停区域，防止闪动 */
+.delete-btn::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  z-index: -1;
 }
 
 .delete-btn:hover {
   background: rgba(236, 102, 8, 0.9);
 }
 
+/* Photoshop 拖拽按钮样式 */
+.ps-drag-btn {
+  position: absolute;
+  top: 6px;
+  right: 36px; /* 位于删除按钮左侧 */
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 118, 255, 0.8);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  cursor: pointer;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out, background-color 0.15s ease, transform 0.1s ease;
+}
+
+/* 使用更稳定的悬停检测，避免闪动 */
+.image-item:hover .ps-drag-btn,
+.image-item .ps-drag-btn:hover,
+.ps-drag-btn:focus {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 添加一个稳定的悬停区域，防止闪动 */
+.ps-drag-btn::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  z-index: -1;
+}
+
+.ps-drag-btn:hover:not(:disabled) {
+  background: rgba(0, 118, 255, 1);
+  transform: scale(1.05);
+}
+
+.ps-drag-btn:disabled {
+  background: rgba(128, 128, 128, 0.6);
+  cursor: not-allowed;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.9; }
+}
+
+/* Photoshop 错误提示样式 */
+.ps-error-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 59, 48, 0.1);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  color: #d70015;
+  font-size: 14px;
+}
+
+.ps-error-message span {
+  flex: 1;
+  margin-right: 8px;
+}
+
+.ps-error-message button {
+  background: none;
+  border: none;
+  color: #d70015;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.15s ease;
+}
+
+.ps-error-message button:hover {
+  background: rgba(255, 59, 48, 0.1);
+}
+
 .preview-overlay {
   position: fixed;
-  inset: 0;
+  /* inset 在部分 UXP 版本上不完全兼容，改用 top/left/right/bottom */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
@@ -376,7 +487,7 @@
   font-size: 20px;
   line-height: 36px;
   cursor: pointer;
-  z-index: 2000;
+  z-index: 2001;
   padding: 0;
 }
 
@@ -454,7 +565,12 @@
   min-height: 120px;
 }
 
-.upload-tile .s3-uploader {
+.upload-tile .s3-uploader { 
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   padding: 0;
 }
@@ -465,5 +581,185 @@
 
 .upload-tile .s3-uploader__tips {
   display: none;
+}
+
+/* UXP 兼容增强：禁用选择与触控滚动，禁用图片原生拖动 */
+.todo-content,
+.todo-images,
+.image-grid,
+.image-item {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: none; /* 防止触控下滚动干扰 Pointer 拖拽 */
+}
+
+.image-item img {
+  -webkit-user-drag: none; /* 禁止原生拖动图片 */
+}
+
+/* 拖拽内置调试面板样式（仅在开启时可见） */
+.drag-debug-console {
+  position: fixed;
+  left: 8px;
+  bottom: 64px; /* 避开底部 actions */
+  width: 360px;
+  max-height: 40vh;
+  overflow: auto;
+  background: rgba(0,0,0,0.7);
+  color: #e6e6e6;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 6px;
+  padding: 8px;
+  z-index: 2001;
+}
+
+.drag-debug-row {
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-bottom: 1px dashed rgba(255,255,255,0.15);
+  padding: 3px 0;
+}
+
+.debug-toggle {
+  margin-right: auto; /* 把调试按钮靠左 */
+}
+
+/* UXP 模式下，尽量减少视觉动效对几何计算的干扰 */
+.todo-modal.uxp-mode .image-item {
+  transition: none; /* 禁止 hover 的 transform 动画 */
+}
+
+.todo-modal.uxp-mode .image-item:hover {
+  transform: none; /* 取消 hover 上移 */
+  box-shadow: none; /* 取消阴影 */
+}
+
+.todo-modal.uxp-mode .image-item.drag-over {
+  transform: none; /* 保持几何不变，避免 getBoundingClientRect 偏差 */
+  box-shadow: 0 0 0 2px rgba(var(--theme-rgb), 0.2);
+}
+
+.todo-modal.uxp-mode .image-item.dragging {
+  transform: none;
+}
+
+/* 拖拽进行中，隐藏所有提示浮层，避免目标项出现提示 */
+.todo-modal.is-dragging .drag-hint {
+  display: none !important;
+}
+
+/* 仅在 UXP 模式下，进一步避免任何 hover 提示 */
+.todo-modal.uxp-mode.is-dragging .image-item:hover .drag-hint {
+  display: none !important;
+}
+
+/* 预览层画布替换按钮样式 */
+.preview-canvas-actions {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2001;
+}
+
+.preview-canvas-replace-btn {
+  background: rgba(29, 161, 242, 0.9);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.preview-canvas-replace-btn:hover:not(:disabled) {
+  background: rgba(29, 161, 242, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(29, 161, 242, 0.4);
+}
+
+.preview-canvas-replace-btn:disabled {
+  background: rgba(108, 117, 125, 0.8);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.preview-canvas-replace-btn span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* UXP环境下的样式调整 */
+.todo-modal.uxp-mode .preview-canvas-replace-btn {
+  background: rgba(0, 122, 255, 0.9);
+}
+
+.todo-modal.uxp-mode .preview-canvas-replace-btn:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 1);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+/* 画布替换按钮，放在 PS 按钮左侧 */
+.canvas-replace-btn {
+  position: absolute;
+  top: 6px;
+  right: 66px; /* 位于 PS 按钮的再左侧（PS 右 36px + 按钮宽 24px + 6px 间距）*/
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(29, 161, 242, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  cursor: pointer;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out, background-color 0.15s ease, transform 0.1s ease;
+}
+
+.image-item:hover .canvas-replace-btn,
+.image-item .canvas-replace-btn:hover,
+.canvas-replace-btn:focus {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.canvas-replace-btn::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  z-index: -1;
+}
+
+.canvas-replace-btn:hover:not(:disabled) {
+  background: rgba(29, 161, 242, 1);
+  transform: scale(1.05);
+}
+
+.canvas-replace-btn:disabled {
+  background: rgba(108, 117, 125, 0.8);
+  cursor: not-allowed;
 }
 
