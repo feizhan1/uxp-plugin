@@ -540,19 +540,20 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
   // 处理拖拽图片到Photoshop画布
   const handleDragToPhotoshop = async (imageUrl, imageIndex) => {
+    console.log('handleDragToPhotoshop', imageUrl, imageIndex)
     // 检查是否可以放置图片
-    const { canPlace, reason } = canPlaceImage()
-    if (!canPlace) {
-      uploadLog('无法放置图片到Photoshop:', reason)
-      setPSError(reason)
-      showPSAlert(`无法放置图片: ${reason}`)
-      return
-    }
+    // const { canPlace, reason } = canPlaceImage()
+    // if (!canPlace) {
+    //   console.log('无法放置图片到Photoshop:', reason)
+    //   setPSError(reason)
+    //   showPSAlert(`无法放置图片: ${reason}`)
+    //   return
+    // }
 
     // 设置加载状态
     setIsPSPlacing(true)
     setPSError(null)
-    uploadLog('开始拖拽图片到Photoshop:', { imageUrl, imageIndex })
+    console.log('开始拖拽图片到Photoshop:', { imageUrl, imageIndex })
 
     try {
       // 构造图片信息对象
@@ -563,7 +564,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       }
 
       await placeImageInPS(imageInfo)
-      uploadLog('图片成功放置到Photoshop')
+      console.log('图片成功放置到Photoshop')
       
       // 可选：显示成功提示
       if (isUXP) {
@@ -571,8 +572,9 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       }
       
     } catch (error) {
+      console.log('handleDragToPhotoshop error', error)
       const errorMsg = error.message || '放置图片时发生未知错误'
-      uploadLog('拖拽到Photoshop失败:', error)
+      console.log('拖拽到Photoshop失败:', error)
       setPSError(errorMsg)
       showPSAlert(`放置图片失败: ${errorMsg}`)
     } finally {
