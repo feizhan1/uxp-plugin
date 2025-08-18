@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import './Todo.css'
 import Confirm from './Confirm'
+import Toast from './Toast'
 import UploadToS3 from './UploadToS3'
-import { placeImageInPS, canPlaceImage, showPSAlert, exportAndUploadCanvas } from '../panels/photoshop-api'
+import { placeImageInPS, canPlaceImage, exportAndUploadCanvas } from '../panels/photoshop-api'
 
 // 单个待处理图片：使用 React.memo，避免与该单元无关的状态变更导致重渲染
 const WaitImageItem = React.memo(
@@ -204,9 +205,23 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   // 审核提交处理中
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Toast 提示相关状态
+  const [toastOpen, setToastOpen] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('info')
+  const [toastDuration, setToastDuration] = useState(3000)
+
   // 放大镜相关（已取消）
 
   console.log('Todo data', data)
+
+  // showToast 函数：替换 showPSAlert
+  const showToast = useCallback((message, type = 'info', duration = 3000) => {
+    setToastMessage(message)
+    setToastType(type)
+    setToastDuration(duration)
+    setToastOpen(true)
+  }, [])
 
   // UXP 环境检测（保守特征探测）
   const isUXP = useMemo(() => {
@@ -460,7 +475,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     if (!canPlace) {
       uploadLog('无法导出画布:', reason)
       setPSError(reason)
-      showPSAlert(`无法导出画布: ${reason}`)
+      showToast(`无法导出画布: ${reason}`, 'error')
       return
     }
 
@@ -521,7 +536,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         setPreviewList(newPreviewList)
 
         if (isUXP) {
-          showPSAlert('画布图片已成功替换原图片')
+          showToast('画布图片已成功替换原图片', 'success')
         }
       } else {
         throw new Error('上传响应中没有找到图片URL')
@@ -531,7 +546,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       const errorMsg = error.message || '替换图片时发生未知错误'
       uploadLog('画布替换失败:', error)
       setPSError(errorMsg)
-      showPSAlert(`替换图片失败: ${errorMsg}`)
+      showToast(`替换图片失败: ${errorMsg}`, 'error')
     } finally {
       setIsCanvasReplacing(false)
       setReplaceProgress('')
@@ -567,16 +582,16 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       console.log('图片成功放置到Photoshop')
       
       // 可选：显示成功提示
-      if (isUXP) {
-        showPSAlert('图片已成功放置到Photoshop画布')
-      }
+              if (isUXP) {
+          showToast('图片已成功放置到Photoshop画布', 'success')
+        }
       
     } catch (error) {
       console.log('handleDragToPhotoshop error', error)
       const errorMsg = error.message || '放置图片时发生未知错误'
       console.log('拖拽到Photoshop失败:', error)
       setPSError(errorMsg)
-      showPSAlert(`放置图片失败: ${errorMsg}`)
+      showToast(`放置图片失败: ${errorMsg}`, 'error')
     } finally {
       setIsPSPlacing(false)
     }
@@ -1235,6 +1250,16 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         cancelText="取消"
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
+      />
+
+      {/* Toast 提示组件 */}
+      <Toast
+        open={toastOpen}
+        type={toastType}
+        message={toastMessage}
+        duration={toastDuration}
+        onClose={() => setToastOpen(false)}
+        position="top"
       />
     </div>
   )
