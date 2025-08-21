@@ -83,7 +83,7 @@ const WaitImageItem = React.memo(
         <img
           src={item.url}
           alt={`待处理图片 ${flatIndex + 1}`}
-          loading="lazy"
+          loading="eager"
           decoding="async"
           onError={onImageError}
           draggable={false}

@@ -1,6 +1,8 @@
 // photoshop-api.js - UXP Photoshop 插件图片放置API
 /* eslint-disable no-undef */
 // 检测是否在UXP环境中
+import React, { useRef, useState, useMemo } from 'react'
+import { post } from '../utils/http.js'
 const isUXPEnvironment = () => {
   try {
     return typeof require !== 'undefined' && require('photoshop') && require('uxp');
@@ -666,6 +668,10 @@ export async function readImageFile(fileEntry) {
   }
 }
 
+// const effectiveApplyCode = useMemo(() => getFromQuery('applyCode') || getFromLocal('applyCode') || getFromGlobal('applyCode'), [applyCode])
+// const effectiveUserId = useMemo(() => getFromQuery('userId') || getFromLocal('userId') || getFromGlobal('userId'), [userId])
+// const effectiveUserCode = useMemo(() => getFromQuery('userCode') || getFromLocal('userCode') || getFromGlobal('userCode'), [userCode])
+
 /**
  * 将图片数据上传到指定的服务器URL
  * @param {ArrayBuffer} buffer - 图片的ArrayBuffer数据
@@ -673,7 +679,7 @@ export async function readImageFile(fileEntry) {
  * @param {Object} options - 上传选项 {filename?, onProgress?}
  * @returns {Promise<Object>} 服务器响应结果
  */
-export async function uploadImageToServer(buffer, uploadUrl, options = {}) {
+export async function uploadImageToServer(buffer, uploadUrl, options = {}, applyCode, userId, userCode) {
   if (!buffer) {
     throw new Error('没有图片数据可上传');
   }
@@ -689,25 +695,28 @@ export async function uploadImageToServer(buffer, uploadUrl, options = {}) {
     // 2. 创建FormData来包装我们的文件数据
     const formData = new FormData();
     formData.append('file', imageBlob, filename);
+    formData.append('applyCode', applyCode)
+    formData.append('userId', userId)
+    formData.append('userCode', userCode)
 
     // 3. 使用fetch发送POST请求
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      body: formData,
-      headers: {
-        'Authorization': '9da44eff375aa2ca97ae5727b25974ca', // 与UploadToS3组件保持一致
-      },
-      // 注意：当body是FormData时，不要手动设置'Content-Type' header
-      // 浏览器（或UXP环境）会自动设置正确的multipart/form-data类型和boundary
-    });
+    // const response = await fetch(uploadUrl, {
+    //   method: "POST",
+    //   body: formData,
+    //   headers: {
+    //     'Authorization': '9da44eff375aa2ca97ae5727b25974ca', // 与UploadToS3组件保持一致
+    //   },
+    //   // 注意：当body是FormData时，不要手动设置'Content-Type' header
+    //   // 浏览器（或UXP环境）会自动设置正确的multipart/form-data类型和boundary
+    // });
+    const response = await post('/api/publish/upload_product_image', formData, { timeout: 300000 })
+    console.log('response----------', response)
 
-    if (!response.ok) {
-      throw new Error(`服务器错误: ${response.status} ${response.statusText}`);
+    if (response.statusCode !== 200) {
+      throw new Error(`服务器错误: ${response.statusCode} ${response.statusText}`);
     }
 
-    const result = await response.json(); // 假设服务器返回JSON
-    console.log('图片上传成功，服务器响应:', result);
-    return result;
+    return response.dataClass;
 
   } catch (error) {
     console.error('上传图片失败:', error);
@@ -721,7 +730,7 @@ export async function uploadImageToServer(buffer, uploadUrl, options = {}) {
  * @param {Object} options - 选项 {filename?, onProgress?, onStepChange?}
  * @returns {Promise<Object>} 上传结果
  */
-export async function exportAndUploadCanvas(uploadUrl, options = {}) {
+export async function exportAndUploadCanvas(uploadUrl, options = {}, applyCode, userId, userCode) {
   const { onStepChange } = options;
 
   try {
@@ -742,10 +751,12 @@ export async function exportAndUploadCanvas(uploadUrl, options = {}) {
 
     // 步骤3：上传到服务器
     if (onStepChange) onStepChange('正在上传...');
-    const result = await uploadImageToServer(imageBuffer, uploadUrl, options);
+    const url = await uploadImageToServer(imageBuffer, uploadUrl, options, applyCode, userId, userCode);
+
+    console.log('url----------', url)
 
     if (onStepChange) onStepChange('上传完成');
-    return result;
+    return url;
 
   } catch (error) {
     console.error('导出上传流程失败:', error);
