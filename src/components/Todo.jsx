@@ -85,7 +85,6 @@ const WaitImageItem = React.memo(
           alt={`待处理图片 ${flatIndex + 1}`}
           loading="eager"
           decoding="async"
-          onError={onImageError}
           draggable={false}
         />
         <div className="image-error" style={{display: 'none'}}>
@@ -321,6 +320,43 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   // 拖拽期间抑制点击（避免误触打开预览）
   const suppressClickRef = useRef(false)
 
+  // 图片预加载函数
+  const preloadImages = useCallback((urls) => {
+    if (!isUXP || !urls || urls.length === 0) return
+    
+    // 在UXP环境中，分批预加载图片以避免并发限制
+    const batchSize = 3 // UXP环境建议同时最多3个请求
+    let currentBatch = 0
+    
+    const loadBatch = () => {
+      const start = currentBatch * batchSize
+      const end = Math.min(start + batchSize, urls.length)
+      const batchUrls = urls.slice(start, end)
+      
+      const promises = batchUrls.map(url => {
+        return new Promise((resolve) => {
+          const img = new Image()
+          img.onload = () => resolve(url)
+          img.onerror = () => {
+            console.log('预加载失败:', url)
+            resolve(url) // 即使失败也继续
+          }
+          img.src = url
+        })
+      })
+      
+      Promise.all(promises).then(() => {
+        currentBatch++
+        if (currentBatch * batchSize < urls.length) {
+          // 延迟加载下一批，避免请求过于密集
+          setTimeout(loadBatch, 100)
+        }
+      })
+    }
+    
+    loadBatch()
+  }, [isUXP])
+
   // 同步父级数据到本地状态（当data变化时刷新）
   useEffect(() => {
     // 原图：从 originalImages 提取
@@ -328,8 +364,13 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     setOriginImages(toObjectImages(originUrls))
 
     // 待处理：根据数据结构（分色图 + 场景图）构建扁平数组并注入 groupKey
-    setWaitImages(buildFlatWaitFromData(data))
-  }, [data])
+    const waitImagesData = buildFlatWaitFromData(data)
+    setWaitImages(waitImagesData)
+    
+    // 预加载所有图片URL
+    const allUrls = [...originUrls, ...waitImagesData.map(img => img.url)].filter(Boolean)
+    preloadImages(allUrls)
+  }, [data, preloadImages])
 
   // 分组信息与索引→分组的映射
   const waitGroups = useMemo(() => computeWaitGroups(data, waitImages), [data, waitImages])
@@ -386,8 +427,12 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
   // 处理图片加载错误
   const handleImageError = useCallback((e) => {
+    console.log('图片加载失败:', e.target.src)
     e.target.style.display = 'none'
-    e.target.nextSibling.style.display = 'flex'
+    const errorDiv = e.target.nextElementSibling
+    if (errorDiv && errorDiv.classList.contains('image-error')) {
+      errorDiv.style.display = 'flex'
+    }
   }, [])
 
   // 打开图片预览（type 对应到扁平 waitImages 或 originImages）
@@ -485,20 +530,20 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     uploadLog('开始用画布替换图片:', { currentImageIndex })
 
     try {
-      // 使用与UploadToS3组件相同的上传URL
-      const UPLOAD_URL = 'https://www.tvcmall.com/api/tools/upload_file'
-      
-      const result = await exportAndUploadCanvas(UPLOAD_URL, {
-        filename: `canvas-replacement-${Date.now()}.png`,
-        onStepChange: (step) => {
-          setReplaceProgress(step)
-          uploadLog('替换进度:', step)
-        }
-      })
-      let uploadUrl = ''
-      if(result.code === 200) {
-        uploadUrl = result.data[0].remote_url
-      }
+      const result = await exportAndUploadCanvas(
+        {
+          filename: `canvas-replacement-${Date.now()}.png`,
+          onStepChange: (step) => {
+            setReplaceProgress(step)
+            uploadLog('替换进度:', step)
+          }
+        },
+        data.applyCode,
+        data.userId,
+        data.userCode
+      )
+      let uploadUrl = result
+
 
       if (uploadUrl) {
         // 获取当前图片所在的分组和位置

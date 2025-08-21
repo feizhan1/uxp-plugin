@@ -329,7 +329,7 @@ const UploadToS3 = ({
     formData.append('userId', effectiveUserId)
     formData.append('userCode', effectiveUserCode)
 
-    logUpload('发起上传请求（http.post）：', {
+    console.log('发起上传请求（http.post', {
       path: '/api/publish/upload_product_image',
       fileName: fileName || fileOrBlob?.name,
       size: fileOrBlob?.size,
@@ -337,6 +337,7 @@ const UploadToS3 = ({
       applyCode: effectiveApplyCode,
       userId: effectiveUserId,
       userCode: effectiveUserCode,
+      formData: formData
     })
 
     const resp = await post('/api/publish/upload_product_image', formData, { timeout: 300000 })

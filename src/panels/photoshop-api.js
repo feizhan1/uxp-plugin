@@ -675,11 +675,10 @@ export async function readImageFile(fileEntry) {
 /**
  * 将图片数据上传到指定的服务器URL
  * @param {ArrayBuffer} buffer - 图片的ArrayBuffer数据
- * @param {string} uploadUrl - 服务器接收上传的地址
  * @param {Object} options - 上传选项 {filename?, onProgress?}
  * @returns {Promise<Object>} 服务器响应结果
  */
-export async function uploadImageToServer(buffer, uploadUrl, options = {}, applyCode, userId, userCode) {
+export async function uploadImageToServer(buffer, options = {}, applyCode, userId, userCode) {
   if (!buffer) {
     throw new Error('没有图片数据可上传');
   }
@@ -687,28 +686,32 @@ export async function uploadImageToServer(buffer, uploadUrl, options = {}, apply
   const { filename = 'canvas.png' } = options;
 
   try {
-    console.log('开始上传图片到服务器...', { url: uploadUrl, size: buffer.byteLength });
-
-    // 1. 使用ArrayBuffer创建一个Blob对象，并指定MIME类型
+    
+    // 1. 验证buffer大小
+    if (buffer.byteLength === 0) {
+      throw new Error('图片数据为空');
+    }
+    
+    // 2. 使用ArrayBuffer创建一个Blob对象，并指定MIME类型
+    // 注意：UXP环境中File构造函数不可用，使用Blob代替
     const imageBlob = new Blob([buffer], { type: "image/png" });
-
-    // 2. 创建FormData来包装我们的文件数据
+    console.log('图片数据大小:', buffer.byteLength, 'bytes, Blob大小:', imageBlob.size, 'bytes')
+    console.log('filename-------------------', filename)
+    
+    // 3. 验证Blob创建是否成功
+    if (imageBlob.size === 0) {
+      throw new Error('Blob创建失败，大小为0');
+    }
+    
+    // 4. 创建FormData来包装我们的文件数据
     const formData = new FormData();
-    formData.append('file', imageBlob, filename);
+    formData.append('File', imageBlob, filename);
     formData.append('applyCode', applyCode)
     formData.append('userId', userId)
     formData.append('userCode', userCode)
-
+    
+    console.log('formData----------', formData)
     // 3. 使用fetch发送POST请求
-    // const response = await fetch(uploadUrl, {
-    //   method: "POST",
-    //   body: formData,
-    //   headers: {
-    //     'Authorization': '9da44eff375aa2ca97ae5727b25974ca', // 与UploadToS3组件保持一致
-    //   },
-    //   // 注意：当body是FormData时，不要手动设置'Content-Type' header
-    //   // 浏览器（或UXP环境）会自动设置正确的multipart/form-data类型和boundary
-    // });
     const response = await post('/api/publish/upload_product_image', formData, { timeout: 300000 })
     console.log('response----------', response)
 
@@ -726,11 +729,10 @@ export async function uploadImageToServer(buffer, uploadUrl, options = {}, apply
 
 /**
  * 完整的画布导出并上传流程
- * @param {string} uploadUrl - 上传URL
  * @param {Object} options - 选项 {filename?, onProgress?, onStepChange?}
  * @returns {Promise<Object>} 上传结果
  */
-export async function exportAndUploadCanvas(uploadUrl, options = {}, applyCode, userId, userCode) {
+export async function exportAndUploadCanvas(options = {}, applyCode, userId, userCode) {
   const { onStepChange } = options;
 
   try {
@@ -751,7 +753,7 @@ export async function exportAndUploadCanvas(uploadUrl, options = {}, applyCode, 
 
     // 步骤3：上传到服务器
     if (onStepChange) onStepChange('正在上传...');
-    const url = await uploadImageToServer(imageBuffer, uploadUrl, options, applyCode, userId, userCode);
+    const url = await uploadImageToServer(imageBuffer, options, applyCode, userId, userCode);
 
     console.log('url----------', url)
 
