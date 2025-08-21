@@ -91,6 +91,7 @@
 /* Tab切换样式 */
 .todo-tabs {
   display: flex;
+  align-items: center;
   border-bottom: 1px solid #eee;
   flex-shrink: 0;
 }
@@ -654,6 +655,63 @@
 /* 仅在 UXP 模式下，进一步避免任何 hover 提示 */
 .todo-modal.uxp-mode.is-dragging .image-item:hover .drag-hint {
   display: none !important;
+}
+
+/* 批量操作工具栏样式 */
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+/* 批量工具栏中的action-btn间距调整 */
+.batch-toolbar .action-btn {
+  margin-right: 12px;
+  margin-left: 0;
+}
+
+.batch-toolbar .action-btn:last-child {
+  margin-right: 0;
+}
+
+/* 图片选择框样式 */
+.selection-checkbox {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 3px;
+  padding: 2px;
+  backdrop-filter: blur(2px);
+}
+
+.selection-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* 选中状态的图片样式 */
+.image-item.selected {
+  border-color: #007bff;
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.image-item.selected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 123, 255, 0.1);
+  pointer-events: none;
 }
 
 /* 预览层画布替换按钮样式 */

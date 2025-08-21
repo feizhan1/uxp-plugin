@@ -32,24 +32,49 @@ const WaitImageItem = React.memo(
     onReplaceWithCanvas,
     onDragToPhotoshop,
     onImageError,
+    isSelectionMode,
+    isSelected,
+    onToggleSelection,
   }) => {
-    const itemClass = `image-item${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}`
+    const itemClass = `image-item${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}${isSelected ? ' selected' : ''}`
     return (
       <div
         key={item.id}
         className={itemClass}
         ref={refSetter}
-        draggable={!isUXP}
+        draggable={!isUXP && !isSelectionMode}
         onDragStart={!isUXP ? (e) => onDragStart(e, flatIndex) : undefined}
         onDragEnd={!isUXP ? onDragEnd : undefined}
         onDragEnter={!isUXP ? (e) => onDragEnter(e, flatIndex) : undefined}
         onDragOver={!isUXP ? (e) => onDragOver(e, flatIndex) : undefined}
         onDragLeave={!isUXP ? onDragLeave : undefined}
         onDrop={!isUXP ? (e) => onDrop(e, flatIndex) : undefined}
-        onPointerDown={isUXP && supportsPointer ? (e) => onBeginPointerMaybeDrag(e, flatIndex) : undefined}
-        onMouseDown={isUXP && !supportsPointer ? (e) => onBeginMouseMaybeDrag(e, flatIndex) : undefined}
-        onClick={() => { if (suppressClickRef.current) return; onOpenPreview(flatIndex) }}
+        onPointerDown={isUXP && supportsPointer && !isSelectionMode ? (e) => onBeginPointerMaybeDrag(e, flatIndex) : undefined}
+        onMouseDown={isUXP && !supportsPointer && !isSelectionMode ? (e) => onBeginMouseMaybeDrag(e, flatIndex) : undefined}
+        onClick={() => { 
+          if (suppressClickRef.current) return; 
+          if (isSelectionMode) {
+            onToggleSelection(flatIndex);
+          } else {
+            onOpenPreview(flatIndex);
+          }
+        }}
       >
+        {isSelectionMode && (
+          <div className="selection-checkbox">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {
+                // checkbox change事件由图片容器的点击事件统一处理
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelection(flatIndex);
+              }}
+            />
+          </div>
+        )}
         <button
           className="delete-btn"
           title="删除图片"
@@ -108,7 +133,9 @@ const WaitImageItem = React.memo(
       prev.supportsPointer === next.supportsPointer &&
       prev.isPSPlacing === next.isPSPlacing &&
       prev.isCanvasReplacing === next.isCanvasReplacing &&
-      prev.replaceProgress === next.replaceProgress
+      prev.replaceProgress === next.replaceProgress &&
+      prev.isSelectionMode === next.isSelectionMode &&
+      prev.isSelected === next.isSelected
     )
   }
 )
@@ -203,6 +230,11 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [replaceProgress, setReplaceProgress] = useState('')
   // 审核提交处理中
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 批量选择相关状态
+  const [selectedImages, setSelectedImages] = useState(new Set()) // 选中的图片索引集合
+  const [isSelectionMode, setIsSelectionMode] = useState(false) // 是否处于选择模式
+  const [isBatchSyncing, setIsBatchSyncing] = useState(false) // 批量同步进行中
 
   // Toast 提示相关状态
   const [toastOpen, setToastOpen] = useState(false)
@@ -639,6 +671,114 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       showToast(`放置图片失败: ${errorMsg}`, 'error')
     } finally {
       setIsPSPlacing(false)
+    }
+  }
+
+  // 批量选择相关函数
+  const toggleSelectionMode = useCallback(() => {
+    console.log(`切换选择模式: ${isSelectionMode} -> ${!isSelectionMode}`)
+    setIsSelectionMode(!isSelectionMode)
+    if (isSelectionMode) {
+      // 退出选择模式时清空选中项
+      console.log('退出选择模式，清空选中项')
+      setSelectedImages(new Set())
+    }
+  }, [isSelectionMode])
+
+  const toggleImageSelection = useCallback((flatIndex) => {
+    console.log(`尝试切换图片 ${flatIndex} 的选中状态`)
+    console.log(`当前selectedImages:`, Array.from(selectedImages))
+    console.log(`图片 ${flatIndex} 是否已选中:`, selectedImages.has(flatIndex))
+    
+    setSelectedImages(prevSelected => {
+      const newSelected = new Set(prevSelected)
+      if (newSelected.has(flatIndex)) {
+        newSelected.delete(flatIndex)
+        console.log(`取消选择图片 ${flatIndex}, 新状态:`, Array.from(newSelected))
+      } else {
+        newSelected.add(flatIndex)
+        console.log(`选择图片 ${flatIndex}, 新状态:`, Array.from(newSelected))
+      }
+      return newSelected
+    })
+  }, [selectedImages])
+
+  const selectAllImages = useCallback(() => {
+    const allIndices = waitImages.map((_, index) => index)
+    console.log(`全选图片，共 ${allIndices.length} 张:`, allIndices)
+    setSelectedImages(new Set(allIndices))
+  }, [waitImages])
+
+  const clearSelection = useCallback(() => {
+    console.log('清空所有选择')
+    setSelectedImages(new Set())
+  }, [])
+
+  // 批量同步到Photoshop画布
+  const handleBatchSyncToPhotoshop = async () => {
+    if (selectedImages.size === 0) {
+      showToast('请先选择要同步的图片', 'warning')
+      return
+    }
+
+    const selectedIndices = Array.from(selectedImages)
+    setIsBatchSyncing(true)
+    setPSError(null)
+
+    let successCount = 0
+    let failCount = 0
+    const totalCount = selectedIndices.length
+
+    try {
+      showToast(`开始批量同步 ${totalCount} 张图片到Photoshop...`, 'info')
+
+      for (let i = 0; i < selectedIndices.length; i++) {
+        const flatIndex = selectedIndices[i]
+        const item = waitImages[flatIndex]
+        
+        if (!item) continue
+
+        try {
+          const imageInfo = {
+            type: 'remote',
+            url: item.url,
+            filename: `batch_image_${flatIndex + 1}.jpg`
+          }
+
+          await placeImageInPS(imageInfo)
+          successCount++
+          
+          // 更新进度提示
+          showToast(`正在同步第 ${i + 1}/${totalCount} 张图片...`, 'info', 1000)
+          
+          // 添加延迟避免PS处理过载
+          if (i < selectedIndices.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        } catch (error) {
+          console.error(`同步第 ${flatIndex + 1} 张图片失败:`, error)
+          failCount++
+        }
+      }
+
+      // 显示最终结果
+      if (failCount === 0) {
+        showToast(`成功同步 ${successCount} 张图片到Photoshop画布`, 'success')
+      } else {
+        showToast(`同步完成：成功 ${successCount} 张，失败 ${failCount} 张`, 'warning')
+      }
+
+      // 同步完成后退出选择模式
+      setIsSelectionMode(false)
+      setSelectedImages(new Set())
+
+    } catch (error) {
+      const errorMsg = error.message || '批量同步时发生未知错误'
+      console.error('批量同步失败:', error)
+      setPSError(errorMsg)
+      showToast(`批量同步失败: ${errorMsg}`, 'error')
+    } finally {
+      setIsBatchSyncing(false)
     }
   }
 
@@ -1152,6 +1292,10 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               <div className="group-header"><span>{title}</span></div>
               {indices.map((flatIndex) => {
                 const item = waitImages[flatIndex]
+                const isSelected = selectedImages.has(flatIndex)
+                if (isSelectionMode) {
+                  console.log(`渲染图片 ${flatIndex}: isSelected=${isSelected}, selectedImages=`, Array.from(selectedImages))
+                }
                 return (
                   <WaitImageItem
                     key={item.id}
@@ -1179,6 +1323,9 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                     onReplaceWithCanvas={handleReplaceWithCanvas}
                     onDragToPhotoshop={handleDragToPhotoshop}
                     onImageError={handleImageError}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    onToggleSelection={toggleImageSelection}
                   />
                 )
               })}
@@ -1223,6 +1370,42 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                 待处理图片 ({waitImages.length})
               </div>
             </div>
+
+            {/* 批量操作控制栏 - 只在待处理图片tab且有图片时显示 */}
+            {activeTab === 'wait' && waitImages.length > 0 && isUXP && (
+              <div className="batch-toolbar">
+                <div
+                  className={`action-btn ${isSelectionMode ? 'primary' : 'secondary'} ${isBatchSyncing ? 'disabled' : ''}`}
+                  onClick={isBatchSyncing ? undefined : toggleSelectionMode}
+                >
+                  {isSelectionMode ? '退出选择' : '批量选择'}
+                </div>
+                
+                {isSelectionMode && (
+                  <>
+                    <div
+                      className={`action-btn secondary ${selectedImages.size === waitImages.length ? 'disabled' : ''}`}
+                      onClick={selectedImages.size === waitImages.length ? undefined : selectAllImages}
+                    >
+                      全选
+                    </div>
+                    <div
+                      className={`action-btn secondary ${selectedImages.size === 0 ? 'disabled' : ''}`}
+                      onClick={selectedImages.size === 0 ? undefined : clearSelection}
+                    >
+                      清空
+                    </div>
+                    <div
+                      className={`action-btn primary ${selectedImages.size === 0 || isBatchSyncing ? 'disabled' : ''}`}
+                      onClick={selectedImages.size === 0 || isBatchSyncing ? undefined : handleBatchSyncToPhotoshop}
+                      title={isBatchSyncing ? '正在批量同步图片到Photoshop...' : `批量同步 ${selectedImages.size} 张图片到Photoshop画布`}
+                    >
+                      {isBatchSyncing ? '同步中...' : `同步${selectedImages.size}张`}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* 图片展示区域 */}
             <div className="todo-images">

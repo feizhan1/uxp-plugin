@@ -712,7 +712,7 @@ export async function uploadImageToServer(buffer, options = {}, applyCode, userI
     
     console.log('formData----------', formData)
     // 3. 使用fetch发送POST请求
-    const response = await post('/api/publish/upload_product_image', formData, { timeout: 300000 })
+    const response = await post('/api/publish/upload_product_image_new', formData, { timeout: 300000 })
     console.log('response----------', response)
 
     if (response.statusCode !== 200) {
