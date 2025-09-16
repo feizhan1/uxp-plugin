@@ -41,60 +41,136 @@ export async function placeImageInPS(imageInfo) {
   // 使用executeAsModal确保操作的原子性和稳定性
   return core.executeAsModal(
     async (executionContext) => {
+      let fileEntry;
+      let fileToken;
+      let imageSize;
+      let newDocId;
+      let suspensionID;
+
       try {
-        let fileEntry;
-        let fileToken;
-        let imageSize;
-        
         // 1) 根据图片类型获取文件实体（FileEntry）
+        console.log('[placeImageInPS] 步骤1: 获取图片文件实体');
         if (imageInfo.type === 'local' && imageInfo.path) {
+          console.log('[placeImageInPS] 处理本地文件:', imageInfo.path);
           fileEntry = await getLocalFileEntry(imageInfo.path);
         } else if (imageInfo.type === 'remote' && imageInfo.url) {
+          console.log('[placeImageInPS] 处理远程文件:', imageInfo.url);
           fileEntry = await getRemoteFileEntry(imageInfo.url, imageInfo.filename);
         } else if (imageInfo.type === 'base64' && imageInfo.data) {
+          console.log('[placeImageInPS] 处理Base64数据');
           fileEntry = await getBase64FileEntry(imageInfo.data, imageInfo.filename);
         } else {
           // 默认尝试远程URL
+          console.log('[placeImageInPS] 使用默认方式处理:', imageInfo.url || imageInfo.path);
           fileEntry = await getRemoteFileEntry(imageInfo.url || imageInfo.path, imageInfo.filename);
         }
 
         if (!fileEntry) {
           throw new Error('未能获取到图片文件');
         }
+        console.log('[placeImageInPS] 文件实体获取成功:', fileEntry.name);
 
         // 2) 打开图片以获取尺寸，然后关闭图片文档（不保存）
-        console.log('打开图片以读取尺寸...');
-        imageSize = await openImageAndGetSize(fileEntry);
-        if (!imageSize || !imageSize.width || !imageSize.height) {
-          throw new Error('无法获取图片尺寸');
+        console.log('[placeImageInPS] 步骤2: 读取图片尺寸');
+        try {
+          imageSize = await openImageAndGetSize(fileEntry);
+          if (!imageSize || !imageSize.width || !imageSize.height) {
+            throw new Error('无法获取图片尺寸');
+          }
+          console.log('[placeImageInPS] 图片尺寸:', imageSize.width, 'x', imageSize.height);
+        } catch (sizeError) {
+          console.error('[placeImageInPS] 获取图片尺寸失败:', sizeError?.message);
+          throw new Error(`获取图片尺寸失败: ${sizeError?.message}`);
         }
-        console.log('图片尺寸为:', imageSize.width, 'x', imageSize.height);
 
-        // 3) 新建与图片尺寸一致的画布，并立即激活
-        console.log('按图片尺寸新建文档...');
-        const newDocId = await createNewDocument(imageSize.width, imageSize.height);
+        // 3) 新建与图片尺寸一致的画布
+        console.log('[placeImageInPS] 步骤3: 创建新文档');
+        try {
+          newDocId = await createNewDocument(imageSize.width, imageSize.height);
+          if (!newDocId) {
+            throw new Error('新建文档返回的ID无效');
+          }
+          console.log('[placeImageInPS] 新文档创建成功，ID:', newDocId);
+        } catch (docError) {
+          console.error('[placeImageInPS] 创建新文档失败:', docError?.message);
+          throw new Error(`创建新文档失败: ${docError?.message}`);
+        }
+
+        // 4) 激活新文档
+        console.log('[placeImageInPS] 步骤4: 激活新文档');
         await activateDocumentById(newDocId);
 
-        // 4) 在新文档上挂起历史
-        const suspensionID = await executionContext.hostControl.suspendHistory({
-          documentID: newDocId,
-          name: "从插件放置图片",
-        });
+        // 5) 在新文档上挂起历史
+        console.log('[placeImageInPS] 步骤5: 挂起文档历史');
+        try {
+          suspensionID = await executionContext.hostControl.suspendHistory({
+            documentID: newDocId,
+            name: "从插件放置图片",
+          });
+          console.log('[placeImageInPS] 历史挂起成功，ID:', suspensionID);
+        } catch (suspendError) {
+          console.warn('[placeImageInPS] 挂起历史失败，继续执行:', suspendError?.message);
+        }
 
         try {
-          // 双重保证：再次选中新文档，避免外部切换
+          // 6) 再次确保文档激活
+          console.log('[placeImageInPS] 步骤6: 确保文档激活并创建文件令牌');
           await activateDocumentById(newDocId);
-          // 5) 为文件实体创建会话令牌并放置为智能对象
-          fileToken = await fs.createSessionToken(fileEntry);
-          console.log('文件令牌获取成功，执行放置命令');
-          await executePlaceCommand(fileToken);
-          console.log('图片放置成功');
+
+          // 7) 为文件实体创建会话令牌
+          try {
+            fileToken = await fs.createSessionToken(fileEntry);
+            console.log('[placeImageInPS] 文件会话令牌创建成功');
+          } catch (tokenError) {
+            console.error('[placeImageInPS] 创建会话令牌失败:', tokenError?.message);
+            throw new Error(`创建文件会话令牌失败: ${tokenError?.message}`);
+          }
+
+          // 8) 执行图片放置
+          console.log('[placeImageInPS] 步骤7: 执行图片放置');
+          try {
+            await executePlaceCommand(fileToken);
+            console.log('[placeImageInPS] ✅ 图片放置成功完成');
+          } catch (placeError) {
+            console.error('[placeImageInPS] 图片放置失败:', placeError?.message);
+            throw new Error(`图片放置失败: ${placeError?.message}`);
+          }
+
         } finally {
-          await executionContext.hostControl.resumeHistory(suspensionID);
+          // 恢复历史状态
+          if (suspensionID) {
+            try {
+              await executionContext.hostControl.resumeHistory(suspensionID);
+              console.log('[placeImageInPS] 历史状态已恢复');
+            } catch (resumeError) {
+              console.warn('[placeImageInPS] 恢复历史状态失败:', resumeError?.message);
+            }
+          }
         }
 
       } catch (error) {
-        console.error('放置图片时出错:', error);
+        console.error('[placeImageInPS] ❌ 放置图片过程失败:', error);
+        console.error('[placeImageInPS] 错误详情:', {
+          message: error?.message,
+          stack: error?.stack,
+          type: error?.constructor?.name,
+          imageInfo: {
+            type: imageInfo?.type,
+            hasPath: !!imageInfo?.path,
+            hasUrl: !!imageInfo?.url,
+            hasData: !!imageInfo?.data,
+            filename: imageInfo?.filename
+          },
+          processState: {
+            hasFileEntry: !!fileEntry,
+            hasFileToken: !!fileToken,
+            hasImageSize: !!imageSize,
+            hasNewDocId: !!newDocId,
+            hasSuspensionID: !!suspensionID
+          }
+        });
+
+        // 重新抛出错误，保持原始错误信息
         throw error;
       }
     },
@@ -312,117 +388,133 @@ async function openImageAndGetSize(fileEntry) {
  * 参考：batchPlay make document 社区示例
  */
 async function createNewDocument(width, height) {
+  // 输入参数验证
   const targetWidth = Math.max(1, Math.round(Number(width)) || 1);
   const targetHeight = Math.max(1, Math.round(Number(height)) || 1);
-  const beforeCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
-  const uniqueName = `Placed Image ${Date.now()}`;
 
-  // 优先使用 DOM API（更高层，通常会自动激活新文档）
-  try {
-    console.log('[createNewDocument] 使用 DOM documents.add 新建文档:', targetWidth, 'x', targetHeight);
-    const newDoc = await photoshop.app.documents.add({
-      width: targetWidth,
-      height: targetHeight,
-      resolution: 72,
-      mode: 'RGBColor',
-      fill: 'white',
-      name: uniqueName
-    });
-    const domId = newDoc?.id || photoshop.app.activeDocument?.id;
-    if (domId) return domId;
-    const afterCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
-    if (afterCount > beforeCount && photoshop.app.activeDocument?.id) {
-      return photoshop.app.activeDocument.id;
-    }
-  } catch (domError) {
-    console.warn('[createNewDocument] DOM 新建失败，回退 batchPlay:', domError?.message || domError);
+  if (!targetWidth || !targetHeight || targetWidth < 1 || targetHeight < 1) {
+    throw new Error(`无效的文档尺寸: ${targetWidth}x${targetHeight}`);
   }
 
-  // 回退使用 batchPlay（与 Alchemist 输出一致，通用）
-  console.log('[createNewDocument] 使用 batchPlay 新建文档:', targetWidth, 'x', targetHeight);
+  console.log('[createNewDocument] 开始创建新文档:', targetWidth, 'x', targetHeight);
 
-  const res = await batchPlay([
-    {
-      _obj: 'make',
-      _target: [{ _ref: 'document' }],
-      using: {
-        _obj: 'document',
-        name: uniqueName,
-        width: { _unit: 'pixelsUnit', _value: targetWidth },
-        height: { _unit: 'pixelsUnit', _value: targetHeight },
-        resolution: 72,
-        mode: { _enum: 'mode', _value: 'RGBColor' },
-        fill: { _enum: 'fill', _value: 'white' },
-        pixelAspectRatio: 1,
-        depth: 8
-      }
-    }
-  ], { synchronousExecution: true, modalBehavior: 'execute' });
-  console.log('[createNewDocument] batchPlay make 返回:', res);
+  const uniqueName = `Placed Image ${Date.now()}`;
+  const beforeCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
 
-  // 如果文档数量增加，直接返回当前活动文档ID
+  // 用于收集详细错误信息
+  const errors = [];
+
+  // 方法1：使用 batchPlay（最稳定的方法）
   try {
-    const afterCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
-    if (afterCount > beforeCount && photoshop.app.activeDocument?.id) {
-      return photoshop.app.activeDocument.id;
-    }
-  } catch {}
+    console.log('[createNewDocument] 尝试方法1: batchPlay 新建文档');
 
-  // 尝试通过get查询目标文档ID（更可靠）
-  try {
-    const getRes = await batchPlay([
+    const result = await batchPlay([
       {
-        _obj: 'get',
-        _target: [{ _ref: 'document', _enum: 'ordinal', _value: 'targetEnum' }]
+        _obj: 'make',
+        _target: [{ _ref: 'document' }],
+        using: {
+          _obj: 'document',
+          name: uniqueName,
+          width: { _unit: 'pixelsUnit', _value: targetWidth },
+          height: { _unit: 'pixelsUnit', _value: targetHeight },
+          resolution: { _unit: 'densityUnit', _value: 72 },
+          mode: { _enum: 'mode', _value: 'RGBColor' },
+          fill: { _enum: 'fill', _value: 'white' },
+          pixelAspectRatio: 1,
+          depth: 8
+        }
       }
     ], { synchronousExecution: true, modalBehavior: 'execute' });
-    const getDesc = getRes && getRes[0] ? getRes[0] : null;
-    const byGetId = (getDesc && (getDesc.documentID || getDesc.ID)) || null;
-    console.log('[createNewDocument] targetEnum get 返回:', getDesc);
-    if (byGetId) return byGetId;
-  } catch (e) {
-    // 忽略，继续其他兜底
-  }
 
-  // 优先从返回结果获取documentID
-  const returnedId = res && res[0] && (res[0].documentID || res[0].ID || res[0].target && res[0].target[0] && res[0].target[0]._id);
-  if (returnedId) {
-    return returnedId;
-  }
+    console.log('[createNewDocument] batchPlay 执行结果:', result);
 
-  // 新建后活动文档即为新文档，加入短暂重试以避免未就绪
-  for (let attemptIndex = 0; attemptIndex < 5; attemptIndex += 1) {
-    const newDoc = photoshop.app.activeDocument;
-    if (newDoc && newDoc.id) {
-      return newDoc.id;
+    // 等待文档创建完成
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // 检查是否有新文档创建
+    const afterCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
+    console.log('[createNewDocument] 文档数量变化:', beforeCount, '->', afterCount);
+
+    if (afterCount > beforeCount) {
+      const activeDoc = photoshop.app.activeDocument;
+      if (activeDoc && activeDoc.id) {
+        console.log('[createNewDocument] 成功创建文档，ID:', activeDoc.id);
+        return activeDoc.id;
+      }
     }
-    // 等待100ms后重试
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 尝试从 batchPlay 结果中获取文档ID
+    if (result && result[0]) {
+      const docId = result[0].documentID || result[0].ID ||
+                   (result[0].target && result[0].target[0] && result[0].target[0]._id);
+      if (docId) {
+        console.log('[createNewDocument] 从结果获取文档ID:', docId);
+        return docId;
+      }
+    }
+
+  } catch (batchPlayError) {
+    const errorMsg = `batchPlay 创建失败: ${batchPlayError?.message || batchPlayError}`;
+    console.error('[createNewDocument]', errorMsg);
+    errors.push(errorMsg);
   }
 
-  // 最后再尝试 DOM API（某些环境更可靠）
+  // 方法2：使用 DOM API 作为备选方案
   try {
-    console.log('[createNewDocument] 回退到 DOM documents.add');
+    console.log('[createNewDocument] 尝试方法2: DOM API 新建文档');
+
+    // 使用简化的参数，让Photoshop使用默认值
     const newDoc = await photoshop.app.documents.add({
       width: targetWidth,
       height: targetHeight,
       resolution: 72,
-      mode: 'RGBColor',
-      fill: 'white',
       name: uniqueName
+      // 移除 mode 和 fill 参数，使用默认的RGB和白色背景
     });
-    const domId = newDoc?.id || photoshop.app.activeDocument?.id;
-    if (domId) return domId;
-    const afterCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
-    if (afterCount > beforeCount && photoshop.app.activeDocument?.id) {
-      return photoshop.app.activeDocument.id;
+
+    if (newDoc && newDoc.id) {
+      console.log('[createNewDocument] DOM API 成功创建文档，ID:', newDoc.id);
+      return newDoc.id;
     }
+
+    // 如果返回的文档没有ID，检查当前活动文档
+    const activeDoc = photoshop.app.activeDocument;
+    if (activeDoc && activeDoc.id) {
+      console.log('[createNewDocument] 通过活动文档获取ID:', activeDoc.id);
+      return activeDoc.id;
+    }
+
   } catch (domError) {
-    console.warn('DOM documents.add 仍失败:', domError?.message || domError);
+    const errorMsg = `DOM API 创建失败: ${domError?.message || domError}`;
+    console.error('[createNewDocument]', errorMsg);
+    errors.push(errorMsg);
   }
 
-  throw new Error('新建文档失败');
+  // 方法3：重试检查活动文档（可能是异步延迟）
+  console.log('[createNewDocument] 尝试方法3: 重试检查活动文档');
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const activeDoc = photoshop.app.activeDocument;
+      if (activeDoc && activeDoc.id) {
+        // 验证这是一个新创建的文档（通过名称或创建时间）
+        if (activeDoc.name && (activeDoc.name.includes('Placed Image') || activeDoc.name === 'Untitled-1')) {
+          console.log(`[createNewDocument] 重试 ${attempt + 1} 成功获取文档ID:`, activeDoc.id);
+          return activeDoc.id;
+        }
+      }
+
+      // 等待更长时间后重试
+      await new Promise(resolve => setTimeout(resolve, 300));
+    } catch (retryError) {
+      console.warn(`[createNewDocument] 重试 ${attempt + 1} 失败:`, retryError?.message);
+    }
+  }
+
+  // 所有方法都失败，抛出详细错误
+  const finalError = new Error('新建文档失败 - 所有方法都未成功。错误详情: ' + errors.join('; '));
+  console.error('[createNewDocument] 最终失败:', finalError.message);
+  throw finalError;
 }
 
 /**

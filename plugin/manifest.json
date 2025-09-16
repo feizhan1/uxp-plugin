@@ -1,7 +1,7 @@
 {
   "id": "7d40622e",
   "name": "IC产品上架图片处理助手",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "index.html",
   "manifestVersion": 5,
   "host": [
@@ -50,7 +50,7 @@
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
         "https://*.tvcmall.com",
-        "https://openapi.sjlpj.cn:5002",
+        "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",
         "https://sts.sjlpj.cn"
@@ -79,7 +79,7 @@
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
         "https://*.tvcmall.com",
-        "https://openapi.sjlpj.cn:5002",
+        "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",
         "https://sts.sjlpj.cn"
