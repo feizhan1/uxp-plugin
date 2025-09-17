@@ -83,28 +83,7 @@ const WaitImageItem = React.memo(
         >
           ×
         </button>
-        {isUXP && (
-          <>
-            <button
-              className="canvas-replace-btn"
-              title={isCanvasReplacing ? `替换中: ${replaceProgress || '处理中...'}` : '用Photoshop画布图片替换当前图片'}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReplaceWithCanvas(flatIndex) }}
-              disabled={isCanvasReplacing}
-              draggable={false}
-            >
-              {isCanvasReplacing ? '⋯' : 'T'}
-            </button>
-            <button
-              className="ps-drag-btn"
-              title="同步到Photoshop画布"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDragToPhotoshop(item.url, flatIndex) }}
-              disabled={isSyncing}
-              draggable={false}
-            >
-              {isSyncing ? '⋯' : 'P'}
-            </button>
-          </>
-        )}
+        {/* 已隐藏P和T按钮 */}
         <img
           src={item.url}
           alt={`待处理图片 ${flatIndex + 1}`}
@@ -386,6 +365,28 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     setToastOpen(true)
   }, [])
 
+  // 清理数据历史记录（修复跨流程污染）
+  const clearDataHistory = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      if (window.__DATA_HISTORY__) {
+        window.__DATA_HISTORY__.length = 0
+        console.log('🧹 已清理数据历史记录，避免跨流程污染')
+      }
+      if (window.__DATA_LOSS_DETECTED__) {
+        delete window.__DATA_LOSS_DETECTED__
+      }
+      if (window.__CURRENT_DATA_STATS__) {
+        delete window.__CURRENT_DATA_STATS__
+      }
+    }
+  }, [])
+
+  // 🔧 组件初始化时清理历史记录，避免跨流程数据污染
+  useEffect(() => {
+    console.log('🚀 [组件初始化] 开始新的处理流程，清理历史数据')
+    clearDataHistory()
+  }, [clearDataHistory])
+
   // UXP 环境检测（保守特征探测）
   const isUXP = useMemo(() => {
     if (typeof window === 'undefined') return false
@@ -659,7 +660,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   // 开发模式下自动验证和数据监控
   useEffect(() => {
     if ((debugEnabled || isUXP) && waitImages.length > 0 && !isUpdating) {
-      // 延迟验证，避免干扰正常渲染和更新过程
+      // 🔧 增加延迟验证，避免组件初始化时的误报警
       const verificationTimeout = setTimeout(() => {
         try {
           // 数据一致性验证
@@ -845,7 +846,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         } catch (error) {
           console.error('数据验证失败:', error)
         }
-      }, 500)
+      }, 2000) // 🔧 增加延迟到2秒，避免初始化时误报
 
       return () => clearTimeout(verificationTimeout)
     }
@@ -1368,38 +1369,116 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
         setWaitImages(newWaitImages)
 
-        // 同步所有受影响的分组到父组件
-        const affectedGroups = new Set(validMappings.map(img => img.groupKey).filter(Boolean))
-        console.log('📤 同步受影响的分组:', Array.from(affectedGroups))
+        // 🔧 修复：构建完整的父组件数据，避免状态覆盖
+        console.log('📤 开始构建完整的父组件数据同步...')
 
-        for (const groupKey of affectedGroups) {
-          const newUrls = newWaitImages.filter(img => img?.groupKey === groupKey).map(img => ({
+        // 获取所有受影响的分组
+        const affectedGroups = new Set(validMappings.map(img => img.groupKey).filter(Boolean))
+        console.log('📋 受影响的分组:', Array.from(affectedGroups))
+
+        // 构建完整的publishSkus数据，确保包含所有分组的最新状态
+        const completePublishSkus = []
+        let hasSceneImages = false
+        const completeSceneImages = []
+
+        // 遍历所有可能的分组，构建完整的SKU和场景图数据
+        const allGroups = new Set(newWaitImages.map(img => img.groupKey).filter(Boolean))
+        const skuGroups = Array.from(allGroups).filter(key => key.startsWith('sku-')).sort()
+
+        console.log('🏷️  检测到的所有分组:', {
+          SKU分组: skuGroups,
+          是否有场景图: allGroups.has('scene'),
+          受影响分组: Array.from(affectedGroups)
+        })
+
+        // 为每个SKU分组构建数据
+        skuGroups.forEach((currentGroupKey) => {
+          const currentSkuIdx = parseSkuIndexFromKey(currentGroupKey)
+          if (currentSkuIdx != null) {
+            // 从更新后的waitImages中获取该分组的所有图片
+            const groupUrls = newWaitImages.filter(img => img?.groupKey === currentGroupKey).map(img => ({
+              url: img.url,
+              psDocumentId: img.psDocumentId
+            }))
+
+            // 从原始数据中获取分组信息，如果没有则创建默认
+            const originalSku = (data.publishSkus || [])[currentSkuIdx] || {
+              attrClasses: [{ attrName: "颜色款式", attrValue: `分组${currentSkuIdx + 1}` }],
+              skuIndex: currentSkuIdx + 1
+            }
+
+            completePublishSkus[currentSkuIdx] = {
+              ...originalSku,
+              skuImages: groupUrls.map((item, idx) => ({
+                index: idx,
+                imageUrl: item.url,
+                psDocumentId: item.psDocumentId
+              }))
+            }
+
+            console.log(`📋 构建分组 ${currentGroupKey} 数据:`, {
+              skuIndex: currentSkuIdx,
+              imageCount: groupUrls.length,
+              withPsId: groupUrls.filter(item => item.psDocumentId).length,
+              isAffected: affectedGroups.has(currentGroupKey)
+            })
+          }
+        })
+
+        // 填充其他未在waitImages中出现的SKU（保持原始数据）
+        ;(data.publishSkus || []).forEach((sku, index) => {
+          if (!completePublishSkus[index]) {
+            completePublishSkus[index] = sku
+          }
+        })
+
+        // 处理场景图
+        if (allGroups.has('scene')) {
+          hasSceneImages = true
+          const sceneUrls = newWaitImages.filter(img => img?.groupKey === 'scene').map(img => ({
             url: img.url,
             psDocumentId: img.psDocumentId
           }))
-          const skuIdx = parseSkuIndexFromKey(groupKey)
 
-          console.log(`📤 同步分组 ${groupKey}:`, {
-            skuIndex: skuIdx,
-            imageCount: newUrls.length,
-            withPsId: newUrls.filter(item => item.psDocumentId).length
+          completeSceneImages.push(...sceneUrls.map((item, idx) => ({
+            index: idx,
+            imageUrl: item.url,
+            psDocumentId: item.psDocumentId
+          })))
+
+          console.log('📋 构建场景图数据:', {
+            imageCount: completeSceneImages.length,
+            withPsId: completeSceneImages.filter(item => item.psDocumentId).length,
+            isAffected: affectedGroups.has('scene')
+          })
+        }
+
+        // 🔧 关键修复：只调用一次onReorder，传递完整的数据结构
+        const updateData = {}
+        if (completePublishSkus.length > 0) {
+          updateData.publishSkus = completePublishSkus
+        }
+        if (hasSceneImages) {
+          updateData.senceImages = completeSceneImages
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          console.log('🚀 执行单次父组件数据同步:', {
+            包含SKU数据: !!updateData.publishSkus,
+            包含场景图数据: !!updateData.senceImages,
+            SKU总数: updateData.publishSkus?.length || 0,
+            场景图总数: updateData.senceImages?.length || 0,
+            受影响分组数: affectedGroups.size
           })
 
-          if (skuIdx != null) {
-            const newPublishSkus = (data.publishSkus || []).map((sku, i) =>
-              i === skuIdx ? {
-                ...sku,
-                skuImages: newUrls.map((item, idx) => ({ index: idx, imageUrl: item.url, psDocumentId: item.psDocumentId }))
-              } : sku
-            )
-            onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: newPublishSkus })
-            uploadLog('已同步父组件 publishSkus（批量更新）:', { skuIdx, 更新数量: completed })
-          } else {
-            onReorder && onReorder(data.id ?? data.applyCode, {
-              senceImages: newUrls.map((item, idx) => ({ index: idx, imageUrl: item.url, psDocumentId: item.psDocumentId }))
-            })
-            uploadLog('已同步父组件 senceImages（批量更新）:', { 更新数量: completed })
-          }
+          onReorder && onReorder(data.id ?? data.applyCode, updateData)
+          uploadLog('已同步父组件完整数据（批量更新）:', {
+            受影响分组: Array.from(affectedGroups),
+            更新数量: completed
+          })
+          console.log('✅ 父组件数据同步完成，避免了状态覆盖问题')
+        } else {
+          console.warn('⚠️ 没有需要同步的数据')
         }
 
         console.log('✅ 数据同步完成')
@@ -1485,6 +1564,114 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     }
   }
 
+  // 更新图片的PS文档关联状态（可复用函数）
+  const updateImagePSDocumentId = useCallback(async (imageIndex, documentId) => {
+    console.log('🔄 开始更新图片PS文档关联状态:', { imageIndex, documentId })
+
+    // 获取当前图片信息
+    const currentImage = waitImages[imageIndex]
+    if (!currentImage) {
+      console.error('❌ 找不到对应的图片对象:', imageIndex)
+      return false
+    }
+
+    // 更新本地waitImages状态
+    setWaitImages(prevWaitImages => {
+      const updatedWaitImages = [...prevWaitImages]
+      updatedWaitImages[imageIndex] = { ...prevWaitImages[imageIndex], psDocumentId: documentId }
+
+      console.log('🔄 函数式状态更新:', {
+        原始索引: imageIndex,
+        更新前ID: prevWaitImages[imageIndex]?.psDocumentId,
+        更新后ID: documentId
+      })
+
+      return updatedWaitImages
+    })
+
+    // 同步父组件数据结构
+    console.log('📤 开始同步父组件数据结构...')
+    const groupKey = currentImage.groupKey
+    if (groupKey) {
+      console.log('🏷️  处理分组数据同步, groupKey:', groupKey)
+
+      // 构建完整的publishSkus数据
+      const completePublishSkus = []
+      const skuIdx = parseSkuIndexFromKey(groupKey)
+
+      // 获取最新的图片数据（包含刚刚更新的psDocumentId）
+      const sourceWaitImages = [...waitImages]
+      sourceWaitImages[imageIndex] = { ...sourceWaitImages[imageIndex], psDocumentId: documentId }
+
+      // 遍历所有可能的分组，构建完整的SKU数据
+      const allGroups = new Set(sourceWaitImages.map(img => img.groupKey).filter(Boolean))
+      const skuGroups = Array.from(allGroups).filter(key => key.startsWith('sku-')).sort()
+
+      // 为每个SKU分组构建数据
+      skuGroups.forEach((currentGroupKey, index) => {
+        const currentSkuIdx = parseSkuIndexFromKey(currentGroupKey)
+        if (currentSkuIdx != null) {
+          // 从最新的waitImages中获取该分组的所有图片
+          const groupUrls = sourceWaitImages.filter(img => img?.groupKey === currentGroupKey).map(img => ({
+            url: img.url,
+            psDocumentId: img.psDocumentId
+          }))
+
+          // 从原始数据中获取分组信息，如果没有则创建默认
+          const originalSku = (data.publishSkus || [])[currentSkuIdx] || {
+            attrClasses: [{ attrName: "颜色款式", attrValue: `分组${currentSkuIdx + 1}` }],
+            skuIndex: currentSkuIdx + 1
+          }
+
+          completePublishSkus[currentSkuIdx] = {
+            ...originalSku,
+            skuImages: groupUrls.map((item, idx) => ({
+              index: idx,
+              imageUrl: item.url,
+              psDocumentId: item.psDocumentId
+            }))
+          }
+        }
+      })
+
+      // 填充其他未在waitImages中出现的SKU（保持原始数据）
+      ;(data.publishSkus || []).forEach((sku, index) => {
+        if (!completePublishSkus[index]) {
+          completePublishSkus[index] = sku
+        }
+      })
+
+      if (skuIdx != null) {
+        // 使用完整的数据进行同步
+        onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: completePublishSkus })
+        console.log('✅ 已同步父组件 publishSkus（完整状态）:', {
+          skuIdx,
+          文档ID: documentId,
+          总SKU数: completePublishSkus.length
+        })
+      } else {
+        // 场景图处理
+        const sceneUrls = sourceWaitImages.filter(img => img?.groupKey === 'scene').map(img => ({
+          url: img.url,
+          psDocumentId: img.psDocumentId
+        }))
+
+        const senceImages = sceneUrls.map((item, idx) => ({
+          index: idx,
+          imageUrl: item.url,
+          psDocumentId: item.psDocumentId
+        }))
+
+        onReorder && onReorder(data.id ?? data.applyCode, { senceImages })
+        console.log('✅ 已同步父组件 senceImages（PS关联）:', { 文档ID: documentId })
+      }
+    } else {
+      console.warn('⚠️  图片没有分组信息，跳过父组件数据同步')
+    }
+
+    return true
+  }, [waitImages, data, onReorder])
+
   // 实际的PS同步执行逻辑
   const performPSSync = async (imageUrl, imageIndex) => {
     try {
@@ -1514,160 +1701,10 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
       }
 
-      console.log('🔗 开始记录图片与PS文档的关联关系...')
-
-      // 再次获取最新状态（防止队列处理期间状态变化）
-      const latestWaitImages = [...waitImages]
-      const latestCurrentImage = latestWaitImages[imageIndex]
-
-      if (!latestCurrentImage) {
-        console.error('❌ 状态更新过程中图片对象丢失:', imageIndex)
-        throw new Error('图片对象在同步过程中丢失')
-      }
-
-      console.log('🔄 更新前的图片状态验证:', {
-        imageIndex,
-        currentImageId: latestCurrentImage.id,
-        hasExistingPsId: !!latestCurrentImage.psDocumentId
-      })
-
-      // 创建更新后的图片对象
-      const updatedImage = { ...latestCurrentImage, psDocumentId: documentId }
-      const newWaitImages = [...latestWaitImages]
-      newWaitImages[imageIndex] = updatedImage
-
-      console.log('💾 准备更新的图片对象:', {
-        原始对象: latestCurrentImage,
-        更新后对象: updatedImage,
-        文档ID: documentId
-      })
-
-      // 验证更新前后的变化
-      const beforePsCount = latestWaitImages.filter(img => img.psDocumentId).length
-      const afterPsCount = newWaitImages.filter(img => img.psDocumentId).length
-
-      console.log('📊 PS关联数量统计:', {
-        更新前: beforePsCount,
-        更新后: afterPsCount,
-        本次新增: afterPsCount - beforePsCount
-      })
-
-      // 执行状态更新（使用函数式更新确保基于最新状态）
-      console.log('🔄 执行 setWaitImages 状态更新...')
-      setWaitImages(prevWaitImages => {
-        const updatedWaitImages = [...prevWaitImages]
-        updatedWaitImages[imageIndex] = { ...prevWaitImages[imageIndex], psDocumentId: documentId }
-
-        console.log('🔄 函数式状态更新:', {
-          原始索引: imageIndex,
-          更新前ID: prevWaitImages[imageIndex]?.psDocumentId,
-          更新后ID: documentId
-        })
-
-        return updatedWaitImages
-      })
-
-      // 同步父组件数据结构（修复竞态条件）
-      console.log('📤 开始同步父组件数据结构...')
-      const groupKey = latestCurrentImage.groupKey
-      if (groupKey) {
-        console.log('🏷️  处理分组数据同步, groupKey:', groupKey)
-
-        // 🔧 修复：基于最新的本地完整状态构建更新数据，而不是依赖可能过期的data
-        console.log('🔄 基于本地完整状态构建父组件数据更新...')
-
-        // 构建完整的publishSkus数据，确保包含所有分组的最新状态
-        const completePublishSkus = []
-        const skuIdx = parseSkuIndexFromKey(groupKey)
-        console.log('🔢 解析的SKU索引:', skuIdx)
-
-        // 使用更新后的waitImages构建完整数据
-        const sourceWaitImages = newWaitImages
-
-        // 遍历所有可能的分组，构建完整的SKU数据
-        const allGroups = new Set(sourceWaitImages.map(img => img.groupKey).filter(Boolean))
-        const skuGroups = Array.from(allGroups).filter(key => key.startsWith('sku-')).sort()
-
-        console.log('🏷️  检测到的所有SKU分组:', skuGroups)
-
-        // 为每个SKU分组构建数据
-        skuGroups.forEach((currentGroupKey, index) => {
-          const currentSkuIdx = parseSkuIndexFromKey(currentGroupKey)
-          if (currentSkuIdx != null) {
-            // 从最新的waitImages中获取该分组的所有图片
-            const groupUrls = sourceWaitImages.filter(img => img?.groupKey === currentGroupKey).map(img => ({
-              url: img.url,
-              psDocumentId: img.psDocumentId
-            }))
-
-            // 从原始数据中获取分组信息，如果没有则创建默认
-            const originalSku = (data.publishSkus || [])[currentSkuIdx] || {
-              attrClasses: [{ attrName: "颜色款式", attrValue: `分组${currentSkuIdx + 1}` }],
-              skuIndex: currentSkuIdx + 1
-            }
-
-            completePublishSkus[currentSkuIdx] = {
-              ...originalSku,
-              skuImages: groupUrls.map((item, idx) => ({
-                index: idx,
-                imageUrl: item.url,
-                psDocumentId: item.psDocumentId
-              }))
-            }
-
-            console.log(`📋 构建分组 ${currentGroupKey} 数据:`, {
-              skuIndex: currentSkuIdx,
-              imageCount: groupUrls.length,
-              withPsId: groupUrls.filter(item => item.psDocumentId).length,
-              urls: groupUrls.map(item => item.url.substring(0, 30) + '...')
-            })
-          }
-        })
-
-        // 填充其他未在waitImages中出现的SKU（保持原始数据）
-        ;(data.publishSkus || []).forEach((sku, index) => {
-          if (!completePublishSkus[index]) {
-            completePublishSkus[index] = sku
-          }
-        })
-
-        if (skuIdx != null) {
-          // 验证构建的数据完整性
-          const updatedSkuData = completePublishSkus[skuIdx]
-          console.log('🔍 当前更新的SKU数据验证:', {
-            skuIndex: skuIdx,
-            imageCount: updatedSkuData?.skuImages?.length || 0,
-            hasCurrentUpdate: updatedSkuData?.skuImages?.some(img => img.psDocumentId === documentId) || false
-          })
-
-          // 使用完整的数据进行同步
-          onReorder && onReorder(data.id ?? data.applyCode, { publishSkus: completePublishSkus })
-          console.log('✅ 已同步父组件 publishSkus（完整状态）:', {
-            skuIdx,
-            文档ID: documentId,
-            总SKU数: completePublishSkus.length,
-            当前SKU图片数: updatedSkuData?.skuImages?.length || 0
-          })
-          uploadLog('已同步父组件 publishSkus（完整状态）:', { skuIdx, 文档ID: documentId })
-        } else {
-          // 场景图处理
-          const sceneUrls = sourceWaitImages.filter(img => img?.groupKey === 'scene').map(img => ({
-            url: img.url,
-            psDocumentId: img.psDocumentId
-          }))
-
-          const senceImages = sceneUrls.map((item, idx) => ({
-            index: idx,
-            imageUrl: item.url,
-            psDocumentId: item.psDocumentId
-          }))
-
-          onReorder && onReorder(data.id ?? data.applyCode, { senceImages })
-          console.log('✅ 已同步父组件 senceImages（PS关联）:', { 文档ID: documentId })
-          uploadLog('已同步父组件 senceImages（PS关联）:', { 文档ID: documentId })
-        }
-      } else {
-        console.warn('⚠️  图片没有分组信息，跳过父组件数据同步')
+      // 使用可复用的状态更新函数
+      const updateSuccess = await updateImagePSDocumentId(imageIndex, documentId)
+      if (!updateSuccess) {
+        throw new Error('更新图片PS文档关联失败')
       }
 
       // 显示成功提示
@@ -1772,18 +1809,35 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
             filename: `batch_image_${flatIndex + 1}.jpg`
           }
 
-          await placeImageInPS(imageInfo)
+          console.log(`🚀 [批量同步 ${i + 1}/${totalCount}] 开始同步图片到PS:`, { flatIndex, url: item.url.substring(0, 30) + '...' })
+          const documentId = await placeImageInPS(imageInfo)
+          console.log(`✅ [批量同步 ${i + 1}/${totalCount}] PS同步成功，返回文档ID:`, documentId)
+
+          // 验证documentId有效性
+          if (!documentId || (typeof documentId !== 'number' && typeof documentId !== 'string')) {
+            throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
+          }
+
+          // 🔧 关键修复：更新图片的PS文档关联状态
+          console.log(`🔄 [批量同步 ${i + 1}/${totalCount}] 开始更新图片状态...`)
+          const updateSuccess = await updateImagePSDocumentId(flatIndex, documentId)
+          if (!updateSuccess) {
+            console.warn(`⚠️ [批量同步 ${i + 1}/${totalCount}] 状态更新失败，但PS同步已完成`)
+          } else {
+            console.log(`✅ [批量同步 ${i + 1}/${totalCount}] 状态更新成功`)
+          }
+
           successCount++
-          
+
           // 更新进度提示
           showToast(`正在同步第 ${i + 1}/${totalCount} 张图片...`, 'info', 1000)
-          
+
           // 添加延迟避免PS处理过载
           if (i < selectedIndices.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 500))
           }
         } catch (error) {
-          console.error(`同步第 ${flatIndex + 1} 张图片失败:`, error)
+          console.error(`❌ [批量同步 ${i + 1}/${totalCount}] 同步第 ${flatIndex + 1} 张图片失败:`, error)
           failCount++
         }
       }
@@ -2377,7 +2431,15 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     <div className={`todo-modal${isUXP ? ' uxp-mode' : ''}${draggedIndex != null ? ' is-dragging' : ''}`}>
       <div className="todo-content">
         {/* 右上角关闭按钮 */}
-        <button className="close-btn" onClick={onClose}>×</button>
+        <button
+          className="close-btn"
+          onClick={() => {
+            // 🔧 关闭时清理历史数据
+            clearDataHistory()
+            console.log('✅ 组件关闭（X按钮），已清理历史数据')
+            onClose()
+          }}
+        >×</button>
 
         {/* 无数据时显示简单提示 */}
         {data && (
@@ -2459,27 +2521,16 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                 return (
                   <div className="batch-update-section" style={{ background: '#fff3cd', border: '1px solid #ffeaa7' }}>
                     <div style={{ fontSize: '12px', color: '#856404', textAlign: 'center' }}>
-                      调试：找到 {totalCount} 张图片，原始关联 {syncableCount} 个，去重后 {actualSyncableCount} 个
-                      <br />
-                      {duplicates.length > 0 && `检测到 ${duplicates.length} 个重复URL关联`}
-                      <br />
                       请先将图片同步到PS画布以建立关联关系
                     </div>
                   </div>
                 );
               }
 
-              // 如果有重复关联，显示警告信息
+              // 如果有重复关联，显示警告信息（生产环境中隐藏调试详情）
               if (duplicates.length > 0 && actualSyncableCount > 0) {
                 return (
                   <div className="batch-update-section">
-                    <div className="batch-update-section" style={{ background: '#fff3cd', border: '1px solid #ffeaa7', marginBottom: '10px' }}>
-                      <div style={{ fontSize: '12px', color: '#856404', textAlign: 'center' }}>
-                        ⚠️ 检测到 {duplicates.length} 个重复的图片关联，已自动去重
-                        <br />
-                        原始关联: {syncableCount} 个 → 有效关联: {actualSyncableCount} 个
-                      </div>
-                    </div>
                     <div
                       className={`action-btn special ${isBatchUpdating ? 'disabled updating' : ''}`}
                       onClick={isBatchUpdating ? undefined : handleBatchUpdateFromCanvas}
@@ -2558,6 +2609,9 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                     if(isSubmitting) return
                     setIsSubmitting(true)
                     await onUpdate(data.id ?? data.applyCode, '审核完成')
+                    // 🔧 提交成功后清理历史数据，避免影响后续流程
+                    clearDataHistory()
+                    console.log('✅ 提交审核成功，已清理历史数据')
                   } finally {
                     setIsSubmitting(false)
                   }
@@ -2565,9 +2619,14 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               >
                 提交
               </div>
-              <div 
+              <div
                 className="action-btn secondary"
-                onClick={onClose}
+                onClick={() => {
+                  // 🔧 关闭时清理历史数据
+                  clearDataHistory()
+                  console.log('✅ 组件关闭，已清理历史数据')
+                  onClose()
+                }}
               >
                 取消
               </div>
