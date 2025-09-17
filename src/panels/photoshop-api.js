@@ -87,12 +87,15 @@ export async function placeImageInPS(imageInfo) {
         console.log('[placeImageInPS] 步骤3: 创建新文档');
         try {
           newDocId = await createNewDocument(imageSize.width, imageSize.height);
-          if (!newDocId) {
-            throw new Error('新建文档返回的ID无效');
+          console.log('[placeImageInPS] createNewDocument 返回值:', newDocId, '(类型:', typeof newDocId, ')');
+
+          if (!newDocId || (typeof newDocId !== 'number' && typeof newDocId !== 'string')) {
+            throw new Error(`新建文档返回的ID无效: ${newDocId} (类型: ${typeof newDocId})`);
           }
-          console.log('[placeImageInPS] 新文档创建成功，ID:', newDocId);
+
+          console.log('[placeImageInPS] ✅ 新文档创建成功，验证通过，ID:', newDocId);
         } catch (docError) {
-          console.error('[placeImageInPS] 创建新文档失败:', docError?.message);
+          console.error('[placeImageInPS] ❌ 创建新文档失败:', docError?.message);
           throw new Error(`创建新文档失败: ${docError?.message}`);
         }
 
@@ -111,6 +114,8 @@ export async function placeImageInPS(imageInfo) {
         } catch (suspendError) {
           console.warn('[placeImageInPS] 挂起历史失败，继续执行:', suspendError?.message);
         }
+
+        let successDocumentId = null;
 
         try {
           // 6) 再次确保文档激活
@@ -131,6 +136,10 @@ export async function placeImageInPS(imageInfo) {
           try {
             await executePlaceCommand(fileToken);
             console.log('[placeImageInPS] ✅ 图片放置成功完成');
+
+            // 记录成功的文档ID
+            successDocumentId = newDocId;
+            console.log('[placeImageInPS] 记录成功的文档ID:', successDocumentId);
           } catch (placeError) {
             console.error('[placeImageInPS] 图片放置失败:', placeError?.message);
             throw new Error(`图片放置失败: ${placeError?.message}`);
@@ -146,6 +155,14 @@ export async function placeImageInPS(imageInfo) {
               console.warn('[placeImageInPS] 恢复历史状态失败:', resumeError?.message);
             }
           }
+        }
+
+        // 在finally块之后返回文档ID
+        if (successDocumentId) {
+          console.log('[placeImageInPS] 最终返回文档ID:', successDocumentId);
+          return successDocumentId;
+        } else {
+          throw new Error('图片放置过程中未能获取有效的文档ID');
         }
 
       } catch (error) {
@@ -388,18 +405,28 @@ async function openImageAndGetSize(fileEntry) {
  * 参考：batchPlay make document 社区示例
  */
 async function createNewDocument(width, height) {
+  console.group('📝 [createNewDocument] 开始创建新PS文档')
+  console.log('📐 输入参数:', { width, height })
   // 输入参数验证
   const targetWidth = Math.max(1, Math.round(Number(width)) || 1);
   const targetHeight = Math.max(1, Math.round(Number(height)) || 1);
 
   if (!targetWidth || !targetHeight || targetWidth < 1 || targetHeight < 1) {
+    console.error('❌ 无效的文档尺寸:', { targetWidth, targetHeight })
+    console.groupEnd()
     throw new Error(`无效的文档尺寸: ${targetWidth}x${targetHeight}`);
   }
 
-  console.log('[createNewDocument] 开始创建新文档:', targetWidth, 'x', targetHeight);
+  console.log('✅ 参数验证通过:', { targetWidth, targetHeight });
 
   const uniqueName = `Placed Image ${Date.now()}`;
   const beforeCount = Array.isArray(photoshop.app.documents) ? photoshop.app.documents.length : (photoshop.app.documents?.length || 0);
+
+  console.log('📊 创建前状态:', {
+    uniqueName,
+    beforeCount,
+    documentsType: typeof photoshop.app.documents
+  });
 
   // 用于收集详细错误信息
   const errors = [];
@@ -438,7 +465,8 @@ async function createNewDocument(width, height) {
     if (afterCount > beforeCount) {
       const activeDoc = photoshop.app.activeDocument;
       if (activeDoc && activeDoc.id) {
-        console.log('[createNewDocument] 成功创建文档，ID:', activeDoc.id);
+        console.log('✅ [方法1-成功] 通过文档数量变化检测到新文档, ID:', activeDoc.id);
+        console.groupEnd()
         return activeDoc.id;
       }
     }
@@ -448,7 +476,8 @@ async function createNewDocument(width, height) {
       const docId = result[0].documentID || result[0].ID ||
                    (result[0].target && result[0].target[0] && result[0].target[0]._id);
       if (docId) {
-        console.log('[createNewDocument] 从结果获取文档ID:', docId);
+        console.log('✅ [方法1-成功] 从batchPlay结果获取文档ID:', docId);
+        console.groupEnd()
         return docId;
       }
     }
@@ -473,14 +502,16 @@ async function createNewDocument(width, height) {
     });
 
     if (newDoc && newDoc.id) {
-      console.log('[createNewDocument] DOM API 成功创建文档，ID:', newDoc.id);
+      console.log('✅ [方法2-成功] DOM API 成功创建文档，ID:', newDoc.id);
+      console.groupEnd()
       return newDoc.id;
     }
 
     // 如果返回的文档没有ID，检查当前活动文档
     const activeDoc = photoshop.app.activeDocument;
     if (activeDoc && activeDoc.id) {
-      console.log('[createNewDocument] 通过活动文档获取ID:', activeDoc.id);
+      console.log('✅ [方法2-成功] 通过活动文档获取ID:', activeDoc.id);
+      console.groupEnd()
       return activeDoc.id;
     }
 
@@ -499,7 +530,8 @@ async function createNewDocument(width, height) {
       if (activeDoc && activeDoc.id) {
         // 验证这是一个新创建的文档（通过名称或创建时间）
         if (activeDoc.name && (activeDoc.name.includes('Placed Image') || activeDoc.name === 'Untitled-1')) {
-          console.log(`[createNewDocument] 重试 ${attempt + 1} 成功获取文档ID:`, activeDoc.id);
+          console.log(`✅ [方法3-成功] 重试 ${attempt + 1} 成功获取文档ID:`, activeDoc.id);
+          console.groupEnd()
           return activeDoc.id;
         }
       }
@@ -512,8 +544,11 @@ async function createNewDocument(width, height) {
   }
 
   // 所有方法都失败，抛出详细错误
+  console.error('❌ [createNewDocument] 所有方法均失败');
+  console.error('💥 错误汇总:', errors);
+  console.groupEnd()
+
   const finalError = new Error('新建文档失败 - 所有方法都未成功。错误详情: ' + errors.join('; '));
-  console.error('[createNewDocument] 最终失败:', finalError.message);
   throw finalError;
 }
 
@@ -856,4 +891,112 @@ export async function exportAndUploadCanvas(options = {}, applyCode, userId, use
     console.error('导出上传流程失败:', error);
     throw error;
   }
-} 
+}
+
+/**
+ * 获取所有打开的PS文档列表
+ * @returns {Promise<Array>} 文档列表，每个文档包含 {id, name, width, height}
+ */
+export async function getOpenDocuments() {
+  // 检查是否在UXP环境中
+  if (!isUXPEnvironment()) {
+    throw new Error('此功能仅在UXP环境中可用');
+  }
+
+  try {
+    const documents = photoshop.app.documents;
+    if (!documents || documents.length === 0) {
+      console.log('没有打开的PS文档');
+      return [];
+    }
+
+    console.log(`找到 ${documents.length} 个打开的文档`);
+
+    // 构建文档信息列表
+    const docList = [];
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
+      if (doc && doc.id) {
+        docList.push({
+          id: doc.id,
+          name: doc.name || `文档${i + 1}`,
+          width: doc.width || 0,
+          height: doc.height || 0
+        });
+      }
+    }
+
+    console.log('文档列表:', docList);
+    return docList;
+  } catch (error) {
+    console.error('获取打开文档列表失败:', error);
+    throw new Error(`获取文档列表失败: ${error.message}`);
+  }
+}
+
+/**
+ * 导出指定文档ID的画布并上传
+ * @param {number} documentId - 要导出的文档ID
+ * @param {Object} options - 导出选项 {filename?, onStepChange?}
+ * @param {string} applyCode - 应用代码
+ * @param {string} userId - 用户ID
+ * @param {string} userCode - 用户代码
+ * @returns {Promise<string>} 上传后的图片URL
+ */
+export async function exportDocumentById(documentId, options = {}, applyCode, userId, userCode) {
+  // 检查是否在UXP环境中
+  if (!isUXPEnvironment()) {
+    throw new Error('此功能仅在UXP环境中可用');
+  }
+
+  const { onStepChange } = options;
+
+  console.log(`开始导出文档ID ${documentId} 的画布`);
+
+  return core.executeAsModal(
+    async (executionContext) => {
+      try {
+        // 步骤1：激活目标文档
+        if (onStepChange) onStepChange(`正在激活文档...`);
+        await activateDocumentById(documentId);
+
+        // 验证文档是否被正确激活
+        const activeDoc = photoshop.app.activeDocument;
+        if (!activeDoc || activeDoc.id !== documentId) {
+          throw new Error(`无法激活文档ID ${documentId}`);
+        }
+
+        console.log(`成功激活文档: ${activeDoc.name}`);
+
+        // 步骤2：导出当前活动文档的画布
+        if (onStepChange) onStepChange('正在导出画布...');
+        const exportedFile = await exportCanvasAsPng();
+        if (!exportedFile) {
+          throw new Error('画布导出失败');
+        }
+
+        // 步骤3：读取图片数据
+        if (onStepChange) onStepChange('正在读取文件...');
+
+        // 给文件系统一点时间确保操作完成
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const imageBuffer = await readImageFile(exportedFile);
+
+        // 步骤4：上传到服务器
+        if (onStepChange) onStepChange('正在上传...');
+        const url = await uploadImageToServer(imageBuffer, options, applyCode, userId, userCode);
+
+        console.log(`文档ID ${documentId} 导出上传成功:`, url);
+
+        if (onStepChange) onStepChange('上传完成');
+        return url;
+
+      } catch (error) {
+        console.error(`导出文档ID ${documentId} 失败:`, error);
+        throw error;
+      }
+    },
+    { commandName: `导出文档${documentId}` }
+  );
+}
