@@ -343,6 +343,9 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [isSelectionMode, setIsSelectionMode] = useState(false) // 是否处于选择模式
   const [isBatchSyncing, setIsBatchSyncing] = useState(false) // 批量同步进行中
 
+  // URL映射管理状态（正向同步去重关键）
+  const [urlToPsDocMap, setUrlToPsDocMap] = useState(new Map()) // URL到PS文档ID的映射
+
   // 简单的防重复点击状态
   const [isSyncing, setIsSyncing] = useState(false) // 是否有同步操作在进行中
   const [isUpdating, setIsUpdating] = useState(false) // 数据更新状态标志
@@ -353,7 +356,8 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [toastType, setToastType] = useState('info')
   const [toastDuration, setToastDuration] = useState(3000)
 
-  // 放大镜相关（已取消）
+  // 调试面板显示状态
+  const [showDebugPanel, setShowDebugPanel] = useState(false)
 
   console.log('Todo data', data)
 
@@ -363,6 +367,83 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     setToastType(type)
     setToastDuration(duration)
     setToastOpen(true)
+  }, [])
+
+  // URL映射管理辅助函数
+  const findExistingPsDocumentId = useCallback((url) => {
+    const existingId = urlToPsDocMap.get(url)
+    console.log('🔍 查找现有PS文档映射:', { url: url.substring(0, 30) + '...', existingId })
+    return existingId || null
+  }, [urlToPsDocMap])
+
+  const recordUrlMapping = useCallback((url, psDocumentId) => {
+    console.log('📝 记录URL映射:', {
+      url: url.substring(0, 30) + '...',
+      psDocumentId,
+      mapSize: urlToPsDocMap.size
+    })
+    setUrlToPsDocMap(prev => {
+      const newMap = new Map(prev)
+      newMap.set(url, psDocumentId)
+      return newMap
+    })
+  }, [urlToPsDocMap])
+
+  const clearUrlMapping = useCallback((url) => {
+    console.log('🗑️ 清除URL映射:', { url: url.substring(0, 30) + '...' })
+    setUrlToPsDocMap(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(url)
+      return newMap
+    })
+  }, [urlToPsDocMap])
+
+  // 图片URL分析和去重函数
+  const analyzeImageUrls = useCallback((images) => {
+    console.log('🔍 开始分析图片URL重复情况:', { totalImages: images.length })
+
+    const urlToIndices = new Map()  // url -> [index1, index2, ...]
+    const uniqueUrls = []
+
+    images.forEach((img, index) => {
+      if (!img || !img.url) return
+
+      if (!urlToIndices.has(img.url)) {
+        urlToIndices.set(img.url, [])
+        uniqueUrls.push({
+          url: img.url,
+          representativeIndex: index,
+          image: img
+        })
+      }
+      urlToIndices.get(img.url).push(index)
+    })
+
+    const duplicateUrls = Array.from(urlToIndices.entries())
+      .filter(([url, indices]) => indices.length > 1)
+      .map(([url, indices]) => ({ url, indices, count: indices.length }))
+
+    const result = {
+      urlToIndices,
+      uniqueUrls,
+      duplicateUrls,
+      totalImages: images.length,
+      uniqueUrlCount: uniqueUrls.length,
+      duplicateCount: duplicateUrls.length
+    }
+
+    console.log('📊 URL分析结果:', {
+      总图片数: result.totalImages,
+      唯一URL数: result.uniqueUrlCount,
+      重复URL数: result.duplicateCount,
+      重复详情: duplicateUrls.map(d => ({
+        url: d.url.substring(0, 30) + '...',
+        重复次数: d.count,
+        图片索引: d.indices
+      }))
+    })
+
+    return result
   }, [])
 
   // 清理数据历史记录（修复跨流程污染）
@@ -386,6 +467,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     console.log('🚀 [组件初始化] 开始新的处理流程，清理历史数据')
     clearDataHistory()
   }, [clearDataHistory])
+
 
   // UXP 环境检测（保守特征探测）
   const isUXP = useMemo(() => {
@@ -506,6 +588,40 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
     return result
   }, [debugEnabled, isUXP])
+
+  // 获取当前调试信息
+  const getDebugInfo = useCallback(() => {
+    const syncableStats = calculateSyncableCount(waitImages)
+    const { syncableCount, uniqueUrlCount, duplicates, totalCount } = syncableStats
+
+    return {
+      基本信息: {
+        总图片数: waitImages.length,
+        有PS关联: waitImages.filter(img => img.psDocumentId).length,
+        原始关联数: syncableCount,
+        去重后关联数: uniqueUrlCount,
+        重复URL数: duplicates.length
+      },
+      分组统计: (() => {
+        const groups = {}
+        const groupKeys = new Set(waitImages.map(img => img.groupKey).filter(Boolean))
+        groupKeys.forEach(groupKey => {
+          const groupImages = waitImages.filter(img => img.groupKey === groupKey)
+          groups[groupKey] = {
+            总数: groupImages.length,
+            有PS关联: groupImages.filter(img => img.psDocumentId).length
+          }
+        })
+        return groups
+      })(),
+      重复URL列表: duplicates.map(url => url.substring(0, 50) + '...'),
+      环境信息: {
+        是UXP环境: isUXP,
+        调试模式: debugEnabled,
+        当前标签: activeTab
+      }
+    }
+  }, [waitImages, calculateSyncableCount, isUXP, debugEnabled, activeTab])
 
   // 数据一致性验证函数
   const verifyDataConsistency = useCallback(() => {
@@ -1299,7 +1415,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       let failed = 0
       const newWaitImages = [...waitImages]
 
-      // 防护机制4：逐个处理，添加详细的错误处理
+      // 防护机制4：逐个处理，添加详细的错误处理和批量更新逻辑
       for (const [index, imgData] of validMappings.entries()) {
         try {
           console.log(`🔄 处理第 ${index + 1}/${validMappings.length} 张图片:`, {
@@ -1327,19 +1443,44 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
           // 防护机制5：验证导出结果
           if (newUrl && typeof newUrl === 'string' && newUrl.length > 0) {
-            // 更新本地图片数据，保持原有的PS关联
-            newWaitImages[imgData.originalIndex] = {
-              ...imgData,
-              url: newUrl,
-              // 确保保持PS文档关联
-              psDocumentId: imgData.psDocumentId
-            }
-            completed++
+            // 🔧 关键修复：批量更新所有相同URL的图片
+            const originalUrl = imgData.url
+            const imagesToUpdate = []
 
-            console.log(`✅ 成功更新图片 ${imgData.id}:`, {
-              旧URL: imgData.url.substring(0, 30) + '...',
+            // 找到所有相同URL的图片（包括原始图片）
+            newWaitImages.forEach((img, imgIndex) => {
+              if (img.url === originalUrl) {
+                imagesToUpdate.push({
+                  index: imgIndex,
+                  image: img
+                })
+              }
+            })
+
+            console.log(`📋 找到 ${imagesToUpdate.length} 张相同URL的图片需要更新:`, {
+              原始URL: originalUrl.substring(0, 30) + '...',
               新URL: newUrl.substring(0, 30) + '...',
-              psDocumentId: imgData.psDocumentId
+              图片索引: imagesToUpdate.map(item => item.index),
+              图片ID: imagesToUpdate.map(item => item.image.id)
+            })
+
+            // 批量更新所有相同URL的图片
+            imagesToUpdate.forEach(({ index: imgIndex, image }) => {
+              newWaitImages[imgIndex] = {
+                ...image,
+                url: newUrl,
+                // 保持原有的PS关联（只有第一张图片有psDocumentId）
+                psDocumentId: image.psDocumentId
+              }
+            })
+
+            completed += imagesToUpdate.length // 更新统计，反映实际更新的图片数量
+
+            console.log(`✅ 成功批量更新 ${imagesToUpdate.length} 张图片:`, {
+              原始URL: originalUrl.substring(0, 30) + '...',
+              新URL: newUrl.substring(0, 30) + '...',
+              psDocumentId: imgData.psDocumentId,
+              更新的索引: imagesToUpdate.map(item => item.index)
             })
           } else {
             throw new Error(`获取到的图片URL无效: ${newUrl}`)
@@ -1350,8 +1491,8 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
           failed++
         }
 
-        // 更新统计信息
-        setBatchUpdateStats({ total: validMappings.length, completed, failed })
+        // 更新统计信息（注意：completed现在反映实际更新的图片总数）
+        setBatchUpdateStats({ total: validMappings.length, completed: Math.min(completed, waitImages.length), failed })
       }
 
       // 防护机制6：最终数据一致性验证
@@ -1683,32 +1824,124 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         throw new Error('图片对象在同步过程中丢失')
       }
 
-      // 构造图片信息对象
-      const imageInfo = {
-        type: 'remote',
-        url: imageUrl,
-        filename: `image_${imageIndex + 1}.jpg`
-      }
-      console.log('📦 构造的图片信息:', imageInfo)
+      console.log('🔍 [单个同步] 开始处理，启用URL去重检查:', {
+        imageIndex,
+        url: imageUrl.substring(0, 30) + '...',
+        currentMappingSize: urlToPsDocMap.size
+      })
 
-      console.log('🚀 调用 placeImageInPS...')
-      const documentId = await placeImageInPS(imageInfo)
-      console.log('✅ placeImageInPS 执行完成，返回值:', documentId, '(类型:', typeof documentId, ')')
+      // 🔧 关键：检查是否已有相同URL的PS文档映射
+      const existingPsId = findExistingPsDocumentId(imageUrl)
+      let documentId
 
-      // 严格验证 documentId
-      if (!documentId || (typeof documentId !== 'number' && typeof documentId !== 'string')) {
-        console.error('❌ 无效的文档ID:', documentId)
-        throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
-      }
+      if (existingPsId) {
+        console.log('✅ [单个同步] 发现现有PS文档映射，直接关联:', {
+          imageIndex,
+          existingPsId,
+          url: imageUrl.substring(0, 30) + '...'
+        })
+        documentId = existingPsId
 
-      // 使用可复用的状态更新函数
-      const updateSuccess = await updateImagePSDocumentId(imageIndex, documentId)
-      if (!updateSuccess) {
-        throw new Error('更新图片PS文档关联失败')
+        // 🔧 关键：查找所有相同URL的图片，批量更新它们的PS关联
+        console.log('🔄 [单个同步] 开始批量更新所有相同URL的图片...')
+        const imagesToUpdate = []
+
+        waitImages.forEach((img, imgIndex) => {
+          if (img && img.url === imageUrl) {
+            imagesToUpdate.push({
+              index: imgIndex,
+              image: img
+            })
+          }
+        })
+
+        console.log(`📋 [单个同步] 找到 ${imagesToUpdate.length} 张相同URL的图片需要更新:`, {
+          图片索引: imagesToUpdate.map(item => item.index),
+          PS文档ID: documentId
+        })
+
+        // 批量更新所有相同URL的图片状态
+        let updateCount = 0
+        for (const { index: imgIndex } of imagesToUpdate) {
+          try {
+            const updateSuccess = await updateImagePSDocumentId(imgIndex, documentId)
+            if (updateSuccess) {
+              updateCount++
+              console.log(`✅ [单个同步] 图片 ${imgIndex} 状态更新成功`)
+            }
+          } catch (updateError) {
+            console.error(`❌ [单个同步] 更新图片 ${imgIndex} 状态失败:`, updateError)
+          }
+        }
+
+        console.log(`✅ [单个同步] 批量更新完成，成功更新 ${updateCount}/${imagesToUpdate.length} 张图片`)
+
+      } else {
+        // 创建新的PS文档
+        console.log('🎯 [单个同步] 未找到现有映射，创建新PS文档:', {
+          imageIndex,
+          url: imageUrl.substring(0, 30) + '...'
+        })
+
+        const imageInfo = {
+          type: 'remote',
+          url: imageUrl,
+          filename: `image_${imageIndex + 1}.jpg`
+        }
+        console.log('📦 构造的图片信息:', imageInfo)
+
+        console.log('🚀 调用 placeImageInPS...')
+        documentId = await placeImageInPS(imageInfo)
+        console.log('✅ placeImageInPS 执行完成，返回值:', documentId, '(类型:', typeof documentId, ')')
+
+        // 严格验证 documentId
+        if (!documentId || (typeof documentId !== 'number' && typeof documentId !== 'string')) {
+          console.error('❌ 无效的文档ID:', documentId)
+          throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
+        }
+
+        // 记录URL映射
+        recordUrlMapping(imageUrl, documentId)
+        console.log('📝 [单个同步] 新映射已记录')
+
+        // 🔧 关键：查找并更新所有相同URL的图片
+        console.log('🔄 [单个同步] 开始批量更新所有相同URL的图片...')
+        const imagesToUpdate = []
+
+        waitImages.forEach((img, imgIndex) => {
+          if (img && img.url === imageUrl) {
+            imagesToUpdate.push({
+              index: imgIndex,
+              image: img
+            })
+          }
+        })
+
+        console.log(`📋 [单个同步] 找到 ${imagesToUpdate.length} 张相同URL的图片需要更新:`, {
+          图片索引: imagesToUpdate.map(item => item.index),
+          新PS文档ID: documentId
+        })
+
+        // 批量更新所有相同URL的图片状态
+        let updateCount = 0
+        for (const { index: imgIndex } of imagesToUpdate) {
+          try {
+            const updateSuccess = await updateImagePSDocumentId(imgIndex, documentId)
+            if (updateSuccess) {
+              updateCount++
+              console.log(`✅ [单个同步] 图片 ${imgIndex} 状态更新成功`)
+            }
+          } catch (updateError) {
+            console.error(`❌ [单个同步] 更新图片 ${imgIndex} 状态失败:`, updateError)
+          }
+        }
+
+        console.log(`✅ [单个同步] 批量更新完成，成功更新 ${updateCount}/${imagesToUpdate.length} 张图片`)
       }
 
       // 显示成功提示
-      const successMsg = `图片已成功同步到PS画布 (文档ID: ${documentId})`
+      const action = existingPsId ? '关联到现有' : '创建新'
+      const successMsg = `图片已成功${action}PS文档 (文档ID: ${documentId})`
       console.log('✅ 同步成功:', successMsg)
 
       if (isUXP) {
@@ -1778,75 +2011,158 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     setSelectedImages(new Set())
   }, [])
 
-  // 批量同步到Photoshop画布
+  // 批量同步到Photoshop画布（增强URL去重逻辑）
   const handleBatchSyncToPhotoshop = async () => {
     if (selectedImages.size === 0) {
       showToast('请先选择要同步的图片', 'warning')
       return
     }
 
+    console.group('🔄 [批量同步] 开始批量同步到PS画布（URL去重版本）')
+
+    // 获取选中的图片数据
     const selectedIndices = Array.from(selectedImages)
+    const selectedImageData = selectedIndices.map(index => ({
+      index,
+      image: waitImages[index]
+    })).filter(item => item.image) // 过滤无效图片
+
+    console.log('📋 批量同步输入数据:', {
+      选中图片数: selectedIndices.length,
+      有效图片数: selectedImageData.length,
+      选中索引: selectedIndices
+    })
+
+    // 🔧 关键：使用URL去重分析
+    const analysisResult = analyzeImageUrls(selectedImageData.map(item => item.image))
+    const { uniqueUrls, urlToIndices, duplicateUrls, totalImages, uniqueUrlCount } = analysisResult
+
+    console.log('📊 批量同步URL分析结果:', {
+      总选中图片: totalImages,
+      唯一URL数: uniqueUrlCount,
+      重复URL数: duplicateUrls.length,
+      预计创建PS文档: uniqueUrlCount,
+      预计更新图片数: totalImages
+    })
+
+    if (duplicateUrls.length > 0) {
+      console.log('🔍 发现重复URL，将进行去重处理:',
+        duplicateUrls.map(d => ({
+          url: d.url.substring(0, 30) + '...',
+          重复次数: d.count,
+          将关联到同一PS文档: true
+        }))
+      )
+    }
+
     setIsBatchSyncing(true)
     setPSError(null)
 
-    let successCount = 0
-    let failCount = 0
-    const totalCount = selectedIndices.length
+    let successDocuments = 0  // 成功创建的PS文档数
+    let successImages = 0     // 成功更新的图片数
+    let failDocuments = 0     // 失败的PS文档数
 
     try {
-      showToast(`开始批量同步 ${totalCount} 张图片到Photoshop...`, 'info')
+      showToast(`开始批量同步 ${uniqueUrlCount} 个唯一URL到PS（将更新 ${totalImages} 张图片）...`, 'info')
 
-      for (let i = 0; i < selectedIndices.length; i++) {
-        const flatIndex = selectedIndices[i]
-        const item = waitImages[flatIndex]
-        
-        if (!item) continue
+      // 🔧 按唯一URL创建PS文档
+      for (let i = 0; i < uniqueUrls.length; i++) {
+        const { url, representativeIndex } = uniqueUrls[i]
+        const representativeItem = waitImages[representativeIndex]
+
+        if (!representativeItem) {
+          console.warn(`⚠️ 代表图片不存在，跳过URL: ${url.substring(0, 30)}...`)
+          continue
+        }
 
         try {
-          const imageInfo = {
-            type: 'remote',
-            url: item.url,
-            filename: `batch_image_${flatIndex + 1}.jpg`
-          }
+          console.log(`🚀 [批量同步 ${i + 1}/${uniqueUrls.length}] 处理唯一URL:`, {
+            url: url.substring(0, 30) + '...',
+            代表索引: representativeIndex,
+            关联图片数: urlToIndices.get(url)?.length || 0
+          })
 
-          console.log(`🚀 [批量同步 ${i + 1}/${totalCount}] 开始同步图片到PS:`, { flatIndex, url: item.url.substring(0, 30) + '...' })
-          const documentId = await placeImageInPS(imageInfo)
-          console.log(`✅ [批量同步 ${i + 1}/${totalCount}] PS同步成功，返回文档ID:`, documentId)
+          // 检查是否已有映射
+          const existingPsId = findExistingPsDocumentId(url)
+          let documentId
 
-          // 验证documentId有效性
-          if (!documentId || (typeof documentId !== 'number' && typeof documentId !== 'string')) {
-            throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
-          }
-
-          // 🔧 关键修复：更新图片的PS文档关联状态
-          console.log(`🔄 [批量同步 ${i + 1}/${totalCount}] 开始更新图片状态...`)
-          const updateSuccess = await updateImagePSDocumentId(flatIndex, documentId)
-          if (!updateSuccess) {
-            console.warn(`⚠️ [批量同步 ${i + 1}/${totalCount}] 状态更新失败，但PS同步已完成`)
+          if (existingPsId) {
+            console.log(`✅ 发现现有PS文档映射，复用文档ID: ${existingPsId}`)
+            documentId = existingPsId
           } else {
-            console.log(`✅ [批量同步 ${i + 1}/${totalCount}] 状态更新成功`)
+            // 创建新的PS文档
+            const imageInfo = {
+              type: 'remote',
+              url: url,
+              filename: `batch_unique_${i + 1}.jpg`
+            }
+
+            console.log(`🎯 创建新PS文档...`)
+            documentId = await placeImageInPS(imageInfo)
+            console.log(`✅ PS文档创建成功，文档ID: ${documentId}`)
+
+            // 验证documentId有效性
+            if (!documentId || (typeof documentId !== 'number' && typeof documentId !== 'string')) {
+              throw new Error(`获取到的文档ID无效: ${documentId} (类型: ${typeof documentId})`)
+            }
+
+            // 记录URL映射
+            recordUrlMapping(url, documentId)
           }
 
-          successCount++
+          successDocuments++
+
+          // 🔧 更新所有相同URL的图片状态
+          const indicesForThisUrl = urlToIndices.get(url) || []
+          console.log(`🔄 开始批量更新 ${indicesForThisUrl.length} 张相同URL的图片...`)
+
+          for (const imageIndex of indicesForThisUrl) {
+            try {
+              // 确保索引在选中图片范围内
+              if (selectedIndices.includes(imageIndex)) {
+                const updateSuccess = await updateImagePSDocumentId(imageIndex, documentId)
+                if (updateSuccess) {
+                  successImages++
+                  console.log(`✅ 图片 ${imageIndex} 状态更新成功`)
+                } else {
+                  console.warn(`⚠️ 图片 ${imageIndex} 状态更新失败`)
+                }
+              }
+            } catch (updateError) {
+              console.error(`❌ 更新图片 ${imageIndex} 状态失败:`, updateError)
+            }
+          }
 
           // 更新进度提示
-          showToast(`正在同步第 ${i + 1}/${totalCount} 张图片...`, 'info', 1000)
+          showToast(`正在处理第 ${i + 1}/${uniqueUrls.length} 个URL（已更新 ${successImages} 张图片）...`, 'info', 1000)
 
           // 添加延迟避免PS处理过载
-          if (i < selectedIndices.length - 1) {
+          if (i < uniqueUrls.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 500))
           }
+
         } catch (error) {
-          console.error(`❌ [批量同步 ${i + 1}/${totalCount}] 同步第 ${flatIndex + 1} 张图片失败:`, error)
-          failCount++
+          console.error(`❌ [批量同步 ${i + 1}/${uniqueUrls.length}] 处理URL失败:`, error)
+          failDocuments++
         }
       }
 
       // 显示最终结果
-      if (failCount === 0) {
-        showToast(`成功同步 ${successCount} 张图片到Photoshop画布`, 'success')
+      const finalResult = {
+        预期创建文档: uniqueUrlCount,
+        成功创建文档: successDocuments,
+        失败创建文档: failDocuments,
+        预期更新图片: totalImages,
+        成功更新图片: successImages,
+        映射表大小: urlToPsDocMap.size
+      }
+
+      console.log('📊 批量同步最终统计:', finalResult)
+
+      if (failDocuments === 0) {
+        showToast(`批量同步完成！创建 ${successDocuments} 个PS文档，更新 ${successImages} 张图片`, 'success')
       } else {
-        showToast(`同步完成：成功 ${successCount} 张，失败 ${failCount} 张`, 'warning')
+        showToast(`批量同步完成：成功 ${successDocuments} 个文档，失败 ${failDocuments} 个，更新 ${successImages} 张图片`, 'warning')
       }
 
       // 同步完成后退出选择模式
@@ -1855,11 +2171,13 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
     } catch (error) {
       const errorMsg = error.message || '批量同步时发生未知错误'
-      console.error('批量同步失败:', error)
+      console.error('❌ 批量同步过程发生错误:', error)
       setPSError(errorMsg)
       showToast(`批量同步失败: ${errorMsg}`, 'error')
     } finally {
       setIsBatchSyncing(false)
+      console.log('🏁 批量同步流程结束')
+      console.groupEnd()
     }
   }
 
@@ -2459,6 +2777,89 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                 待处理图片 ({waitImages.length})
               </div>
             </div>
+
+            {/* 调试信息面板 - 只在开发环境或UXP环境显示 */}
+            {(debugEnabled || isUXP) && (
+              <div className="debug-panel">
+                <div className="debug-header">
+                  <button
+                    className={`debug-toggle ${showDebugPanel ? 'active' : ''}`}
+                    onClick={() => setShowDebugPanel(!showDebugPanel)}
+                    title={showDebugPanel ? '收起调试信息' : '展开调试信息'}
+                  >
+                    <span className="debug-icon">{showDebugPanel ? '▼' : '▶'}</span>
+                    调试信息
+                  </button>
+                </div>
+                {showDebugPanel && (
+                  <div className="debug-content">
+                    {(() => {
+                      const debugInfo = getDebugInfo()
+                      return (
+                        <div className="debug-sections">
+                          {/* 基本信息 */}
+                          <div className="debug-section">
+                            <h4>基本信息</h4>
+                            <div className="debug-items">
+                              {Object.entries(debugInfo.基本信息).map(([key, value]) => (
+                                <div key={key} className="debug-item">
+                                  <span className="debug-key">{key}:</span>
+                                  <span className="debug-value">{value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 分组统计 */}
+                          {Object.keys(debugInfo.分组统计).length > 0 && (
+                            <div className="debug-section">
+                              <h4>分组统计</h4>
+                              <div className="debug-items">
+                                {Object.entries(debugInfo.分组统计).map(([groupKey, stats]) => (
+                                  <div key={groupKey} className="debug-item">
+                                    <span className="debug-key">{groupKey}:</span>
+                                    <span className="debug-value">
+                                      总数{stats.总数} / PS关联{stats.有PS关联}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 重复URL列表 */}
+                          {debugInfo.重复URL列表.length > 0 && (
+                            <div className="debug-section">
+                              <h4>重复URL ({debugInfo.重复URL列表.length}个)</h4>
+                              <div className="debug-items">
+                                {debugInfo.重复URL列表.map((url, index) => (
+                                  <div key={index} className="debug-item url-item">
+                                    <span className="debug-value">{url}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 环境信息 */}
+                          <div className="debug-section">
+                            <h4>环境信息</h4>
+                            <div className="debug-items">
+                              {Object.entries(debugInfo.环境信息).map(([key, value]) => (
+                                <div key={key} className="debug-item">
+                                  <span className="debug-key">{key}:</span>
+                                  <span className="debug-value">{String(value)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 批量操作控制栏 - 只在待处理图片tab且有图片时显示 */}
             {activeTab === 'wait' && waitImages.length > 0 && isUXP && (

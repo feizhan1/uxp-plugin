@@ -1,7 +1,7 @@
 {
   "id": "7d40622e",
   "name": "tvcmall help",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "index.html",
   "manifestVersion": 5,
   "host": [
@@ -50,6 +50,7 @@
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
         "https://*.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002",
         "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",
@@ -79,6 +80,7 @@
         "https://img.tvcmall.com",
         "https://src.tvcmall.com",
         "https://*.tvcmall.com",
+        "https://openapi.sjlpj.cn:5002",
         "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",

@@ -7,7 +7,8 @@
 // - 所有注释、错误信息均为中文，便于阅读
 
 // const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
-const BASE_URL = 'https://openapi-prod.sjlpj.cn:6002'
+//const BASE_URL = 'https://openapi-prod.sjlpj.cn:6002'
+const BASE_URL = 'https://openapi.sjlpj.cn:5002'
 
 /**
  * 构建完整请求 URL
