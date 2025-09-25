@@ -2579,4 +2579,100 @@ const getCompatibleMimeType = (filename) => {
 
 ---
 
+## 最新进展 - 限定图片上传格式为PNG和JPG (2025-01-25)
+
+### 问题状态: ✅ 格式限制功能完全实现
+
+**需求背景**:
+- 用户希望限定上传格式为PNG或JPG这两种
+- 简化代码逻辑，移除不必要的格式支持
+- 提供清晰的用户提示和错误反馈
+
+**已完成的功能改进**:
+
+1. **✅ 文件选择对话框格式限制**
+   - 在 `fs.getFileForOpening()` 中添加 `types: ['png', 'jpg', 'jpeg']`
+   - 系统文件选择器将只显示支持的格式
+   - 从源头阻止不支持格式的选择
+
+2. **✅ MIME类型函数简化**
+   - 简化 `getMimeTypeFromExtension()` 函数
+   - 只保留JPG/JPEG/PNG三种格式支持
+   - 移除GIF、WebP、BMP、SVG、ICO等格式
+
+3. **✅ 清理WebP兼容性代码**
+   - 删除 `isWebPSupported()` 检测函数
+   - 删除 `getCompatibleMimeType()` 回退机制
+   - 简化代码结构，提高性能
+
+4. **✅ 文件格式验证逻辑**
+   - 新增 `isValidImageFormat()` 验证函数
+   - 在批量上传 `addLocalImages()` 中添加格式检查
+   - 在单文件上传 `addLocalImage()` 中添加格式验证
+   - 不支持格式的文件会被跳过并提供错误信息
+
+5. **✅ 用户界面提示优化**
+   - 所有"添加图片"按钮下方添加"(支持PNG、JPG格式)"提示
+   - 添加对应的CSS样式 `.format-hint`
+   - 使用10px字体和灰色显示，简洁明了
+
+6. **✅ 错误处理增强**
+   - 改善批量上传的错误反馈机制
+   - 区分格式错误和其他错误类型
+   - 提供详细的错误文件列表和原因说明
+
+#### 技术实现详情
+
+**格式验证函数**:
+```javascript
+const isValidImageFormat = (filename) => {
+  if (!filename) return false;
+
+  const extension = filename.toLowerCase().substring(filename.lastIndexOf('.') + 1);
+  const supportedFormats = ['jpg', 'jpeg', 'png'];
+
+  return supportedFormats.includes(extension);
+};
+```
+
+**文件选择限制**:
+```javascript
+const files = await fs.getFileForOpening({
+  allowMultiple: true,
+  types: ['png', 'jpg', 'jpeg']
+});
+```
+
+**简化的MIME类型映射**:
+```javascript
+const mimeTypes = {
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'png': 'image/png'
+};
+```
+
+**用户界面提示**:
+```jsx
++ 添加图片
+<div className="format-hint">(支持PNG、JPG格式)</div>
+```
+
+**代码优化成果**:
+- **代码简化**: 删除40+行WebP兼容性相关代码
+- **性能提升**: 移除不必要的格式检测和转换逻辑
+- **用户体验**: 文件选择器直接过滤，避免选择不支持格式
+- **错误减少**: 格式验证在多个层级生效，确保数据一致性
+
+**功能验证**:
+- ✅ 构建过程无错误
+- ✅ 文件选择器只显示PNG/JPG格式
+- ✅ 格式验证逻辑完整覆盖
+- ✅ 用户提示清晰直观
+- ✅ 错误处理详细准确
+
+现在插件只支持PNG和JPG格式的图片上传，代码更加简洁高效，用户体验更加清晰直观。所有不支持的格式会被自动过滤或提供明确的错误提示。
+
+---
+
 *本文档将随开发进度持续更新*
