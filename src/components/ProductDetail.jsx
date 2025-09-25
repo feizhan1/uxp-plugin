@@ -1929,36 +1929,36 @@ const ProductDetail = ({
    * 智能鼠标点击检测 - 左键预览，右键在PS中打开
    */
   const handleSmartMouseClick = useCallback((event, imageId, imageUrl) => {
-    // 检测鼠标按键类型
-    const mouseButton = event.button;
+    // 关键：检查是否正在拖拽，避免与拖拽排序冲突
+    if (dragState.isDragging) {
+      console.log(`🚫 [handleSmartMouseClick] 正在拖拽中，忽略点击事件 (imageId: ${imageId})`);
+      return;
+    }
 
-    // 鼠标按键检测：
-    // 0 = 左键 (主要按键) - 预览
-    // 1 = 中键 (滚轮按键) - 忽略
-    // 2 = 右键 (次要按键) - 在PS中打开
+    // 调试：检查事件对象
+    console.log(`🐛 [DEBUG] 事件类型: ${event.type}, button: ${event.button}, which: ${event.which}, buttons: ${event.buttons}`);
 
-    console.log(`🖱️ [handleSmartMouseClick] 鼠标按键: ${mouseButton} (0=左键, 1=中键, 2=右键), imageId: ${imageId}`);
-
-    // 阻止默认行为（如右键菜单）
+    // 阻止默认行为
     event.preventDefault();
     event.stopPropagation();
 
-    if (mouseButton === 0) {
+    // 根据事件类型判断操作
+    if (event.type === 'click') {
       // 左键点击 - 打开预览
       console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId}`);
       handleImageClick(imageId, imageUrl);
 
-    } else if (mouseButton === 2) {
-      // 右键点击 - 在PS中打开
+    } else if (event.type === 'contextmenu') {
+      // 右键上下文菜单 - 在PS中打开
       console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId}`);
       handleOpenImageInPS(imageId, imageUrl);
 
     } else {
-      // 中键或其他按键 - 忽略
-      console.log(`🚫 [handleSmartMouseClick] 忽略按键: ${mouseButton}`);
+      // 其他事件类型 - 忽略
+      console.log(`🚫 [handleSmartMouseClick] 忽略事件类型: ${event.type}`);
       return;
     }
-  }, [handleImageClick, handleOpenImageInPS]);
+  }, [dragState.isDragging, handleImageClick, handleOpenImageInPS]);
 
   /**
    * 执行删除图片的核心逻辑 - 性能优化版本
@@ -2323,8 +2323,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`原始图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
-                        onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -2406,8 +2406,8 @@ const ProductDetail = ({
                           imageUrl={image.imageUrl}
                           alt={`${sku.skuTitle} 图片 ${imgIndex + 1}`}
                           hasLocal={image.hasLocal}
-                          onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                          onContextMenu={(e) => e.preventDefault()}
+                          onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                          onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                           isOpening={openingImageId === image.id}
                           isSyncing={syncingImages.has(image.id)}
                           isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -2487,8 +2487,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`场景图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
-                        onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
