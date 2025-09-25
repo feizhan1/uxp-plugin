@@ -7,7 +7,7 @@ import './ProductDetail.css';
  * 本地图片组件 - 仅显示本地文件系统中的图片
  * 使用React.memo优化性能
  */
-const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleClick, onClick, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus }) => {
+const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus }) => {
   const [displaySrc, setDisplaySrc] = useState(null);
   const [loading, setLoading] = useState(hasLocal);
 
@@ -82,6 +82,8 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleCli
       className={`local-image-container ${isOpening ? 'opening' : ''} ${hasLocal ? 'clickable' : ''} ${isSyncing ? 'syncing' : ''} ${isRecentlyUpdated ? 'recently-updated' : ''} ${isCompleted ? 'completed' : ''}`}
       onDoubleClick={onDoubleClick}
       onClick={onClick}
+      onMouseDown={onMouseDown}
+      onContextMenu={onContextMenu}
     >
       <img
         src={displaySrc}
@@ -115,12 +117,12 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleCli
       )}
       {hasLocal && !isOpening && !isSyncing && !isRecentlyUpdated && !isCompleted && imageStatus === 'pending_edit' && (
         <div className="double-click-hint pending-edit">
-          🔗 待编辑 - 双击在PS中打开
+          🔗 待编辑 - 右键在PS中打开
         </div>
       )}
       {hasLocal && !isOpening && !isSyncing && !isRecentlyUpdated && !isCompleted && imageStatus === 'editing' && (
         <div className="double-click-hint editing">
-          ✏️ 编辑中 - 双击在PS中打开
+          ✏️ 编辑中 - 右键在PS中打开
         </div>
       )}
     </div>
@@ -189,6 +191,8 @@ const ProductDetail = ({
   });
   const contentRef = useRef(null);
   const dragEnterTimeoutRef = useRef(null);
+
+  // 智能鼠标点击检测不再需要定时器和计数器
 
   // 虚拟化配置 - 当图片数量超过阈值时启用
   const VIRTUALIZATION_THRESHOLD = 30;
@@ -1000,20 +1004,22 @@ const ProductDetail = ({
       // 清理进度状态
       setUploadProgress(null);
 
-      // 刷新图片数据
-      await initializeImageData();
-
-      // 恢复滚动位置
-      if (savedScrollPosition > 0 && contentRef.current) {
-        setTimeout(() => {
-          if (contentRef.current) {
-            contentRef.current.scrollTop = savedScrollPosition;
-            console.log('✅ [handleAddImage] 滚动位置已恢复:', savedScrollPosition);
-          }
-        }, 100);
+      // 如果有成功添加的图片，更新本地状态
+      const successfulImages = results.filter(r => r.success);
+      if (successfulImages.length > 0) {
+        console.log(`🚀 [handleAddImage] 使用优化方式添加 ${successfulImages.length} 张图片到状态`);
+        // 将LocalImageManager的结果转换为状态需要的格式
+        const stateImages = successfulImages.map(result => ({
+          imageUrl: result.imageUrl,
+          localPath: result.localPath,
+          fileName: result.fileName,
+          status: result.status,
+          hasLocal: true
+        }));
+        addImagesToState(imageType, skuIndex, stateImages);
       }
 
-      console.log(`🔄 [handleAddImage] 图片列表已刷新`);
+      console.log(`🎉 [handleAddImage] 图片添加完成（优化版本）`);
 
     } catch (error) {
       console.error('❌ [handleAddImage] 添加图片失败:', error);
@@ -1052,6 +1058,33 @@ const ProductDetail = ({
   };
 
   /**
+   * 拖拽结束事件处理 - 确保状态重置
+   */
+  const handleDragEnd = useCallback((e) => {
+    try {
+      console.log('🏁 [handleDragEnd] 拖拽结束，重置拖拽状态');
+
+      // 无论拖拽是否成功，都重置状态
+      setDragState({
+        isDragging: false,
+        draggedImageId: null,
+        draggedImageType: null,
+        draggedSkuIndex: null,
+        hoveredDropTarget: null
+      });
+
+      // 清理防抖定时器
+      if (dragEnterTimeoutRef.current) {
+        clearTimeout(dragEnterTimeoutRef.current);
+        dragEnterTimeoutRef.current = null;
+      }
+
+    } catch (error) {
+      console.error('❌ [handleDragEnd] 拖拽结束处理失败:', error);
+    }
+  }, []);
+
+  /**
    * 拖拽经过目标事件处理
    */
   const handleDragOver = (e) => {
@@ -1086,13 +1119,17 @@ const ProductDetail = ({
       clearTimeout(dragEnterTimeoutRef.current);
     }
 
+    // 在异步操作前提取事件数据，避免合成事件警告
+    const currentTarget = e.currentTarget;
+    const clientX = e.clientX;
+
     // 防抖处理，减少频繁的状态更新
     dragEnterTimeoutRef.current = setTimeout(() => {
       // 使用UXP兼容的位置计算方式
-      const elementWidth = e.currentTarget.offsetWidth || 200;
-      const rect = { left: e.currentTarget.offsetLeft, width: elementWidth };
+      const elementWidth = currentTarget.offsetWidth || 200;
+      const rect = { left: currentTarget.offsetLeft, width: elementWidth };
       const midPoint = rect.left + rect.width / 2;
-      const insertPosition = e.clientX < midPoint ? 'before' : 'after';
+      const insertPosition = clientX < midPoint ? 'before' : 'after';
 
       setDragState(prev => {
         // 只有真正改变时才更新状态，避免无效重渲染
@@ -1126,8 +1163,12 @@ const ProductDetail = ({
       dragEnterTimeoutRef.current = null;
     }
 
+    // 在访问前提取事件数据，避免合成事件警告
+    const currentTarget = e.currentTarget;
+    const relatedTarget = e.relatedTarget;
+
     // 只有当真正离开目标元素时才清除hover状态
-    if (!e.currentTarget.contains(e.relatedTarget)) {
+    if (!currentTarget.contains(relatedTarget)) {
       setDragState(prev => {
         if (prev.hoveredDropTarget) {
           return { ...prev, hoveredDropTarget: null };
@@ -1167,9 +1208,13 @@ const ProductDetail = ({
         return;
       }
 
+      // 在访问前提取事件数据，避免合成事件警告
+      const currentTargetRect = e.currentTarget.getBoundingClientRect();
+      const clientX = e.clientX;
+
       // 计算插入位置（跨类型插入固定为before，同类型可before或after）
       const insertPosition = isCrossTypeInsertion ? 'before' :
-        (e.clientX < (e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2) ? 'before' : 'after');
+        (clientX < (currentTargetRect.left + currentTargetRect.width / 2) ? 'before' : 'after');
 
       console.log(`📍 [handleDrop] ${isCrossTypeInsertion ? '跨类型插入' : '同类型排序'}: ${dragData.imageId} 到位置 ${targetIndex} (${insertPosition})`);
 
@@ -1197,13 +1242,12 @@ const ProductDetail = ({
   };
 
   /**
-   * 跨类型图片引用插入核心逻辑
+   * 跨类型图片引用插入核心逻辑 - 性能优化版本
    */
   const insertImageReference = async (dragData, targetIndex, targetType, targetSkuIndex) => {
     try {
       setError(null);
-
-      console.log(`🔄 [insertImageReference] 开始跨类型插入图片引用:`, {
+      console.log(`🚀 [insertImageReference] 开始优化跨类型插入:`, {
         from: dragData.imageType,
         to: targetType,
         imageId: dragData.imageId,
@@ -1211,44 +1255,37 @@ const ProductDetail = ({
         targetSkuIndex: targetSkuIndex
       });
 
-      // 保存滚动位置
-      let savedScrollPosition = 0;
-      if (contentRef.current) {
-        savedScrollPosition = contentRef.current.scrollTop;
-        console.log('💾 [insertImageReference] 保存滚动位置:', savedScrollPosition);
-      }
+      // 先在本地状态中执行插入，提供即时视觉反馈
+      insertImageInState(dragData, targetIndex, targetType, targetSkuIndex);
 
-      // 调用LocalImageManager插入图片引用
-      const result = await localImageManager.insertImageReferenceAt(
-        currentProduct.applyCode,
-        dragData.imageId,
-        dragData.imageType,
-        targetType,
-        targetIndex,
-        dragData.skuIndex,
-        targetSkuIndex
-      );
+      // 异步同步到LocalImageManager（不阻塞UI）
+      try {
+        const result = await localImageManager.insertImageReferenceAt(
+          currentProduct.applyCode,
+          dragData.imageId,
+          dragData.imageType,
+          targetType,
+          targetIndex,
+          dragData.skuIndex,
+          targetSkuIndex
+        );
 
-      if (result.success) {
-        console.log(`✅ [insertImageReference] 跨类型插入成功`);
-
-        // 刷新图片数据
-        await initializeImageData();
-
-        // 恢复滚动位置
-        if (savedScrollPosition > 0 && contentRef.current) {
-          setTimeout(() => {
-            if (contentRef.current) {
-              contentRef.current.scrollTop = savedScrollPosition;
-              console.log('✅ [insertImageReference] 滚动位置已恢复:', savedScrollPosition);
-            }
-          }, 100);
+        if (result.success) {
+          console.log(`✅ [insertImageReference] 数据同步成功`);
+        } else {
+          console.warn('⚠️ [insertImageReference] 数据同步失败，但UI已更新');
+          // 如果数据同步失败但不是重复图片错误，显示警告
+          if (result.error !== '目标位置已存在相同的图片') {
+            setError(`插入图片警告: ${result.error || '数据同步失败'}`);
+          }
         }
-
-        console.log(`🎉 [insertImageReference] 图片已插入到 ${targetType} 区域的位置 ${targetIndex}`);
-      } else {
-        setError(`插入图片失败: ${result.error || '未知错误'}`);
+      } catch (syncError) {
+        console.error('❌ [insertImageReference] 数据同步失败:', syncError);
+        // 数据同步失败时，可以选择回滚UI状态或显示警告
+        setError(`插入图片警告: 数据同步失败，但UI已更新`);
       }
+
+      console.log(`🎉 [insertImageReference] 跨类型插入完成（优化版本）`);
 
     } catch (error) {
       console.error('❌ [insertImageReference] 跨类型插入失败:', error);
@@ -1257,46 +1294,356 @@ const ProductDetail = ({
   };
 
   /**
-   * 图片重排序核心逻辑
+   * 本地状态更新工具函数 - 避免全量数据刷新
+   */
+  const updateImageGroupsLocally = useCallback((updateFn) => {
+    setImageGroups(prev => {
+      const newGroups = { ...prev };
+      updateFn(newGroups);
+      return newGroups;
+    });
+  }, []);
+
+  /**
+   * 在状态中执行图片排序 - 避免全量刷新
+   */
+  const reorderImagesInState = useCallback((dragData, targetIndex, targetType, targetSkuIndex, insertPosition) => {
+    updateImageGroupsLocally(groups => {
+      let targetArray;
+
+      // 获取目标数组引用
+      if (targetType === 'original') {
+        targetArray = groups.original;
+      } else if (targetType === 'sku') {
+        const targetSkuGroup = groups.skus.find(sku => sku.skuIndex === targetSkuIndex);
+        if (targetSkuGroup) {
+          targetArray = targetSkuGroup.images;
+        }
+      } else if (targetType === 'scene') {
+        targetArray = groups.scenes;
+      }
+
+      if (!targetArray) {
+        console.error('❌ [reorderImagesInState] 找不到目标数组:', { targetType, targetSkuIndex });
+        return;
+      }
+
+      // 查找源图片索引
+      const sourceIndex = targetArray.findIndex(img =>
+        img.imageUrl === dragData.imageId || img.id === dragData.imageId
+      );
+
+      if (sourceIndex === -1) {
+        console.error('❌ [reorderImagesInState] 找不到源图片:', dragData.imageId);
+        return;
+      }
+
+      // 计算最终插入位置
+      let finalIndex = insertPosition === 'before' ? targetIndex : targetIndex + 1;
+
+      // 如果源位置在目标位置之前，需要调整插入位置
+      if (sourceIndex < finalIndex) {
+        finalIndex--;
+      }
+
+      // 如果位置相同，不需要移动
+      if (sourceIndex === finalIndex) {
+        console.log('ℹ️ [reorderImagesInState] 位置未变化，无需排序');
+        return;
+      }
+
+      console.log(`🔄 [reorderImagesInState] 执行本地排序: ${sourceIndex} -> ${finalIndex}`);
+
+      // 执行数组重排序
+      const [draggedItem] = targetArray.splice(sourceIndex, 1);
+      targetArray.splice(finalIndex, 0, draggedItem);
+
+      // 重新计算索引
+      targetArray.forEach((img, index) => {
+        img.index = index;
+      });
+    });
+  }, [updateImageGroupsLocally]);
+
+  /**
+   * 在状态中执行跨类型插入 - 避免全量刷新
+   */
+  const insertImageInState = useCallback((dragData, targetIndex, targetType, targetSkuIndex) => {
+    updateImageGroupsLocally(groups => {
+      // 查找源图片
+      let sourceImage = null;
+
+      if (dragData.imageType === 'original') {
+        sourceImage = groups.original.find(img => img.imageUrl === dragData.imageId);
+      } else if (dragData.imageType === 'sku') {
+        const sourceSkuGroup = groups.skus.find(sku => sku.skuIndex === dragData.skuIndex);
+        sourceImage = sourceSkuGroup?.images.find(img => img.imageUrl === dragData.imageId);
+      } else if (dragData.imageType === 'scene') {
+        sourceImage = groups.scenes.find(img => img.imageUrl === dragData.imageId);
+      }
+
+      if (!sourceImage) {
+        console.error('❌ [insertImageInState] 找不到源图片:', dragData.imageId);
+        return;
+      }
+
+      // 获取目标数组
+      let targetArray;
+
+      if (targetType === 'original') {
+        targetArray = groups.original;
+      } else if (targetType === 'sku') {
+        const targetSkuGroup = groups.skus.find(sku => sku.skuIndex === targetSkuIndex);
+        if (targetSkuGroup) {
+          targetArray = targetSkuGroup.images;
+        }
+      } else if (targetType === 'scene') {
+        targetArray = groups.scenes;
+      }
+
+      if (!targetArray) {
+        console.error('❌ [insertImageInState] 找不到目标数组:', { targetType, targetSkuIndex });
+        return;
+      }
+
+      // 检查是否已存在相同图片
+      const existingImage = targetArray.find(img => img.imageUrl === dragData.imageId);
+      if (existingImage) {
+        console.log('ℹ️ [insertImageInState] 目标位置已存在相同图片，跳过插入');
+        return;
+      }
+
+      console.log(`🔄 [insertImageInState] 执行本地跨类型插入: ${dragData.imageType} -> ${targetType}, 位置: ${targetIndex}`);
+
+      // 创建新的图片引用对象
+      const newImageRef = {
+        ...sourceImage, // 复制所有属性
+        id: sourceImage.imageUrl, // 保持相同的ID以复用本地文件
+        type: targetType, // 设置新的类型
+        skuIndex: targetType === 'sku' ? targetSkuIndex : undefined,
+        // 重置状态相关字段
+        status: sourceImage.hasLocal ? 'pending_edit' : 'not_downloaded',
+        index: targetIndex, // 设置插入位置
+        modifiedPath: undefined,
+        modifiedTimestamp: undefined,
+        // 保持文件相关字段
+        localPath: sourceImage.localPath,
+        hasLocal: sourceImage.hasLocal,
+        localStatus: sourceImage.hasLocal ? 'pending_edit' : 'not_downloaded',
+        isCompleted: false // 插入的图片从待编辑状态开始
+      };
+
+      // 在目标位置插入新图片引用
+      targetArray.splice(targetIndex, 0, newImageRef);
+
+      // 重新计算目标数组的索引
+      targetArray.forEach((img, index) => {
+        img.index = index;
+      });
+    });
+  }, [updateImageGroupsLocally]);
+
+  /**
+   * 在状态中添加新图片 - 避免全量刷新
+   */
+  const addImagesToState = useCallback((imageType, skuIndex, newImages) => {
+    updateImageGroupsLocally(groups => {
+      let targetArray;
+
+      // 获取目标数组
+      if (imageType === 'original') {
+        targetArray = groups.original;
+      } else if (imageType === 'sku') {
+        const targetSkuGroup = groups.skus.find(sku => sku.skuIndex === skuIndex);
+        if (targetSkuGroup) {
+          targetArray = targetSkuGroup.images;
+        }
+      } else if (imageType === 'scene') {
+        targetArray = groups.scenes;
+      }
+
+      if (!targetArray) {
+        console.error('❌ [addImagesToState] 找不到目标数组:', { imageType, skuIndex });
+        return;
+      }
+
+      console.log(`🔄 [addImagesToState] 在状态中添加 ${newImages.length} 张图片到 ${imageType}`);
+
+      // 处理每个新图片
+      newImages.forEach((imageData, i) => {
+        const newIndex = targetArray.length + i;
+
+        // 创建新图片对象
+        const newImageItem = {
+          ...imageData,
+          id: imageData.imageUrl || `${currentProduct.applyCode}_${imageType}_${newIndex}`,
+          type: imageType,
+          index: newIndex,
+          skuIndex: imageType === 'sku' ? skuIndex : undefined,
+          // 设置状态
+          localStatus: 'pending_edit',
+          hasLocal: true,
+          isCompleted: false,
+          status: 'pending_edit'
+        };
+
+        targetArray.push(newImageItem);
+      });
+
+      // 重新计算所有索引
+      targetArray.forEach((img, index) => {
+        img.index = index;
+      });
+    });
+  }, [updateImageGroupsLocally, currentProduct.applyCode]);
+
+  /**
+   * 从状态中移除图片 - 避免全量刷新
+   */
+  const removeImageFromState = useCallback((imageToDelete) => {
+    updateImageGroupsLocally(groups => {
+      let targetArray;
+
+      // 获取目标数组
+      if (imageToDelete.type === 'original') {
+        targetArray = groups.original;
+      } else if (imageToDelete.type === 'sku') {
+        const targetSkuGroup = groups.skus.find(sku => sku.skuIndex === imageToDelete.skuIndex);
+        if (targetSkuGroup) {
+          targetArray = targetSkuGroup.images;
+        }
+      } else if (imageToDelete.type === 'scene') {
+        targetArray = groups.scenes;
+      }
+
+      if (!targetArray) {
+        console.error(`❌ [removeImageFromState] 找不到目标数组: ${imageToDelete.type}, skuIndex: ${imageToDelete.skuIndex}`);
+        return;
+      }
+
+      // 通过索引删除图片
+      if (imageToDelete.index >= 0 && imageToDelete.index < targetArray.length) {
+        targetArray.splice(imageToDelete.index, 1);
+
+        // 重新计算索引
+        targetArray.forEach((img, index) => {
+          img.index = index;
+        });
+
+        console.log(`✅ [removeImageFromState] 图片已从状态中移除: ${imageToDelete.imageUrl}`);
+      } else {
+        console.error(`❌ [removeImageFromState] 无效的图片索引: ${imageToDelete.index}, 数组长度: ${targetArray.length}`);
+      }
+    });
+  }, [updateImageGroupsLocally]);
+
+  /**
+   * 更新单个图片状态 - 避免全量刷新
+   */
+  const updateImageStatusInState = useCallback((imageId, newStatus) => {
+    updateImageGroupsLocally(groups => {
+      let imageFound = false;
+
+      // 在原始图片中查找并更新
+      if (groups.original) {
+        const imageIndex = groups.original.findIndex(img =>
+          img.imageUrl === imageId || img.id === imageId
+        );
+        if (imageIndex >= 0) {
+          groups.original[imageIndex].localStatus = newStatus;
+          groups.original[imageIndex].status = newStatus;
+          if (newStatus === 'completed') {
+            groups.original[imageIndex].isCompleted = true;
+          } else {
+            groups.original[imageIndex].isCompleted = false;
+          }
+          imageFound = true;
+          console.log(`✅ [updateImageStatusInState] 原始图片状态已更新: ${imageId} → ${newStatus}`);
+        }
+      }
+
+      // 在SKU图片中查找并更新
+      if (!imageFound && groups.skus) {
+        groups.skus.forEach(sku => {
+          if (sku.images) {
+            const imageIndex = sku.images.findIndex(img =>
+              img.imageUrl === imageId || img.id === imageId
+            );
+            if (imageIndex >= 0) {
+              sku.images[imageIndex].localStatus = newStatus;
+              sku.images[imageIndex].status = newStatus;
+              if (newStatus === 'completed') {
+                sku.images[imageIndex].isCompleted = true;
+              } else {
+                sku.images[imageIndex].isCompleted = false;
+              }
+              imageFound = true;
+              console.log(`✅ [updateImageStatusInState] SKU图片状态已更新: ${imageId} → ${newStatus}`);
+            }
+          }
+        });
+      }
+
+      // 在场景图片中查找并更新
+      if (!imageFound && groups.scenes) {
+        const imageIndex = groups.scenes.findIndex(img =>
+          img.imageUrl === imageId || img.id === imageId
+        );
+        if (imageIndex >= 0) {
+          groups.scenes[imageIndex].localStatus = newStatus;
+          groups.scenes[imageIndex].status = newStatus;
+          if (newStatus === 'completed') {
+            groups.scenes[imageIndex].isCompleted = true;
+          } else {
+            groups.scenes[imageIndex].isCompleted = false;
+          }
+          imageFound = true;
+          console.log(`✅ [updateImageStatusInState] 场景图片状态已更新: ${imageId} → ${newStatus}`);
+        }
+      }
+
+      if (!imageFound) {
+        console.error(`❌ [updateImageStatusInState] 找不到图片: ${imageId}`);
+      }
+    });
+  }, [updateImageGroupsLocally]);
+
+  /**
+   * 图片重排序核心逻辑 - 性能优化版本
    */
   const reorderImages = async (dragData, targetIndex, targetType, targetSkuIndex, insertPosition) => {
     try {
-      // 保存滚动位置
-      let savedScrollPosition = 0;
-      if (contentRef.current) {
-        savedScrollPosition = contentRef.current.scrollTop;
-        console.log('💾 [reorderImages] 保存滚动位置:', savedScrollPosition);
-      }
+      console.log(`🚀 [reorderImages] 开始优化排序: ${dragData.imageId}`);
 
-      // 调用LocalImageManager进行重排序
-      const result = await localImageManager.reorderImageByInsert(
-        currentProduct.applyCode,
-        targetType,
-        targetSkuIndex,
-        dragData.imageId,
-        targetIndex,
-        insertPosition
-      );
+      // 先在本地状态中执行排序，提供即时视觉反馈
+      reorderImagesInState(dragData, targetIndex, targetType, targetSkuIndex, insertPosition);
 
-      if (result.success) {
-        // 刷新图片数据
-        await initializeImageData();
+      // 异步同步到LocalImageManager（不阻塞UI）
+      try {
+        const result = await localImageManager.reorderImageByInsert(
+          currentProduct.applyCode,
+          targetType,
+          targetSkuIndex,
+          dragData.imageId,
+          targetIndex,
+          insertPosition
+        );
 
-        // 恢复滚动位置
-        if (savedScrollPosition > 0 && contentRef.current) {
-          setTimeout(() => {
-            if (contentRef.current) {
-              contentRef.current.scrollTop = savedScrollPosition;
-              console.log('✅ [reorderImages] 滚动位置已恢复:', savedScrollPosition);
-            }
-          }, 100);
+        if (result.success) {
+          console.log(`✅ [reorderImages] 数据同步成功`);
+        } else {
+          console.warn('⚠️ [reorderImages] 数据同步失败，但UI已更新');
         }
-
-        console.log(`✅ [reorderImages] 图片排序成功`);
+      } catch (syncError) {
+        console.error('❌ [reorderImages] 数据同步失败:', syncError);
+        // 数据同步失败时，可以选择回滚UI状态或显示警告
+        // 这里暂时只记录错误，保持UI更新
       }
+
+      console.log(`🎉 [reorderImages] 排序完成（优化版本）`);
 
     } catch (error) {
-      console.error('❌ [reorderImages] 重排序失败:', error);
+      console.error('❌ [reorderImages] 排序失败:', error);
       throw error;
     }
   };
@@ -1366,7 +1713,7 @@ const ProductDetail = ({
   }, []);
 
   /**
-   * 手动切换图片的完成状态 - 增强用户体验
+   * 手动切换图片的完成状态 - 性能优化版本
    */
   const handleToggleImageCompleted = async (imageId) => {
     try {
@@ -1376,13 +1723,14 @@ const ProductDetail = ({
       const imageInfo = localImageManager.getImageInfo(imageId);
       const currentStatus = imageInfo?.status || 'unknown';
       const willComplete = currentStatus !== 'completed';
+      const newStatus = willComplete ? 'completed' : 'editing';
 
       console.log(`🔄 [手动状态切换] ${willComplete ? '标记完成' : '取消完成'}: ${imageId}`);
 
-      // 显示操作反馈
-      const operationText = willComplete ? '正在标记为已完成...' : '正在取消完成状态...';
+      // 先在状态中更新，提供即时视觉反馈
+      updateImageStatusInState(imageId, newStatus);
 
-      // 临时显示操作状态
+      // 同时更新completedImages状态用于UI显示
       if (willComplete) {
         setCompletedImages(prev => new Set([...prev, imageId]));
       } else {
@@ -1393,49 +1741,50 @@ const ProductDetail = ({
         });
       }
 
-      // 调用LocalImageManager切换完成状态
-      const result = await localImageManager.toggleImageCompletedStatus(imageId);
+      // 异步同步到LocalImageManager（不阻塞UI）
+      try {
+        const result = await localImageManager.toggleImageCompletedStatus(imageId);
 
-      if (result.success) {
-        console.log(`✅ [手动状态切换] 操作成功: ${imageId} → ${result.newStatus}`);
+        if (result.success) {
+          console.log(`✅ [手动状态切换] 数据同步成功: ${imageId} → ${result.newStatus}`);
 
-        // 刷新图片数据以显示最新状态
-        await initializeImageData();
+          // 确保状态一致性 - 如果服务端返回的状态与预期不同，更新UI
+          if (result.newStatus !== newStatus) {
+            console.log(`🔄 [手动状态切换] 服务端状态不同，更新UI: ${result.newStatus}`);
+            updateImageStatusInState(imageId, result.newStatus);
 
-        // 显示成功提示
-        const successMessage = result.newStatus === 'completed' ? '图片已标记为完成' : '已取消完成状态';
+            // 同步更新completedImages状态
+            if (result.newStatus === 'completed') {
+              setCompletedImages(prev => new Set([...prev, imageId]));
+            } else {
+              setCompletedImages(prev => {
+                const next = new Set(prev);
+                next.delete(imageId);
+                return next;
+              });
+            }
+          }
 
-        // 可以添加临时成功提示（可选）
-        console.log(`🎉 [用户操作] ${successMessage}: ${imageId}`);
+          // 显示成功提示
+          const successMessage = result.newStatus === 'completed' ? '图片已标记为完成' : '已取消完成状态';
+          console.log(`🎉 [用户操作] ${successMessage}: ${imageId}`);
 
-      } else {
-        // 恢复之前状态
-        if (willComplete) {
-          setCompletedImages(prev => {
-            const next = new Set(prev);
-            next.delete(imageId);
-            return next;
-          });
         } else {
-          setCompletedImages(prev => new Set([...prev, imageId]));
+          console.error('❌ [手动状态切换] 数据同步失败，需要重新加载数据');
+          setError('状态切换失败，正在重新加载数据');
+          // 数据同步失败时重新加载以保持一致性
+          await initializeImageData();
         }
-        setError(`操作失败，请重试`);
+      } catch (syncError) {
+        console.error('❌ [手动状态切换] 数据同步失败:', syncError);
+        setError(`状态切换失败: ${syncError.message}`);
+        // 数据同步失败时重新加载以保持一致性
+        await initializeImageData();
       }
 
     } catch (error) {
       console.error('❌ [手动状态切换] 操作失败:', error);
-
-      // 提供用户友好的错误信息
-      let userFriendlyMessage = '操作失败';
-      if (error.message.includes('not found')) {
-        userFriendlyMessage = '图片未找到，请刷新页面重试';
-      } else if (error.message.includes('permission')) {
-        userFriendlyMessage = '权限不足，请检查文件访问权限';
-      } else {
-        userFriendlyMessage = `操作失败: ${error.message}`;
-      }
-
-      setError(userFriendlyMessage);
+      setError(`状态切换失败: ${error.message}`);
     }
   };
 
@@ -1458,6 +1807,7 @@ const ProductDetail = ({
       imageList: getAllImages
     });
   }, [getAllImages]);
+
 
   /**
    * 预览模式导航 - 切换上一张/下一张
@@ -1525,6 +1875,17 @@ const ProductDetail = ({
     };
   }, [previewMode.isOpen, handleClosePreview, handlePreviewNavigation]);
 
+  // 组件清理 - 防止内存泄漏
+  useEffect(() => {
+    return () => {
+      // 清理拖拽定时器
+      if (dragEnterTimeoutRef.current) {
+        clearTimeout(dragEnterTimeoutRef.current);
+        dragEnterTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   /**
    * 双击在PS中打开图片
    */
@@ -1565,59 +1926,85 @@ const ProductDetail = ({
   };
 
   /**
-   * 执行删除图片的核心逻辑
+   * 智能鼠标点击检测 - 左键预览，右键在PS中打开
+   */
+  const handleSmartMouseClick = useCallback((event, imageId, imageUrl) => {
+    // 检测鼠标按键类型
+    const mouseButton = event.button;
+
+    // 鼠标按键检测：
+    // 0 = 左键 (主要按键) - 预览
+    // 1 = 中键 (滚轮按键) - 忽略
+    // 2 = 右键 (次要按键) - 在PS中打开
+
+    console.log(`🖱️ [handleSmartMouseClick] 鼠标按键: ${mouseButton} (0=左键, 1=中键, 2=右键), imageId: ${imageId}`);
+
+    // 阻止默认行为（如右键菜单）
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (mouseButton === 0) {
+      // 左键点击 - 打开预览
+      console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId}`);
+      handleImageClick(imageId, imageUrl);
+
+    } else if (mouseButton === 2) {
+      // 右键点击 - 在PS中打开
+      console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId}`);
+      handleOpenImageInPS(imageId, imageUrl);
+
+    } else {
+      // 中键或其他按键 - 忽略
+      console.log(`🚫 [handleSmartMouseClick] 忽略按键: ${mouseButton}`);
+      return;
+    }
+  }, [handleImageClick, handleOpenImageInPS]);
+
+  /**
+   * 执行删除图片的核心逻辑 - 性能优化版本
    */
   const executeDelete = async (imageToDelete) => {
     try {
       setError(null);
-      console.log('🗑️ [executeDelete] 开始高效删除图片（通过索引）:', {
+      console.log('🗑️ [executeDelete] 开始优化删除图片:', {
         imageUrl: imageToDelete.imageUrl,
         type: imageToDelete.type,
         index: imageToDelete.index,
         skuIndex: imageToDelete.skuIndex
       });
 
-      // 在删除操作前保存当前滚动位置
-      if (contentRef.current) {
-        const currentScrollPosition = contentRef.current.scrollTop;
-        setSavedScrollPosition(currentScrollPosition);
-        console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
-      } else {
-        console.warn('⚠️ [executeDelete] contentRef.current为null，无法保存滚动位置');
-      }
+      // 先从本地状态中移除图片，提供即时视觉反馈
+      removeImageFromState(imageToDelete);
 
-      // 调用LocalImageManager通过索引高效删除图片
-      console.log(`🚀 [executeDelete] 删除参数:`, {
-        applyCode: currentProduct.applyCode,
-        imageType: imageToDelete.type,
-        imageIndex: imageToDelete.index,
-        skuIndex: imageToDelete.skuIndex
-      });
+      // 异步同步到LocalImageManager（不阻塞UI）
+      try {
+        const success = await localImageManager.deleteImageByIndex(
+          currentProduct.applyCode,
+          imageToDelete.type,
+          imageToDelete.index,
+          imageToDelete.skuIndex
+        );
 
-      const success = await localImageManager.deleteImageByIndex(
-        currentProduct.applyCode,
-        imageToDelete.type,
-        imageToDelete.index,
-        imageToDelete.skuIndex
-      );
-
-      if (success) {
-        console.log('✅ [executeDelete] 图片索引删除成功，开始刷新数据');
-
-        // 重新初始化数据以刷新UI
+        if (success) {
+          console.log('✅ [executeDelete] 数据同步成功');
+          // 通知父组件数据已更新
+          onUpdate?.(currentProduct);
+        } else {
+          console.error('❌ [executeDelete] 数据删除失败，需要重新加载数据');
+          setError('删除图片失败，正在重新加载数据');
+          // 如果数据层删除失败，重新初始化数据以保持一致性
+          await initializeImageData();
+        }
+      } catch (syncError) {
+        console.error('❌ [executeDelete] 数据同步失败:', syncError);
+        setError(`删除图片失败: ${syncError.message}`);
+        // 数据同步失败时重新加载以保持一致性
         await initializeImageData();
-
-        // 通知父组件数据已更新
-        onUpdate?.(currentProduct);
-      } else {
-        setError('删除图片失败');
-        setSavedScrollPosition(0); // 清除保存的位置
       }
 
     } catch (error) {
       console.error('❌ [executeDelete] 删除图片失败:', error);
       setError(`删除图片失败: ${error.message}`);
-      setSavedScrollPosition(0); // 清除保存的位置
     }
   };
 
@@ -1742,7 +2129,7 @@ const ProductDetail = ({
                 <div className="step-content">
                   <h4>🔗 待编辑状态</h4>
                   <p>图片已下载但尚未在PS中打开编辑</p>
-                  <div className="step-action">双击图片在PS中打开</div>
+                  <div className="step-action">右键图片在PS中打开</div>
                 </div>
               </div>
               <div className="workflow-step">
@@ -1758,14 +2145,16 @@ const ProductDetail = ({
                 <div className="step-content">
                   <h4>🎯 已完成状态</h4>
                   <p>图片编辑完成，关闭PS文档时自动标记</p>
-                  <div className="step-action">双击可重新编辑</div>
+                  <div className="step-action">右键可重新编辑</div>
                 </div>
               </div>
             </div>
             <div className="guide-tips">
               <h4>💡 使用技巧</h4>
               <ul>
-                <li>已完成的图片双击会重置为编辑中状态</li>
+                <li>🖱️ 左键点击：打开图片预览模式</li>
+                <li>🖱️ 右键点击：直接在PS中打开图片</li>
+                <li>已完成的图片右键会重置为编辑中状态</li>
                 <li>可手动点击"标记完成"按钮切换状态</li>
                 <li>绿色边框表示已完成，橙色表示编辑中</li>
                 <li>系统会自动检测PS文件修改并同步状态</li>
@@ -1897,6 +2286,7 @@ const ProductDetail = ({
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'original')}
+                    onDragEnd={handleDragEnd}
                     onDragOver={handleDragOver}
                     onDragEnter={(e) => handleDragEnter(e, index, 'original')}
                     onDragLeave={handleDragLeave}
@@ -1933,8 +2323,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`原始图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
-                        onClick={() => handleImageClick(image.id, image.imageUrl)}
-                        onDoubleClick={() => handleOpenImageInPS(image.id, image.imageUrl)}
+                        onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onContextMenu={(e) => e.preventDefault()}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -1979,6 +2369,7 @@ const ProductDetail = ({
                       className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, image.id, 'sku', sku.skuIndex || skuIndex)}
+                      onDragEnd={handleDragEnd}
                       onDragOver={handleDragOver}
                       onDragEnter={(e) => handleDragEnter(e, imgIndex, 'sku', sku.skuIndex || skuIndex)}
                       onDragLeave={handleDragLeave}
@@ -2015,8 +2406,8 @@ const ProductDetail = ({
                           imageUrl={image.imageUrl}
                           alt={`${sku.skuTitle} 图片 ${imgIndex + 1}`}
                           hasLocal={image.hasLocal}
-                          onClick={() => handleImageClick(image.id, image.imageUrl)}
-                          onDoubleClick={() => handleOpenImageInPS(image.id, image.imageUrl)}
+                          onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                          onContextMenu={(e) => e.preventDefault()}
                           isOpening={openingImageId === image.id}
                           isSyncing={syncingImages.has(image.id)}
                           isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -2061,6 +2452,7 @@ const ProductDetail = ({
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'scene')}
+                    onDragEnd={handleDragEnd}
                     onDragOver={handleDragOver}
                     onDragEnter={(e) => handleDragEnter(e, index, 'scene')}
                     onDragLeave={handleDragLeave}
@@ -2095,8 +2487,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`场景图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
-                        onClick={() => handleImageClick(image.id, image.imageUrl)}
-                        onDoubleClick={() => handleOpenImageInPS(image.id, image.imageUrl)}
+                        onMouseDown={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onContextMenu={(e) => e.preventDefault()}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -2207,7 +2599,7 @@ const ProductDetail = ({
               <div className="preview-shortcuts">
                 <span>ESC: 关闭</span>
                 <span>← →: 切换图片</span>
-                <span>双击: 在PS中打开</span>
+                <span>右键: 在PS中打开</span>
               </div>
             </div>
           </div>

@@ -2444,12 +2444,19 @@ export class LocalImageManager {
       await this.initialize();
     }
 
+    // 安全检查：确保 indexData 是数组
+    if (!Array.isArray(this.indexData)) {
+      console.warn(`⚠️ [状态迁移] indexData 不是数组，类型: ${typeof this.indexData}, 值:`, this.indexData);
+      this.indexData = [];
+      return { migrated: 0, total: 0 };
+    }
+
     let migratedCount = 0;
     let totalCount = 0;
 
     console.log(`🔄 [状态迁移] 开始迁移产品 ${applyCode} 的图片状态`);
 
-    for (const product of this.indexData.products) {
+    for (const product of this.indexData) {
       if (product.applyCode !== applyCode) continue;
 
       // 迁移原始图片
