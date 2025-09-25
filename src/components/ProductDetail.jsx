@@ -160,6 +160,7 @@ const ProductDetail = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null); // 批量上传进度 {current: 0, total: 0}
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const [openingImageId, setOpeningImageId] = useState(null);
   const [syncingImages, setSyncingImages] = useState(new Set()); // 正在同步的图片ID集合
@@ -925,17 +926,22 @@ const ProductDetail = ({
 
       const fs = require('uxp').storage.localFileSystem;
 
-      // 显示文件选择对话框 - 简化版本避免types参数问题
-      const file = await fs.getFileForOpening({
-        allowMultiple: false
+      // 显示文件选择对话框 - 支持多文件选择
+      const files = await fs.getFileForOpening({
+        allowMultiple: true
       });
 
-      if (!file) {
+      if (!files || files.length === 0) {
         console.log('用户取消了文件选择');
         return;
       }
 
-      console.log(`📁 [handleAddImage] 选择的文件: ${file.name}, 类型: ${imageType}`);
+      console.log(`📁 [handleAddImage] 选择的文件: ${files.length}个, 类型: ${imageType}`);
+
+      // 初始化进度状态
+      if (files.length > 1) {
+        setUploadProgress({ current: 0, total: files.length });
+      }
 
       // 保存滚动位置
       let savedScrollPosition = 0;
@@ -946,15 +952,33 @@ const ProductDetail = ({
         console.warn('⚠️ [handleAddImage] contentRef.current为null，无法保存滚动位置');
       }
 
-      // 调用LocalImageManager添加图片
-      const result = await localImageManager.addLocalImage(
+      // 调用LocalImageManager批量添加图片（传递进度回调）
+      const results = await localImageManager.addLocalImages(
         currentProduct.applyCode,
-        file,
+        files,
         imageType,
-        skuIndex
+        skuIndex,
+        files.length > 1 ? (current) => {
+          setUploadProgress({ current, total: files.length });
+        } : null
       );
 
-      console.log(`✅ [handleAddImage] 图片添加成功:`, result);
+      console.log(`✅ [handleAddImage] 批量添加完成:`, results);
+
+      // 显示添加结果
+      const successCount = results.filter(r => r.success).length;
+      const failedCount = results.length - successCount;
+
+      if (failedCount > 0) {
+        const failedFiles = results.filter(r => !r.success).map(r => r.fileName).join(', ');
+        setError(`部分文件添加失败: ${failedFiles}`);
+        console.warn(`⚠️ [handleAddImage] ${failedCount}个文件添加失败`);
+      }
+
+      console.log(`✅ [handleAddImage] 成功添加 ${successCount}/${files.length} 个图片`);
+
+      // 清理进度状态
+      setUploadProgress(null);
 
       // 刷新图片数据
       await initializeImageData();
@@ -1719,6 +1743,26 @@ const ProductDetail = ({
             >
               取消
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 批量上传进度条 */}
+      {uploadProgress && (
+        <div className="upload-progress-container">
+          <div className="upload-progress-header">
+            <span className="upload-progress-text">
+              正在上传图片... ({uploadProgress.current}/{uploadProgress.total})
+            </span>
+            <div className="upload-progress-percent">
+              {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+            </div>
+          </div>
+          <div className="upload-progress-bar">
+            <div
+              className="upload-progress-fill"
+              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+            />
           </div>
         </div>
       )}

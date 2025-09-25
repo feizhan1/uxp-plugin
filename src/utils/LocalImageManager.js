@@ -959,6 +959,128 @@ export class LocalImageManager {
   }
 
   /**
+   * 批量添加本地图片
+   * @param {string} applyCode 产品申请码
+   * @param {File[]} files 图片文件数组
+   * @param {string} imageType 图片类型：'original', 'sku', 'scene'
+   * @param {number} skuIndex SKU索引（仅sku类型需要）
+   * @param {function} progressCallback 进度回调函数 (current) => void
+   * @returns {Promise<Object[]>} 添加结果数组
+   */
+  async addLocalImages(applyCode, files, imageType, skuIndex = null, progressCallback = null) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      console.log(`📁 [addLocalImages] 开始批量添加本地图片: ${files.length}个文件到产品 ${applyCode}`);
+
+      const results = [];
+      const product = this.getOrCreateProduct(applyCode);
+
+      // 串行处理每个文件，保证文件名去重的正确性
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        console.log(`📁 [addLocalImages] 处理文件 ${i + 1}/${files.length}: ${file.name}`);
+
+        try {
+          // 生成规范文件名
+          const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
+          const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
+          const standardFileName = `${applyCode}_${baseFileName}${originalExtension}`;
+
+          // 检查文件名是否已存在，如果存在则添加序号
+          let finalFileName = standardFileName;
+          let counter = 1;
+          while (await this.fileExists(finalFileName)) {
+            const nameWithoutExt = standardFileName.substring(0, standardFileName.lastIndexOf('.'));
+            finalFileName = `${nameWithoutExt}_${counter}${originalExtension}`;
+            counter++;
+          }
+
+          console.log(`📝 [addLocalImages] 生成文件名: ${file.name} -> ${finalFileName}`);
+
+          // 读取文件内容 - 使用UXP兼容的方式
+          const arrayBuffer = await file.read({ format: formats.binary });
+
+          // 保存到本地文件系统
+          const localFile = await this.imageFolder.createFile(finalFileName, { overwrite: false });
+          await localFile.write(arrayBuffer, { format: formats.binary });
+
+          console.log(`💾 [addLocalImages] 文件已保存: ${finalFileName}`);
+
+          // 创建图片记录
+          const imageRecord = {
+            imageUrl: `local://${finalFileName}`, // 使用特殊URL标记为本地添加的图片
+            localPath: finalFileName,
+            status: 'pending_edit',
+            timestamp: Date.now(),
+            fileSize: arrayBuffer.byteLength,
+            addedLocally: true // 标记为本地添加的图片
+          };
+
+          // 根据类型添加到对应数组
+          if (imageType === 'original') {
+            if (!product.originalImages) product.originalImages = [];
+            product.originalImages.push(imageRecord);
+          } else if (imageType === 'sku') {
+            if (!product.publishSkus) product.publishSkus = [];
+            let sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
+            if (!sku) {
+              sku = {
+                skuIndex: skuIndex || 0,
+                attrClasses: [],
+                skuImages: []
+              };
+              product.publishSkus.push(sku);
+            }
+            if (!sku.skuImages) sku.skuImages = [];
+            imageRecord.index = sku.skuImages.length;
+            sku.skuImages.push(imageRecord);
+          } else if (imageType === 'scene') {
+            if (!product.senceImages) product.senceImages = [];
+            product.senceImages.push(imageRecord);
+          }
+
+          // 添加到结果数组
+          results.push({
+            fileName: finalFileName,
+            localPath: finalFileName,
+            status: 'pending_edit',
+            imageUrl: imageRecord.imageUrl,
+            success: true
+          });
+
+        } catch (fileError) {
+          console.error(`❌ [addLocalImages] 处理文件 ${file.name} 失败:`, fileError);
+          results.push({
+            fileName: file.name,
+            success: false,
+            error: fileError.message
+          });
+        }
+
+        // 更新进度
+        if (progressCallback) {
+          progressCallback(i + 1);
+        }
+      }
+
+      // 批量操作完成后统一保存索引
+      await this.saveIndexData();
+
+      const successCount = results.filter(r => r.success).length;
+      console.log(`✅ [addLocalImages] 批量添加完成: 成功 ${successCount}/${files.length} 个文件`);
+
+      return results;
+
+    } catch (error) {
+      console.error(`❌ [addLocalImages] 批量添加图片失败:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 检查文件是否已存在
    * @param {string} fileName 文件名
    * @returns {Promise<boolean>} 是否存在

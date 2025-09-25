@@ -153,3 +153,6 @@ The plugin requires compilation before use in Photoshop:
 - 在ui中不要使用btn-icon，用文字即可
 - ui中文字使用10px,11px,12px三种字号
 - 每次执行完一个任务，更新task.md
+- 每次完成一个任务，执行:
+git add .
+git commit -m "$具体完成的事项"
