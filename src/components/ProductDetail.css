@@ -563,6 +563,14 @@
   color: var(--theme-color, #ec6608);
 }
 
+/* 格式提示样式 */
+.format-hint {
+  font-size: 10px;
+  color: #999;
+  margin-top: 2px;
+  text-align: center;
+}
+
 /* 网格内的添加图片按钮样式 */
 .add-image-btn.in-grid {
   width: 100px;

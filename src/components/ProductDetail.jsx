@@ -926,9 +926,10 @@ const ProductDetail = ({
 
       const fs = require('uxp').storage.localFileSystem;
 
-      // 显示文件选择对话框 - 支持多文件选择
+      // 显示文件选择对话框 - 限制PNG/JPG格式
       const files = await fs.getFileForOpening({
-        allowMultiple: true
+        allowMultiple: true,
+        types: ['png', 'jpg', 'jpeg']
       });
 
       if (!files || files.length === 0) {
@@ -970,9 +971,28 @@ const ProductDetail = ({
       const failedCount = results.length - successCount;
 
       if (failedCount > 0) {
-        const failedFiles = results.filter(r => !r.success).map(r => r.fileName).join(', ');
-        setError(`部分文件添加失败: ${failedFiles}`);
+        const failedResults = results.filter(r => !r.success);
+        const formatErrors = failedResults.filter(r => r.error === '不支持的图片格式，仅支持PNG和JPG格式');
+        const otherErrors = failedResults.filter(r => r.error !== '不支持的图片格式，仅支持PNG和JPG格式');
+
+        let errorMessage = '';
+        if (formatErrors.length > 0) {
+          const formatErrorFiles = formatErrors.map(r => r.fileName).join(', ');
+          errorMessage += `格式不支持的文件: ${formatErrorFiles}（仅支持PNG和JPG格式）`;
+        }
+        if (otherErrors.length > 0) {
+          const otherErrorFiles = otherErrors.map(r => r.fileName).join(', ');
+          if (errorMessage) errorMessage += '；';
+          errorMessage += `其他错误文件: ${otherErrorFiles}`;
+        }
+
+        setError(`${failedCount}个文件添加失败：${errorMessage}`);
         console.warn(`⚠️ [handleAddImage] ${failedCount}个文件添加失败`);
+
+        // 如果有成功的文件，也给出成功提示
+        if (successCount > 0) {
+          console.log(`✅ [handleAddImage] 成功添加了 ${successCount} 个图片`);
+        }
       }
 
       console.log(`✅ [handleAddImage] 成功添加 ${successCount}/${files.length} 个图片`);
@@ -1839,6 +1859,7 @@ const ProductDetail = ({
               {/* 添加图片按钮 */}
               <div className="add-image-btn in-grid" onClick={() => handleAddImage('original')} role="button" tabIndex="0">
                 + 添加图片
+                <div className="format-hint">(支持PNG、JPG格式)</div>
               </div>
             </div>
           </div>
@@ -1915,6 +1936,7 @@ const ProductDetail = ({
                 {/* 添加图片按钮 */}
                 <div className="add-image-btn in-grid" onClick={() => handleAddImage('sku', sku.skuIndex || skuIndex)} role="button" tabIndex="0">
                   + 添加图片
+                <div className="format-hint">(支持PNG、JPG格式)</div>
                 </div>
               </div>
             </div>
@@ -1989,6 +2011,7 @@ const ProductDetail = ({
               {/* 添加图片按钮 */}
               <div className="add-image-btn in-grid" onClick={() => handleAddImage('scene')} role="button" tabIndex="0">
                 + 添加图片
+                <div className="format-hint">(支持PNG、JPG格式)</div>
               </div>
             </div>
           </div>

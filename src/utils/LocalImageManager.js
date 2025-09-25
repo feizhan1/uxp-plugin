@@ -24,7 +24,7 @@ if (isUXPEnvironment()) {
 }
 
 /**
- * 根据文件扩展名获取MIME类型
+ * 根据文件扩展名获取MIME类型（仅支持PNG和JPG格式）
  * @param {string} filename - 文件名
  * @returns {string} MIME类型
  */
@@ -36,62 +36,24 @@ const getMimeTypeFromExtension = (filename) => {
   const mimeTypes = {
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'bmp': 'image/bmp',
-    'svg': 'image/svg+xml',
-    'ico': 'image/x-icon'
+    'png': 'image/png'
   };
 
   return mimeTypes[extension] || 'image/jpeg'; // 默认返回jpeg
 };
 
 /**
- * 检测浏览器/UXP环境是否支持WebP格式
- * @returns {boolean} 是否支持WebP
- */
-const isWebPSupported = (() => {
-  let supported = null;
-
-  return () => {
-    if (supported !== null) return supported;
-
-    try {
-      // 创建一个简单的WebP数据URL来测试支持
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-
-      // 尝试转换为WebP格式
-      const webpDataUrl = canvas.toDataURL('image/webp');
-      supported = webpDataUrl.indexOf('data:image/webp') === 0;
-
-      console.log(`[WebP检测] UXP环境WebP支持: ${supported}`);
-      return supported;
-    } catch (error) {
-      console.warn('[WebP检测] 检测WebP支持时出错:', error);
-      supported = false;
-      return supported;
-    }
-  };
-})();
-
-/**
- * 获取兼容的MIME类型（WebP不支持时回退到PNG）
+ * 验证文件是否为支持的图片格式
  * @param {string} filename - 文件名
- * @returns {string} MIME类型
+ * @returns {boolean} 是否为支持的格式
  */
-const getCompatibleMimeType = (filename) => {
-  const mimeType = getMimeTypeFromExtension(filename);
+const isValidImageFormat = (filename) => {
+  if (!filename) return false;
 
-  // 如果是WebP格式但环境不支持，则回退到PNG
-  if (mimeType === 'image/webp' && !isWebPSupported()) {
-    console.warn(`[MIME兼容] WebP不支持，回退到PNG: ${filename}`);
-    return 'image/png';
-  }
+  const extension = filename.toLowerCase().substring(filename.lastIndexOf('.') + 1);
+  const supportedFormats = ['jpg', 'jpeg', 'png'];
 
-  return mimeType;
+  return supportedFormats.includes(extension);
 };
 
 /**
@@ -718,7 +680,7 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const mimeType = getCompatibleMimeType(img.localPath);
+              const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
@@ -737,7 +699,7 @@ export class LocalImageManager {
                 try {
                   const localFile = await this.imageFolder.getEntry(img.localPath);
                   const arrayBuffer = await localFile.read({ format: formats.binary });
-                  const mimeType = getCompatibleMimeType(img.localPath);
+                  const mimeType = getMimeTypeFromExtension(img.localPath);
                   const blob = new Blob([arrayBuffer], { type: mimeType });
                   return URL.createObjectURL(blob);
                 } catch {
@@ -756,7 +718,7 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const mimeType = getCompatibleMimeType(img.localPath);
+              const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
@@ -784,7 +746,7 @@ export class LocalImageManager {
 
       const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
       const arrayBuffer = await localFile.read({ format: formats.binary });
-      const mimeType = getCompatibleMimeType(imageInfo.localPath);
+      const mimeType = getMimeTypeFromExtension(imageInfo.localPath);
       const blob = new Blob([arrayBuffer], { type: mimeType });
       return URL.createObjectURL(blob);
     } catch {
@@ -954,6 +916,11 @@ export class LocalImageManager {
 
       console.log(`📁 [addLocalImage] 开始添加本地图片: ${file.name} 到产品 ${applyCode}`);
 
+      // 验证文件格式
+      if (!isValidImageFormat(file.name)) {
+        throw new Error(`不支持的图片格式: ${file.name}，仅支持PNG和JPG格式`);
+      }
+
       // 生成规范文件名
       const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
       const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
@@ -1059,6 +1026,17 @@ export class LocalImageManager {
         console.log(`📁 [addLocalImages] 处理文件 ${i + 1}/${files.length}: ${file.name}`);
 
         try {
+          // 验证文件格式
+          if (!isValidImageFormat(file.name)) {
+            console.warn(`❌ [addLocalImages] 跳过不支持的格式: ${file.name}`);
+            results.push({
+              fileName: file.name,
+              success: false,
+              error: '不支持的图片格式，仅支持PNG和JPG格式'
+            });
+            continue;
+          }
+
           // 生成规范文件名
           const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
           const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
