@@ -24,6 +24,30 @@ if (isUXPEnvironment()) {
 }
 
 /**
+ * 根据文件扩展名获取MIME类型
+ * @param {string} filename - 文件名
+ * @returns {string} MIME类型
+ */
+const getMimeTypeFromExtension = (filename) => {
+  if (!filename) return 'image/jpeg'; // 默认值
+
+  const extension = filename.toLowerCase().substring(filename.lastIndexOf('.') + 1);
+
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'bmp': 'image/bmp',
+    'svg': 'image/svg+xml',
+    'ico': 'image/x-icon'
+  };
+
+  return mimeTypes[extension] || 'image/jpeg'; // 默认返回jpeg
+};
+
+/**
  * 本地图片管理器类
  * 提供产品图片的本地存储和管理功能
  */
@@ -647,7 +671,8 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+              const mimeType = getMimeTypeFromExtension(img.localPath);
+              const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
               return null;
@@ -665,7 +690,8 @@ export class LocalImageManager {
                 try {
                   const localFile = await this.imageFolder.getEntry(img.localPath);
                   const arrayBuffer = await localFile.read({ format: formats.binary });
-                  const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+                  const mimeType = getMimeTypeFromExtension(img.localPath);
+                  const blob = new Blob([arrayBuffer], { type: mimeType });
                   return URL.createObjectURL(blob);
                 } catch {
                   return null;
@@ -683,7 +709,8 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+              const mimeType = getMimeTypeFromExtension(img.localPath);
+              const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
               return null;
@@ -710,7 +737,8 @@ export class LocalImageManager {
 
       const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
       const arrayBuffer = await localFile.read({ format: formats.binary });
-      const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+      const mimeType = getMimeTypeFromExtension(imageInfo.localPath);
+      const blob = new Blob([arrayBuffer], { type: mimeType });
       return URL.createObjectURL(blob);
     } catch {
       return null;
