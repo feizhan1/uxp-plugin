@@ -1,0 +1,25 @@
+{
+    "message": null,
+    "statusCode": 200,
+    "dataClass": {
+        "productCount": 4,
+        "publishProductInfos": [
+            {
+                "applyCode": "test_2508180013",
+                "productName": "麦力仕三星Galaxy Tab A9+ 11英寸磁吸平板保护壳，带支架（黑色/红色）"
+            },
+            {
+                "applyCode": "test_2508180004",
+                "productName": "佳膜 Apple Watch 全包透明电镀TPU保护壳 兼容iWatch系列1-8代智能手表"
+            },
+            {
+                "applyCode": "test_2508160041",
+                "productName": "头戴式耳机头梁防护套 适用博士BOSE QC25/35II/45录音师SOLO3大号小号多色可选"
+            },
+            {
+                "applyCode": "test_2508160028",
+                "productName": "Jaucase iPhone 16 Pro Max 花卉闪钻磁吸手机壳 防摔透明保护套"
+            }
+        ]
+    }
+}

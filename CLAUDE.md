@@ -144,3 +144,12 @@ The plugin requires compilation before use in Photoshop:
 - The plugin interface uses Chinese labels ("待处理产品图片") while code comments are bilingual
 - Error messages and console logs are primarily in Chinese
 - API integrations target Chinese e-commerce platforms (tvcmall.com)
+- 使用中文交流
+- Bash(cd "S:\code\ps-plugin\react-plugin" && npm run build:dev)改为：Bash(cd "S:\code\ps-plugin\react-plugin" && npm run build)
+- 完成后任务后，不用运行测试来来验证修改是否正确，我会自己手动运行
+- 构建成功后，我会手动测试，不需要创建测试脚本
+- UXP环境不支持grid布局
+- ui元素要尽量紧凑
+- 在ui中不要使用btn-icon，用文字即可
+- ui中文字使用10px,11px,12px三种字号
+- 每次执行完一个任务，更新task.md

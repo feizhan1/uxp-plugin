@@ -1,0 +1,241 @@
+[
+    {
+        "applyCode": "test_2508160028",
+        "originalImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_1.jpg",
+                "localPath": "test_2508160028_old_1.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_2.jpg",
+                "localPath": "test_2508160028_old_2.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_3.jpg",
+                "localPath": "test_2508160028_old_3.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_4.jpg",
+                "localPath": "test_2508160028_old_4.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_5.jpg",
+                "localPath": "test_2508160028_old_5.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_6.jpg",
+                "localPath": "test_2508160028_old_6.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_7.jpg",
+                "localPath": "test_2508160028_old_7.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_8.jpg",
+                "localPath": "test_2508160028_old_8.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_9.jpg",
+                "localPath": "test_2508160028_old_9.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_10.jpg",
+                "localPath": "test_2508160028_old_10.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_11.jpg",
+                "localPath": "test_2508160028_old_11.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_12.jpg",
+                "localPath": "test_2508160028_old_12.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_13.jpg",
+                "localPath": "test_2508160028_old_13.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_14.jpg",
+                "localPath": "test_2508160028_old_14.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_15.jpg",
+                "localPath": "test_2508160028_old_15.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_16.jpg",
+                "localPath": "test_2508160028_old_16.jpg",
+                "status": "downloaded"
+            }
+        ],
+        "publishSkus": [
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "彩钻花白"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_1.jpg",
+                        "localPath": "test_2508160028_main_1.jpg",
+                        "status": "downloaded",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_2.jpg",
+                        "localPath": "test_2508160028_main_2.jpg",
+                        "status": "downloaded",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_3.jpg",
+                        "localPath": "test_2508160028_main_3.jpg",
+                        "status": "downloaded",
+                        "index": 3
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_4.jpg",
+                        "localPath": "test_2508160028_main_4.jpg",
+                        "status": "downloaded",
+                        "index": 4
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_5.jpg",
+                        "localPath": "test_2508160028_main_5.jpg",
+                        "status": "downloaded",
+                        "index": 5
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_6.jpg",
+                        "localPath": "test_2508160028_main_6.jpg",
+                        "status": "downloaded",
+                        "index": 6
+                    }
+                ],
+                "skuIndex": 1
+            }
+        ],
+        "senceImages": [],
+        "userId": 0,
+        "userCode": null
+    },
+    {
+        "applyCode": "test_2508180013",
+        "originalImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_1.jpg",
+                "localPath": "test_2508180013_old_1.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_2.jpg",
+                "localPath": "test_2508180013_old_2.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_3.jpg",
+                "localPath": "test_2508180013_old_3.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_4.jpg",
+                "localPath": "test_2508180013_old_4.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_5.jpg",
+                "localPath": "test_2508180013_old_5.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_6.jpg",
+                "localPath": "test_2508180013_old_6.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_7.jpg",
+                "localPath": "test_2508180013_old_7.jpg",
+                "status": "downloaded"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_8.jpg",
+                "localPath": "test_2508180013_old_8.jpg",
+                "status": "downloaded"
+            }
+        ],
+        "publishSkus": [
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "黑色"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/main_1.jpg",
+                        "localPath": "test_2508180013_main_1.jpg",
+                        "status": "downloaded",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/3.jpg",
+                        "localPath": "test_2508180013_3.jpg",
+                        "status": "downloaded",
+                        "index": 2
+                    }
+                ],
+                "skuIndex": 1
+            },
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "红色"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/main_2.jpg",
+                        "localPath": "test_2508180013_main_2.jpg",
+                        "status": "downloaded",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/3.jpg",
+                        "localPath": "test_2508180013_3.jpg",
+                        "status": "downloaded",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/4.jpg",
+                        "localPath": "test_2508180013_4.jpg",
+                        "status": "downloaded",
+                        "index": 3
+                    }
+                ],
+                "skuIndex": 2
+            }
+        ],
+        "senceImages": [],
+        "userId": 0,
+        "userCode": null
+    }
+]

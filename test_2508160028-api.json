@@ -1,0 +1,98 @@
+{
+    "message": null,
+    "statusCode": 200,
+    "dataClass": {
+        "applyCode": "test_2508160028",
+        "originalImages": [
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_1.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_2.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_3.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_4.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_5.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_6.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_7.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_8.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_9.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_10.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_11.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_12.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_13.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_14.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_15.jpg"
+            },
+            {
+                "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/old_16.jpg"
+            }
+        ],
+        "publishSkus": [
+            {
+                "attrClasses": [
+                    {
+                        "attrName": "颜色款式",
+                        "attrValue": "彩钻花白"
+                    }
+                ],
+                "skuImages": [
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_1.jpg",
+                        "index": 1
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_2.jpg",
+                        "index": 2
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_3.jpg",
+                        "index": 3
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_4.jpg",
+                        "index": 4
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_5.jpg",
+                        "index": 5
+                    },
+                    {
+                        "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/main_6.jpg",
+                        "index": 6
+                    }
+                ],
+                "skuIndex": 1
+            }
+        ],
+        "senceImages": [],
+        "userId": 0,
+        "userCode": null
+    }
+}
+

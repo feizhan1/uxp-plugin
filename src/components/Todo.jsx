@@ -3,7 +3,113 @@ import './Todo.css'
 import Confirm from './Confirm'
 import Toast from './Toast'
 import UploadToS3 from './UploadToS3'
-import { placeImageInPS, canPlaceImage, exportAndUploadCanvas, getOpenDocuments, exportDocumentById } from '../panels/photoshop-api'
+import { localImageManager } from '../utils/LocalImageManager.js'
+import ProductDataProcessor from '../utils/ProductDataProcessor.js'
+import {
+  placeImageInPS,
+  canPlaceImage,
+  exportAndUploadCanvas,
+  getOpenDocuments,
+  exportDocumentById,
+  registerPSEventListeners,
+  unregisterPSEventListeners,
+  ErrorHandler
+} from '../panels/photoshop-api'
+
+// 本地图片组件：仅使用本地图片，不回退到云端
+const SmartImage = React.memo(({ imageId, originalUrl, alt, className, refreshTrigger, ...props }) => {
+  const [imageSrc, setImageSrc] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadLocalImage = async () => {
+      try {
+        setLoading(true)
+
+        if (!localImageManager.initialized) {
+          await localImageManager.initialize()
+        }
+
+        // 尝试获取本地图片
+        const localUrl = await localImageManager.getLocalImageDisplayUrlByUrl(originalUrl)
+
+        if (mounted) {
+          setImageSrc(localUrl) // null if not found
+          setLoading(false)
+        }
+      } catch (error) {
+        if (mounted) {
+          setImageSrc(null)
+          setLoading(false)
+        }
+      }
+    }
+
+    if (originalUrl) {
+      loadLocalImage()
+    } else {
+      setImageSrc(null)
+      setLoading(false)
+    }
+
+    return () => {
+      mounted = false
+    }
+  }, [originalUrl, refreshTrigger])
+
+  if (loading) {
+    return (
+      <div
+        className={`image-placeholder ${className || ''}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#f5f5f5',
+          border: '1px dashed #ccc',
+          color: '#999',
+          fontSize: '12px',
+          minHeight: '60px',
+          ...props.style
+        }}
+      >
+        ⏳ 加载中...
+      </div>
+    )
+  }
+
+  if (!imageSrc) {
+    return (
+      <div
+        className={`image-placeholder ${className || ''}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#f5f5f5',
+          border: '1px dashed #ccc',
+          color: '#999',
+          fontSize: '12px',
+          minHeight: '60px',
+          ...props.style
+        }}
+      >
+        📁 无本地图片
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt}
+      className={className}
+      {...props}
+    />
+  )
+})
 
 // 单个待处理图片：使用 React.memo，避免与该单元无关的状态变更导致重渲染
 const WaitImageItem = React.memo(
@@ -35,8 +141,9 @@ const WaitImageItem = React.memo(
     isSelectionMode,
     isSelected,
     onToggleSelection,
+    refreshTrigger,
   }) => {
-    const itemClass = `image-item${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}${isSelected ? ' selected' : ''}`
+    const itemClass = `todo-image-item${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}${isSelected ? ' selected' : ''}`
     return (
       <div
         key={item.id}
@@ -84,12 +191,14 @@ const WaitImageItem = React.memo(
           ×
         </button>
         {/* 已隐藏P和T按钮 */}
-        <img
-          src={item.url}
+        <SmartImage
+          imageId={item.id}
+          originalUrl={item.url}
           alt={`待处理图片 ${flatIndex + 1}`}
           loading="eager"
           decoding="async"
           draggable={false}
+          refreshTrigger={refreshTrigger}
         />
         <div className="image-error" style={{display: 'none'}}>
           <span>图片加载失败</span>
@@ -132,6 +241,34 @@ const extractOriginImageUrls = (data) => {
   return (data?.originalImages || [])
     .map(img => img?.imageUrl)
     .filter(Boolean)
+}
+
+// 处理产品数据并下载图片到本地
+const processAndDownloadProductData = async (productData, onProgress = null, onError = null) => {
+  console.log('🔄 [processAndDownloadProductData] 开始处理产品数据...')
+
+  try {
+    // 使用ProductDataProcessor转换API数据
+    const standardizedImages = ProductDataProcessor.processProductData(productData)
+    console.log(`📊 [processAndDownloadProductData] 转换完成，共 ${standardizedImages.length} 张图片`)
+
+    // 初始化LocalImageManager
+    await localImageManager.initialize()
+
+    // 下载图片到本地
+    const results = await localImageManager.downloadProductImages(
+      standardizedImages,
+      onProgress,
+      onError
+    )
+
+    console.log('✅ [processAndDownloadProductData] 产品数据处理和下载完成:', results)
+    return { standardizedImages, downloadResults: results }
+
+  } catch (error) {
+    console.error('❌ [processAndDownloadProductData] 处理失败:', error)
+    throw error
+  }
 }
 
 // 构建扁平待处理图片，注入所属分组 key（sku-索引 或 scene）
@@ -333,10 +470,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   // 审核提交处理中
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // 批量从PS画布更新相关状态
-  const [isBatchUpdating, setIsBatchUpdating] = useState(false)
-  const [batchUpdateProgress, setBatchUpdateProgress] = useState('')
-  const [batchUpdateStats, setBatchUpdateStats] = useState({ total: 0, completed: 0, failed: 0 })
 
   // 批量选择相关状态
   const [selectedImages, setSelectedImages] = useState(new Set()) // 选中的图片索引集合
@@ -350,6 +483,22 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   const [isSyncing, setIsSyncing] = useState(false) // 是否有同步操作在进行中
   const [isUpdating, setIsUpdating] = useState(false) // 数据更新状态标志
 
+  // 简化的图片刷新机制
+  const [autoRefresh, setAutoRefresh] = useState({
+    enabled: true, // 是否启用自动刷新
+    interval: 5000, // 刷新间隔（毫秒）
+    lastRefreshTime: null // 最后刷新时间
+  })
+
+  // 手动刷新触发器
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  // 组件挂载状态跟踪
+  const isMountedRef = useRef(true)
+
+  // 内存管理：跟踪创建的Blob URLs以便清理
+  const blobUrlsRef = useRef(new Set())
+
   // Toast 提示相关状态
   const [toastOpen, setToastOpen] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
@@ -361,12 +510,81 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
   console.log('Todo data', data)
 
+  // UXP 环境检测（保守特征探测）- 必须在前面定义，因为后面的 useEffect 会用到
+  const isUXP = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const ua = (navigator?.userAgent || '').toLowerCase()
+    return Boolean(window.uxp) || ua.includes('uxp') || ua.includes('adobe')
+  }, [])
+
+  // 拖拽调试开关：localStorage.DEBUG_DRAG 为 '1' 或 'true' 时启用；或 window.__DEBUG_DRAG__ 为真
+  const DRAG_DEBUG = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const flag = localStorage.getItem('DEBUG_DRAG')
+      if (flag && (flag === '1' || flag.toLowerCase() === 'true')) return true
+    } catch { void 0 }
+    return Boolean(window.__DEBUG_DRAG__)
+  }, [])
+
+  const debugEnabled = isUXP ? true : DRAG_DEBUG
+
   // showToast 函数：替换 showPSAlert
   const showToast = useCallback((message, type = 'info', duration = 3000) => {
     setToastMessage(message)
     setToastType(type)
     setToastDuration(duration)
     setToastOpen(true)
+  }, [])
+
+  // 内存管理工具函数
+  const memoryManager = useCallback({
+    // 创建并跟踪Blob URL
+    createBlobUrl: (buffer, type = 'image/png') => {
+      try {
+        const blob = new Blob([buffer], { type })
+        const url = URL.createObjectURL(blob)
+        blobUrlsRef.current.add(url)
+        console.log(`[内存管理] 创建Blob URL: ${url.substring(0, 30)}...`)
+        return url
+      } catch (error) {
+        console.error('[内存管理] 创建Blob URL失败:', error)
+        throw error
+      }
+    },
+
+    // 释放特定的Blob URL
+    releaseBlobUrl: (url) => {
+      if (blobUrlsRef.current.has(url)) {
+        try {
+          URL.revokeObjectURL(url)
+          blobUrlsRef.current.delete(url)
+          console.log(`[内存管理] 释放Blob URL: ${url.substring(0, 30)}...`)
+        } catch (error) {
+          console.error('[内存管理] 释放Blob URL失败:', error)
+        }
+      }
+    },
+
+    // 释放所有跟踪的Blob URLs
+    releaseAllBlobUrls: () => {
+      const count = blobUrlsRef.current.size
+      for (const url of blobUrlsRef.current) {
+        try {
+          URL.revokeObjectURL(url)
+        } catch (error) {
+          console.error('[内存管理] 批量释放Blob URL失败:', error)
+        }
+      }
+      blobUrlsRef.current.clear()
+      console.log(`[内存管理] 释放了 ${count} 个Blob URLs`)
+    },
+
+    // 获取内存使用统计
+    getMemoryStats: () => ({
+      trackedBlobUrls: blobUrlsRef.current.size,
+      urls: Array.from(blobUrlsRef.current).map(url => url.substring(0, 50) + '...')
+    })
   }, [])
 
   // URL映射管理辅助函数
@@ -466,27 +684,111 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   useEffect(() => {
     console.log('🚀 [组件初始化] 开始新的处理流程，清理历史数据')
     clearDataHistory()
+
+    // 强制清理旧的LocalImageManager数据（数据结构不兼容）
+    const initializeWithCleanup = async () => {
+      try {
+        console.log('🧨 [组件初始化] 强制清理旧数据，确保数据结构兼容...')
+        await localImageManager.initialize({ forceCleanup: true })
+        console.log('✅ [组件初始化] LocalImageManager清理和初始化完成')
+      } catch (error) {
+        console.error('❌ [组件初始化] LocalImageManager初始化失败:', error)
+      }
+    }
+
+    initializeWithCleanup()
   }, [clearDataHistory])
 
+  // 基于PS事件的轻量级刷新机制
+  useEffect(() => {
+    if (!isUXP || !autoRefresh.enabled) {
+      console.log('🚫 [PS事件刷新] 跳过注册: UXP不可用或自动刷新已禁用')
+      return
+    }
 
-  // UXP 环境检测（保守特征探测）
-  const isUXP = useMemo(() => {
-    if (typeof window === 'undefined') return false
-    const ua = (navigator?.userAgent || '').toLowerCase()
-    return Boolean(window.uxp) || ua.includes('uxp') || ua.includes('adobe')
+    console.log('🔄 [PS事件刷新] 注册PS保存事件监听器')
+
+    // 简化的PS事件处理函数
+    const handleSimplifiedPSEvent = async (event) => {
+      try {
+        // 检查组件是否仍然挂载
+        if (!isMountedRef.current) {
+          console.log('🚫 [PS保存事件] 组件已卸载，跳过处理')
+          return
+        }
+
+        console.log('🔄 [PS保存事件] 触发图片刷新')
+
+        // 简单通知SmartImage刷新
+        setRefreshTrigger(prev => prev + 1)
+        setAutoRefresh(prev => ({ ...prev, lastRefreshTime: Date.now() }))
+
+        // 显示用户友好的提示
+        showToast('图片已更新，正在刷新显示...', 'info', 2000)
+
+      } catch (error) {
+        console.error('❌ [PS事件处理] 处理失败:', error)
+        if (isMountedRef.current) {
+          showToast(`刷新失败: ${error.message}`, 'error', 3000)
+        }
+      }
+    }
+
+    // 注册事件监听器
+    const registered = registerPSEventListeners(handleSimplifiedPSEvent)
+
+    if (registered) {
+      console.log('✅ [PS事件刷新] PS事件监听器注册成功')
+      showToast('已启用PS保存自动刷新功能', 'success', 2000)
+    } else {
+      console.error('❌ [PS事件刷新] PS事件监听器注册失败')
+    }
+
+    // 清理函数：组件卸载时移除监听器
+    return () => {
+      console.log('🧹 [PS事件刷新] 移除事件监听器')
+      try {
+        unregisterPSEventListeners()
+        console.log('✅ [清理] PS事件监听器已移除')
+      } catch (cleanupError) {
+        console.error('❌ [清理] 清理过程中发生错误:', cleanupError)
+      }
+    }
+  }, [isUXP, autoRefresh.enabled, showToast])
+
+  // 组件卸载时的全局清理
+  useEffect(() => {
+    return () => {
+      console.log('🧹 [组件卸载] 执行最终清理')
+
+      // 标记组件已卸载，防止异步操作继续执行
+      isMountedRef.current = false
+
+      try {
+        // 确保所有内存资源都被释放
+        if (blobUrlsRef.current.size > 0) {
+          console.log(`[组件卸载] 发现 ${blobUrlsRef.current.size} 个未释放的Blob URL，正在清理...`)
+          for (const url of blobUrlsRef.current) {
+            try {
+              URL.revokeObjectURL(url)
+            } catch (error) {
+              console.error('释放Blob URL失败:', error)
+            }
+          }
+          blobUrlsRef.current.clear()
+          console.log('✅ [组件卸载] 所有Blob URL已释放')
+        }
+
+        // 最终的统计报告
+        console.log('📊 [组件卸载] 自动刷新已清理完成')
+
+      } catch (finalCleanupError) {
+        console.error('❌ [组件卸载] 最终清理失败:', finalCleanupError)
+      }
+    }
   }, [])
 
-  // 拖拽调试开关：localStorage.DEBUG_DRAG 为 '1' 或 'true' 时启用；或 window.__DEBUG_DRAG__ 为真
-  const DRAG_DEBUG = useMemo(() => {
-    if (typeof window === 'undefined') return false
-    try {
-      const flag = localStorage.getItem('DEBUG_DRAG')
-      if (flag && (flag === '1' || flag.toLowerCase() === 'true')) return true
-    } catch { void 0 }
-    return Boolean(window.__DEBUG_DRAG__)
-  }, [])
 
-  const debugEnabled = isUXP ? true : DRAG_DEBUG
   const debugBufferRef = useRef([])
   const pushDebug = (text) => {
     // 仅保存字符串，避免对象在不同环境中展示不一致
@@ -535,135 +837,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     pushDebug(line)
   }
 
-  // 计算可同步图片数量（确保唯一性）
-  const calculateSyncableCount = useCallback((imageList) => {
-    if (!Array.isArray(imageList) || imageList.length === 0) {
-      return {
-        totalCount: 0,
-        syncableCount: 0,
-        uniqueUrlCount: 0,
-        duplicates: [],
-        syncableImages: []
-      }
-    }
 
-    // 过滤出有PS文档关联的图片
-    const syncableImages = imageList.filter(img => img && img.psDocumentId)
-
-    // 检查唯一性：基于URL去重
-    const urlToImageMap = new Map()
-    const duplicateUrls = new Set()
-
-    syncableImages.forEach(img => {
-      if (urlToImageMap.has(img.url)) {
-        duplicateUrls.add(img.url)
-      } else {
-        urlToImageMap.set(img.url, img)
-      }
-    })
-
-    const uniqueUrlCount = urlToImageMap.size
-    const duplicates = Array.from(duplicateUrls)
-
-    const result = {
-      totalCount: imageList.length,
-      syncableCount: syncableImages.length,
-      uniqueUrlCount,
-      duplicates,
-      syncableImages: syncableImages.map(img => ({
-        id: img.id,
-        url: img.url.substring(0, 30) + '...',
-        psDocumentId: img.psDocumentId,
-        groupKey: img.groupKey
-      }))
-    }
-
-    // 调试日志
-    if (debugEnabled || isUXP) {
-      console.log('🔢 [calculateSyncableCount] 可同步图片统计:', result)
-      if (duplicates.length > 0) {
-        console.warn('⚠️ 发现重复的URL关联:', duplicates)
-      }
-    }
-
-    return result
-  }, [debugEnabled, isUXP])
-
-  // 获取当前调试信息
-  const getDebugInfo = useCallback(() => {
-    const syncableStats = calculateSyncableCount(waitImages)
-    const { syncableCount, uniqueUrlCount, duplicates, totalCount } = syncableStats
-
-    return {
-      基本信息: {
-        总图片数: waitImages.length,
-        有PS关联: waitImages.filter(img => img.psDocumentId).length,
-        原始关联数: syncableCount,
-        去重后关联数: uniqueUrlCount,
-        重复URL数: duplicates.length
-      },
-      分组统计: (() => {
-        const groups = {}
-        const groupKeys = new Set(waitImages.map(img => img.groupKey).filter(Boolean))
-        groupKeys.forEach(groupKey => {
-          const groupImages = waitImages.filter(img => img.groupKey === groupKey)
-          groups[groupKey] = {
-            总数: groupImages.length,
-            有PS关联: groupImages.filter(img => img.psDocumentId).length
-          }
-        })
-        return groups
-      })(),
-      重复URL列表: duplicates.map(url => url.substring(0, 50) + '...'),
-      环境信息: {
-        是UXP环境: isUXP,
-        调试模式: debugEnabled,
-        当前标签: activeTab
-      }
-    }
-  }, [waitImages, calculateSyncableCount, isUXP, debugEnabled, activeTab])
-
-  // 数据一致性验证函数
-  const verifyDataConsistency = useCallback(() => {
-    console.group('🔍 [数据一致性验证] 验证修复效果')
-
-    const stats = calculateSyncableCount(waitImages)
-    const { totalCount, syncableCount, uniqueUrlCount, duplicates } = stats
-
-    const verificationResult = {
-      时间戳: new Date().toLocaleTimeString(),
-      总图片数: totalCount,
-      原始PS关联数: syncableCount,
-      去重后关联数: uniqueUrlCount,
-      重复URL数: duplicates.length,
-      重复比例: totalCount > 0 ? ((syncableCount - uniqueUrlCount) / totalCount * 100).toFixed(1) + '%' : '0%',
-      修复状态: uniqueUrlCount === syncableCount ? '✅ 无重复' : `⚠️ 检测到${syncableCount - uniqueUrlCount}个重复关联`,
-      一对一关系: uniqueUrlCount === syncableCount ? '✅ 已确保' : '⚠️ 存在异常'
-    }
-
-    console.log('📊 数据一致性验证结果:', verificationResult)
-
-    // 详细的URL分析
-    if (duplicates.length > 0) {
-      console.log('🔍 重复URL详情:')
-      duplicates.forEach(url => {
-        const images = waitImages.filter(img => img.url === url && img.psDocumentId)
-        console.log(`- URL: ${url.substring(0, 40)}...`)
-        console.log(`  关联数: ${images.length}`)
-        console.log(`  PS文档ID: [${images.map(img => img.psDocumentId).join(', ')}]`)
-      })
-    }
-
-    // 建议
-    const recommendation = uniqueUrlCount === syncableCount
-      ? '✅ 数据状态正常，1:1对应关系已确保'
-      : `⚠️ 建议检查数据重建逻辑，确保唯一性`
-
-    console.log('💡 建议:', recommendation)
-    console.groupEnd()
-
-    return verificationResult
-  }, [waitImages, calculateSyncableCount])
 
 
   // 数据丢失检测和监控
@@ -773,200 +947,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     return currentStats
   }, [waitImages, isUpdating])
 
-  // 开发模式下自动验证和数据监控
-  useEffect(() => {
-    if ((debugEnabled || isUXP) && waitImages.length > 0 && !isUpdating) {
-      // 🔧 增加延迟验证，避免组件初始化时的误报警
-      const verificationTimeout = setTimeout(() => {
-        try {
-          // 数据一致性验证
-          const verification = verifyDataConsistency()
-
-          // 数据丢失检测
-          const lossDetection = dataLossDetector()
-
-          // 将验证结果存储到window对象，便于调试
-          if (typeof window !== 'undefined') {
-            window.__LAST_VERIFICATION__ = verification
-            window.__LAST_LOSS_DETECTION__ = lossDetection
-
-            // 提供调试工具函数
-            window.__DEBUG_TOOLS__ = {
-              showDataStats: () => console.log('数据统计:', window.__CURRENT_DATA_STATS__),
-              showDataHistory: () => console.log('数据历史:', window.__DATA_HISTORY__),
-              showLastVerification: () => console.log('最新验证:', window.__LAST_VERIFICATION__),
-              checkDataLoss: () => dataLossDetector(),
-              clearHistory: () => { window.__DATA_HISTORY__ = [] },
-              exportDebugInfo: () => ({
-                stats: window.__CURRENT_DATA_STATS__,
-                history: window.__DATA_HISTORY__,
-                verification: window.__LAST_VERIFICATION__,
-                lossDetection: window.__DATA_LOSS_DETECTED__,
-                timestamp: new Date().toISOString()
-              }),
-              // 🧪 测试功能：模拟用户逐个反向更新场景
-              simulateMultipleUpdates: async (testUrls = []) => {
-                console.group('🧪 [测试模拟] 开始模拟逐个反向更新场景')
-
-                const defaultTestUrls = [
-                  'https://test-server.com/test1.png',
-                  'https://test-server.com/test2.png',
-                  'https://test-server.com/test3.png'
-                ]
-
-                const urlsToTest = testUrls.length > 0 ? testUrls : defaultTestUrls
-
-                console.log('📥 测试参数:', {
-                  模拟URL数量: urlsToTest.length,
-                  当前图片数: waitImages.length,
-                  当前PS关联数: waitImages.filter(img => img.psDocumentId).length
-                })
-
-                // 记录测试前的状态
-                const beforeTest = dataLossDetector()
-                console.log('📊 测试前状态:', beforeTest)
-
-                // 找到每个分组的第一张图片进行模拟更新
-                const testTargets = []
-                const groups = new Set(waitImages.map(img => img.groupKey).filter(Boolean))
-                let urlIndex = 0
-
-                for (const groupKey of groups) {
-                  if (urlIndex >= urlsToTest.length) break
-
-                  const groupImages = waitImages.filter(img => img.groupKey === groupKey)
-                  if (groupImages.length > 0) {
-                    const firstImage = groupImages[0]
-                    const imageIndex = waitImages.indexOf(firstImage)
-
-                    if (imageIndex >= 0) {
-                      testTargets.push({
-                        imageIndex,
-                        originalUrl: firstImage.url,
-                        testUrl: urlsToTest[urlIndex],
-                        groupKey,
-                        originalPsId: firstImage.psDocumentId
-                      })
-                      urlIndex++
-                    }
-                  }
-                }
-
-                console.log('🎯 确定测试目标:', testTargets)
-
-                if (testTargets.length === 0) {
-                  console.warn('⚠️ 没有找到可用的测试目标')
-                  console.groupEnd()
-                  return
-                }
-
-                // 模拟更新操作的结果验证
-                let testResults = []
-
-                for (let i = 0; i < testTargets.length; i++) {
-                  const target = testTargets[i]
-                  console.log(`📝 模拟第${i+1}次更新:`, {
-                    分组: target.groupKey,
-                    图片索引: target.imageIndex,
-                    原始URL: target.originalUrl.substring(0, 30) + '...',
-                    测试URL: target.testUrl
-                  })
-
-                  // 模拟更新（直接修改状态，不调用真实的PS API）
-                  try {
-                    setWaitImages(prevImages => {
-                      const updated = [...prevImages]
-                      const mockDocumentId = 1000 + i // 模拟的文档ID
-
-                      updated[target.imageIndex] = {
-                        ...updated[target.imageIndex],
-                        url: target.testUrl,
-                        psDocumentId: mockDocumentId
-                      }
-
-                      console.log(`✅ 模拟更新第${i+1}次完成`)
-                      return updated
-                    })
-
-                    // 记录测试结果
-                    testResults.push({
-                      step: i + 1,
-                      target,
-                      success: true,
-                      timestamp: new Date().toISOString()
-                    })
-
-                    // 添加延迟模拟真实操作间隔
-                    await new Promise(resolve => setTimeout(resolve, 500))
-                  } catch (error) {
-                    console.error(`❌ 模拟更新第${i+1}次失败:`, error)
-                    testResults.push({
-                      step: i + 1,
-                      target,
-                      success: false,
-                      error: error.message,
-                      timestamp: new Date().toISOString()
-                    })
-                  }
-                }
-
-                // 等待状态更新完成
-                await new Promise(resolve => setTimeout(resolve, 1000))
-
-                // 验证测试结果
-                const afterTest = dataLossDetector()
-                console.log('📊 测试后状态:', afterTest)
-
-                const testSummary = {
-                  测试完成时间: new Date().toISOString(),
-                  执行的更新数: testResults.filter(r => r.success).length,
-                  失败的更新数: testResults.filter(r => !r.success).length,
-                  更新前PS关联数: beforeTest.PS关联数,
-                  更新后PS关联数: afterTest.PS关联数,
-                  关联数变化: afterTest.PS关联数 - beforeTest.PS关联数,
-                  测试结果: testResults,
-                  数据丢失检测: afterTest.PS关联数 >= beforeTest.PS关联数 ? '✅ 无数据丢失' : '❌ 检测到数据丢失'
-                }
-
-                console.log('🎯 测试总结:', testSummary)
-
-                // 将测试结果保存到全局变量
-                window.__LAST_TEST_RESULT__ = testSummary
-
-                console.groupEnd()
-                return testSummary
-              },
-              // 🔧 数据修复工具
-              repairData: () => {
-                console.log('🔧 尝试修复数据...')
-                // 触发数据重建
-                setWaitImages(prevImages => buildFlatWaitFromData(data, prevImages))
-                setTimeout(() => dataLossDetector(), 100)
-              }
-            }
-
-            console.log('🛠️ 调试工具已准备就绪，可在控制台使用:')
-            console.log('  📊 数据监控:')
-            console.log('    - window.__DEBUG_TOOLS__.showDataStats() // 显示数据统计')
-            console.log('    - window.__DEBUG_TOOLS__.checkDataLoss() // 检查数据丢失')
-            console.log('    - window.__DEBUG_TOOLS__.showDataHistory() // 显示历史记录')
-            console.log('  🧪 测试验证:')
-            console.log('    - window.__DEBUG_TOOLS__.simulateMultipleUpdates() // 模拟逐个更新')
-            console.log('    - window.__DEBUG_TOOLS__.simulateMultipleUpdates([url1, url2, url3]) // 自定义URL测试')
-            console.log('  🔧 数据管理:')
-            console.log('    - window.__DEBUG_TOOLS__.repairData() // 修复数据')
-            console.log('    - window.__DEBUG_TOOLS__.exportDebugInfo() // 导出调试信息')
-            console.log('    - window.__DEBUG_TOOLS__.clearHistory() // 清空历史记录')
-            console.log('  ℹ️ 提示: 测试完成后可查看 window.__LAST_TEST_RESULT__ 获取测试结果')
-          }
-        } catch (error) {
-          console.error('数据验证失败:', error)
-        }
-      }, 2000) // 🔧 增加延迟到2秒，避免初始化时误报
-
-      return () => clearTimeout(verificationTimeout)
-    }
-  }, [waitImages.length, debugEnabled, isUXP, verifyDataConsistency, isUpdating, dataLossDetector])
 
   // 能力探测：Pointer 事件支持情况
   const supportsPointer = useMemo(() => {
@@ -1155,10 +1135,32 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   }, [])
 
   // 打开图片预览（type 对应到扁平 waitImages 或 originImages）
-  const openPreview = useCallback((type, index) => {
+  const openPreview = useCallback(async (type, index) => {
     const list = type === 'origin' ? originImages : waitImages
     if (!list || list.length === 0) return
-    setPreviewList(list.map(i => i.url))
+
+    console.log(`🖼️ 正在准备预览: ${type}, ${list.length}张图片`)
+
+    // 仅获取本地图片URL，不回退到云端URL
+    const previewUrls = await Promise.all(
+      list.map(async (item) => {
+        try {
+          const localUrl = await localImageManager.getLocalImageDisplayUrl(item.id)
+          if (localUrl) {
+            console.log(`🖼️ 预览使用本地图片: ${item.id}`)
+            return localUrl
+          } else {
+            console.log(`❌ 预览未找到本地图片: ${item.id}`)
+            return null
+          }
+        } catch (error) {
+          console.warn(`预览图片获取失败 ${item.id}:`, error)
+          return null
+        }
+      })
+    )
+
+    setPreviewList(previewUrls)
     setPreviewIndex(index)
     setIsPreviewOpen(true)
   }, [originImages, waitImages])
@@ -1317,347 +1319,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     }
   }
 
-  // 批量从PS画布更新图片功能（增强防护机制）
-  const handleBatchUpdateFromCanvas = async () => {
-    console.group('🔄 [批量更新] 开始批量从PS画布更新图片')
-
-    // 检查UXP环境
-    if (!isUXP) {
-      console.log('❌ UXP环境检查失败')
-      showToast('此功能仅在UXP环境中可用', 'warning')
-      console.groupEnd()
-      return
-    }
-
-    // 使用新的计算函数获取精确的同步信息
-    const syncableStats = calculateSyncableCount(waitImages)
-    const { syncableCount, uniqueUrlCount, duplicates, syncableImages } = syncableStats
-
-    console.log('📊 批量更新前统计:', {
-      原始关联数量: syncableCount,
-      去重后数量: uniqueUrlCount,
-      重复URL数量: duplicates.length,
-      详细信息: syncableStats
-    })
-
-    // 防护机制1：检查是否有可同步的图片
-    if (uniqueUrlCount === 0) {
-      console.log('❌ 没有找到可同步的图片')
-      showToast('没有找到已同步到PS的图片', 'warning')
-      console.groupEnd()
-      return
-    }
-
-    // 防护机制2：去重处理，确保每个URL只处理一次
-    const uniqueSyncableImages = []
-    const processedUrls = new Set()
-
-    waitImages.forEach((img, index) => {
-      if (img.psDocumentId && !processedUrls.has(img.url)) {
-        uniqueSyncableImages.push({
-          ...img,
-          originalIndex: index
-        })
-        processedUrls.add(img.url)
-      }
-    })
-
-    console.log('🔧 去重后的同步列表:', {
-      去重前数量: waitImages.filter(img => img.psDocumentId).length,
-      去重后数量: uniqueSyncableImages.length,
-      处理的URL: Array.from(processedUrls).map(url => url.substring(0, 30) + '...')
-    })
-
-    // 设置批量更新状态
-    setIsBatchUpdating(true)
-    setBatchUpdateProgress('正在检查PS文档状态...')
-    setBatchUpdateStats({ total: uniqueSyncableImages.length, completed: 0, failed: 0 })
-    setPSError(null)
-
-    try {
-      // 获取当前所有打开的PS文档
-      const openDocuments = await getOpenDocuments()
-      console.log('📋 当前打开的PS文档:', openDocuments.length, '个')
-
-      // 防护机制3：验证PS文档是否仍然存在
-      const validMappings = uniqueSyncableImages.filter(img =>
-        openDocuments.some(doc => doc.id === img.psDocumentId)
-      )
-
-      // 记录无效的文档关联
-      const invalidMappings = uniqueSyncableImages.filter(img =>
-        !openDocuments.some(doc => doc.id === img.psDocumentId)
-      )
-
-      console.log('📋 文档映射验证结果:', {
-        有效映射: validMappings.length,
-        无效映射: invalidMappings.length,
-        无效的文档ID: invalidMappings.map(img => img.psDocumentId)
-      })
-
-      if (validMappings.length === 0) {
-        const errorMsg = invalidMappings.length > 0
-          ? `没有找到对应的PS文档，${invalidMappings.length} 个文档已关闭或不存在`
-          : '没有找到对应的PS文档，请确保相关文档仍然打开'
-
-        console.log('❌', errorMsg)
-        throw new Error(errorMsg)
-      }
-
-      if (invalidMappings.length > 0) {
-        console.warn(`⚠️ ${invalidMappings.length} 个文档关联无效，将跳过处理`)
-      }
-
-      console.log('✅ 找到有效文档映射:', validMappings.length, '个')
-      setBatchUpdateProgress(`准备更新 ${validMappings.length} 张图片...`)
-
-      let completed = 0
-      let failed = 0
-      const newWaitImages = [...waitImages]
-
-      // 防护机制4：逐个处理，添加详细的错误处理和批量更新逻辑
-      for (const [index, imgData] of validMappings.entries()) {
-        try {
-          console.log(`🔄 处理第 ${index + 1}/${validMappings.length} 张图片:`, {
-            id: imgData.id,
-            url: imgData.url.substring(0, 40) + '...',
-            psDocumentId: imgData.psDocumentId,
-            originalIndex: imgData.originalIndex
-          })
-
-          setBatchUpdateProgress(`正在更新第 ${completed + 1}/${validMappings.length} 张图片...`)
-
-          // 导出指定文档的画布并获取新URL
-          const newUrl = await exportDocumentById(
-            imgData.psDocumentId,
-            {
-              filename: `batch-update-${imgData.id}-${Date.now()}.png`,
-              onStepChange: (step) => {
-                setBatchUpdateProgress(`第 ${completed + 1}/${validMappings.length} 张: ${step}`)
-              }
-            },
-            data.applyCode,
-            data.userId,
-            data.userCode
-          )
-
-          // 防护机制5：验证导出结果
-          if (newUrl && typeof newUrl === 'string' && newUrl.length > 0) {
-            // 🔧 关键修复：批量更新所有相同URL的图片
-            const originalUrl = imgData.url
-            const imagesToUpdate = []
-
-            // 找到所有相同URL的图片（包括原始图片）
-            newWaitImages.forEach((img, imgIndex) => {
-              if (img.url === originalUrl) {
-                imagesToUpdate.push({
-                  index: imgIndex,
-                  image: img
-                })
-              }
-            })
-
-            console.log(`📋 找到 ${imagesToUpdate.length} 张相同URL的图片需要更新:`, {
-              原始URL: originalUrl.substring(0, 30) + '...',
-              新URL: newUrl.substring(0, 30) + '...',
-              图片索引: imagesToUpdate.map(item => item.index),
-              图片ID: imagesToUpdate.map(item => item.image.id)
-            })
-
-            // 批量更新所有相同URL的图片
-            imagesToUpdate.forEach(({ index: imgIndex, image }) => {
-              newWaitImages[imgIndex] = {
-                ...image,
-                url: newUrl,
-                // 保持原有的PS关联（只有第一张图片有psDocumentId）
-                psDocumentId: image.psDocumentId
-              }
-            })
-
-            completed += imagesToUpdate.length // 更新统计，反映实际更新的图片数量
-
-            console.log(`✅ 成功批量更新 ${imagesToUpdate.length} 张图片:`, {
-              原始URL: originalUrl.substring(0, 30) + '...',
-              新URL: newUrl.substring(0, 30) + '...',
-              psDocumentId: imgData.psDocumentId,
-              更新的索引: imagesToUpdate.map(item => item.index)
-            })
-          } else {
-            throw new Error(`获取到的图片URL无效: ${newUrl}`)
-          }
-
-        } catch (error) {
-          console.error(`❌ 更新图片 ${imgData.id} 失败:`, error)
-          failed++
-        }
-
-        // 更新统计信息（注意：completed现在反映实际更新的图片总数）
-        setBatchUpdateStats({ total: validMappings.length, completed: Math.min(completed, waitImages.length), failed })
-      }
-
-      // 防护机制6：最终数据一致性验证
-      if (completed > 0) {
-        console.log('💾 准备更新本地状态和父组件数据...')
-
-        // 验证更新后的数据一致性
-        const finalStats = calculateSyncableCount(newWaitImages)
-        console.log('📊 更新后数据验证:', {
-          更新前关联数: syncableStats.uniqueUrlCount,
-          成功更新数: completed,
-          更新后关联数: finalStats.uniqueUrlCount,
-          数据一致性: finalStats.uniqueUrlCount >= syncableStats.uniqueUrlCount ? '✅ 正常' : '⚠️ 异常'
-        })
-
-        setWaitImages(newWaitImages)
-
-        // 🔧 修复：构建完整的父组件数据，避免状态覆盖
-        console.log('📤 开始构建完整的父组件数据同步...')
-
-        // 获取所有受影响的分组
-        const affectedGroups = new Set(validMappings.map(img => img.groupKey).filter(Boolean))
-        console.log('📋 受影响的分组:', Array.from(affectedGroups))
-
-        // 构建完整的publishSkus数据，确保包含所有分组的最新状态
-        const completePublishSkus = []
-        let hasSceneImages = false
-        const completeSceneImages = []
-
-        // 遍历所有可能的分组，构建完整的SKU和场景图数据
-        const allGroups = new Set(newWaitImages.map(img => img.groupKey).filter(Boolean))
-        const skuGroups = Array.from(allGroups).filter(key => key.startsWith('sku-')).sort()
-
-        console.log('🏷️  检测到的所有分组:', {
-          SKU分组: skuGroups,
-          是否有场景图: allGroups.has('scene'),
-          受影响分组: Array.from(affectedGroups)
-        })
-
-        // 为每个SKU分组构建数据
-        skuGroups.forEach((currentGroupKey) => {
-          const currentSkuIdx = parseSkuIndexFromKey(currentGroupKey)
-          if (currentSkuIdx != null) {
-            // 从更新后的waitImages中获取该分组的所有图片
-            const groupUrls = newWaitImages.filter(img => img?.groupKey === currentGroupKey).map(img => ({
-              url: img.url,
-              psDocumentId: img.psDocumentId
-            }))
-
-            // 从原始数据中获取分组信息，如果没有则创建默认
-            const originalSku = (data.publishSkus || [])[currentSkuIdx] || {
-              attrClasses: [{ attrName: "颜色款式", attrValue: `分组${currentSkuIdx + 1}` }],
-              skuIndex: currentSkuIdx + 1
-            }
-
-            completePublishSkus[currentSkuIdx] = {
-              ...originalSku,
-              skuImages: groupUrls.map((item, idx) => ({
-                index: idx,
-                imageUrl: item.url,
-                psDocumentId: item.psDocumentId
-              }))
-            }
-
-            console.log(`📋 构建分组 ${currentGroupKey} 数据:`, {
-              skuIndex: currentSkuIdx,
-              imageCount: groupUrls.length,
-              withPsId: groupUrls.filter(item => item.psDocumentId).length,
-              isAffected: affectedGroups.has(currentGroupKey)
-            })
-          }
-        })
-
-        // 填充其他未在waitImages中出现的SKU（保持原始数据）
-        ;(data.publishSkus || []).forEach((sku, index) => {
-          if (!completePublishSkus[index]) {
-            completePublishSkus[index] = sku
-          }
-        })
-
-        // 处理场景图
-        if (allGroups.has('scene')) {
-          hasSceneImages = true
-          const sceneUrls = newWaitImages.filter(img => img?.groupKey === 'scene').map(img => ({
-            url: img.url,
-            psDocumentId: img.psDocumentId
-          }))
-
-          completeSceneImages.push(...sceneUrls.map((item, idx) => ({
-            index: idx,
-            imageUrl: item.url,
-            psDocumentId: item.psDocumentId
-          })))
-
-          console.log('📋 构建场景图数据:', {
-            imageCount: completeSceneImages.length,
-            withPsId: completeSceneImages.filter(item => item.psDocumentId).length,
-            isAffected: affectedGroups.has('scene')
-          })
-        }
-
-        // 🔧 关键修复：只调用一次onReorder，传递完整的数据结构
-        const updateData = {}
-        if (completePublishSkus.length > 0) {
-          updateData.publishSkus = completePublishSkus
-        }
-        if (hasSceneImages) {
-          updateData.senceImages = completeSceneImages
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          console.log('🚀 执行单次父组件数据同步:', {
-            包含SKU数据: !!updateData.publishSkus,
-            包含场景图数据: !!updateData.senceImages,
-            SKU总数: updateData.publishSkus?.length || 0,
-            场景图总数: updateData.senceImages?.length || 0,
-            受影响分组数: affectedGroups.size
-          })
-
-          onReorder && onReorder(data.id ?? data.applyCode, updateData)
-          uploadLog('已同步父组件完整数据（批量更新）:', {
-            受影响分组: Array.from(affectedGroups),
-            更新数量: completed
-          })
-          console.log('✅ 父组件数据同步完成，避免了状态覆盖问题')
-        } else {
-          console.warn('⚠️ 没有需要同步的数据')
-        }
-
-        console.log('✅ 数据同步完成')
-      }
-
-      // 显示结果并记录最终统计
-      const finalResult = {
-        请求更新: uniqueSyncableImages.length,
-        有效文档: validMappings.length,
-        成功更新: completed,
-        更新失败: failed,
-        跳过无效: invalidMappings.length
-      }
-
-      console.log('📊 批量更新最终统计:', finalResult)
-
-      if (failed === 0) {
-        showToast(`批量更新完成！成功更新 ${completed} 张图片`, 'success')
-        setBatchUpdateProgress(`更新完成：${completed} 张成功`)
-        console.log('🎉 批量更新全部成功')
-      } else {
-        showToast(`批量更新完成：成功 ${completed} 张，失败 ${failed} 张`, 'warning')
-        setBatchUpdateProgress(`更新完成：${completed} 张成功，${failed} 张失败`)
-        console.warn(`⚠️ 批量更新部分失败: ${completed} 成功, ${failed} 失败`)
-      }
-
-    } catch (error) {
-      console.error('❌ 批量更新过程发生错误:', error)
-      const errorMsg = error.message || '批量更新时发生未知错误'
-      setPSError(errorMsg)
-      showToast(`批量更新失败: ${errorMsg}`, 'error')
-      setBatchUpdateProgress('更新失败')
-    } finally {
-      setIsBatchUpdating(false)
-      console.log('🏁 批量更新流程结束')
-      console.groupEnd()
-    }
-  }
 
   // 处理拖拽图片到Photoshop画布（恢复直接调用）
   const handleDragToPhotoshop = async (imageUrl, imageIndex) => {
@@ -1886,12 +1547,13 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         const imageInfo = {
           type: 'remote',
           url: imageUrl,
-          filename: `image_${imageIndex + 1}.jpg`
+          filename: `image_${imageIndex + 1}.jpg`,
+          imageId: currentImage.id // 添加图片ID用于反向同步映射
         }
         console.log('📦 构造的图片信息:', imageInfo)
 
-        console.log('🚀 调用 placeImageInPS...')
-        documentId = await placeImageInPS(imageInfo)
+        console.log('🚀 调用 placeImageInPS (直接打开模式)...')
+        documentId = await placeImageInPS(imageInfo, { directOpen: true })
         console.log('✅ placeImageInPS 执行完成，返回值:', documentId, '(类型:', typeof documentId, ')')
 
         // 严格验证 documentId
@@ -2065,6 +1727,52 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     try {
       showToast(`开始批量同步 ${uniqueUrlCount} 个唯一URL到PS（将更新 ${totalImages} 张图片）...`, 'info')
 
+      // 🔍 检查本地图片可用性并提供用户反馈
+      let localImageCount = 0
+      console.log('🔍 [批量同步] 开始检查本地图片可用性...')
+
+      for (const { representativeIndex } of uniqueUrls) {
+        const item = waitImages[representativeIndex]
+        if (item && item.id) {
+          // 首先尝试直接ID匹配，然后尝试URL匹配
+          const hasLocalById = localImageManager.hasLocalImage(item.id)
+          const hasLocalByUrl = await localImageManager.getLocalImageDisplayUrlByUrl(item.url) !== null
+          const hasLocal = hasLocalById || hasLocalByUrl
+
+          const imageInfo = localImageManager.getImageInfo(item.id)
+
+          console.log(`📋 图片 ${item.id}:`, {
+            hasLocalById,
+            hasLocalByUrl,
+            hasLocal,
+            status: imageInfo?.status || 'not-found',
+            url: item.url.substring(0, 40) + '...'
+          })
+
+          if (hasLocal) {
+            localImageCount++
+          }
+        } else {
+          console.warn(`⚠️ 图片信息无效:`, { representativeIndex, item })
+        }
+      }
+
+      // 📊 汇总检测结果
+      console.log('📊 [批量同步] 本地图片检测汇总:', {
+        totalUrls: uniqueUrlCount,
+        localAvailable: localImageCount,
+        cloudOnly: uniqueUrlCount - localImageCount,
+        optimizationRate: ((localImageCount / uniqueUrlCount) * 100).toFixed(1) + '%'
+      })
+
+      if (localImageCount > 0) {
+        console.log(`📁 本地图片优化: ${localImageCount}/${uniqueUrlCount} 张图片可使用本地缓存`)
+        showToast(`启用本地图片优先策略: ${localImageCount}/${uniqueUrlCount} 张图片将从本地加载`, 'success')
+      } else {
+        console.log(`🌐 所有图片将从云端下载`)
+        showToast(`所有图片将从云端下载 (无本地缓存)`, 'info')
+      }
+
       // 🔧 按唯一URL创建PS文档
       for (let i = 0; i < uniqueUrls.length; i++) {
         const { url, representativeIndex } = uniqueUrls[i]
@@ -2094,11 +1802,12 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
             const imageInfo = {
               type: 'remote',
               url: url,
-              filename: `batch_unique_${i + 1}.jpg`
+              filename: `batch_unique_${i + 1}.jpg`,
+              imageId: representativeItem.id // 添加图片ID启用本地图片优先策略
             }
 
-            console.log(`🎯 创建新PS文档...`)
-            documentId = await placeImageInPS(imageInfo)
+            console.log(`🎯 创建新PS文档... (图片ID: ${representativeItem.id}, 启用本地优先策略，使用直接打开模式)`)
+            documentId = await placeImageInPS(imageInfo, { directOpen: true })
             console.log(`✅ PS文档创建成功，文档ID: ${documentId}`)
 
             // 验证documentId有效性
@@ -2159,10 +1868,12 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
       console.log('📊 批量同步最终统计:', finalResult)
 
+      const localOptimizationInfo = localImageCount > 0 ? ` (${localImageCount} 张使用本地缓存)` : ' (全部从云端下载)'
+
       if (failDocuments === 0) {
-        showToast(`批量同步完成！创建 ${successDocuments} 个PS文档，更新 ${successImages} 张图片`, 'success')
+        showToast(`批量同步完成！创建 ${successDocuments} 个PS文档，更新 ${successImages} 张图片${localOptimizationInfo}`, 'success')
       } else {
-        showToast(`批量同步完成：成功 ${successDocuments} 个文档，失败 ${failDocuments} 个，更新 ${successImages} 张图片`, 'warning')
+        showToast(`批量同步完成：成功 ${successDocuments} 个文档，失败 ${failDocuments} 个，更新 ${successImages} 张图片${localOptimizationInfo}`, 'warning')
       }
 
       // 同步完成后退出选择模式
@@ -2638,7 +2349,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
           {images.map((item, index) => (
             <div
               key={item.id}
-              className="image-item no-drag"
+              className="todo-image-item no-drag"
               onClick={() => { if (suppressClickRef.current) return; openPreview('origin', index) }}
             >
               {isUXP && (
@@ -2655,12 +2366,14 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                   </button>
                 </>
               )}
-              <img
-                src={item.url}
+              <SmartImage
+                imageId={item.id}
+                originalUrl={item.url}
                 alt={`原图 ${index + 1}`}
                 loading="lazy"
                 decoding="async"
                 draggable={false}
+                refreshTrigger={refreshTrigger}
               />
               <div className="image-error" style={{display: 'none'}}>
                 <span>图片加载失败</span>
@@ -2725,10 +2438,11 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     onToggleSelection={toggleImageSelection}
+                    refreshTrigger={refreshTrigger}
                   />
                 )
               })}
-              <div className="image-item no-drag upload-tile" key={`upload-${key}`}>
+              <div className="todo-image-item no-drag upload-tile" key={`upload-${key}`}>
                 <UploadToS3
                   applyCode={data.applyCode}
                   userId={data.userId}
@@ -2748,16 +2462,30 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   return (
     <div className={`todo-modal${isUXP ? ' uxp-mode' : ''}${draggedIndex != null ? ' is-dragging' : ''}`}>
       <div className="todo-content">
-        {/* 右上角关闭按钮 */}
-        <button
-          className="close-btn"
-          onClick={() => {
-            // 🔧 关闭时清理历史数据
-            clearDataHistory()
-            console.log('✅ 组件关闭（X按钮），已清理历史数据')
-            onClose()
-          }}
-        >×</button>
+        {/* 右上角关闭按钮和状态指示器 */}
+        <div className="header-controls">
+          {/* 自动刷新状态指示器 */}
+          {isUXP && (
+            <div className={`auto-refresh-indicator ${autoRefresh.enabled ? 'enabled' : 'disabled'}`}>
+              <span className="refresh-icon">
+                {autoRefresh.enabled ? '🔄' : '⏸️'}
+              </span>
+              <span className="refresh-text">
+                {autoRefresh.enabled ? '自动刷新' : '已暂停'}
+              </span>
+            </div>
+          )}
+
+          <button
+            className="close-btn"
+            onClick={() => {
+              // 🔧 关闭时清理历史数据
+              clearDataHistory()
+              console.log('✅ 组件关闭（X按钮），已清理历史数据')
+              onClose()
+            }}
+          >×</button>
+        </div>
 
         {/* 无数据时显示简单提示 */}
         {data && (
@@ -2778,88 +2506,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               </div>
             </div>
 
-            {/* 调试信息面板 - 只在开发环境或UXP环境显示 */}
-            {(debugEnabled || isUXP) && (
-              <div className="debug-panel">
-                <div className="debug-header">
-                  <button
-                    className={`debug-toggle ${showDebugPanel ? 'active' : ''}`}
-                    onClick={() => setShowDebugPanel(!showDebugPanel)}
-                    title={showDebugPanel ? '收起调试信息' : '展开调试信息'}
-                  >
-                    <span className="debug-icon">{showDebugPanel ? '▼' : '▶'}</span>
-                    调试信息
-                  </button>
-                </div>
-                {showDebugPanel && (
-                  <div className="debug-content">
-                    {(() => {
-                      const debugInfo = getDebugInfo()
-                      return (
-                        <div className="debug-sections">
-                          {/* 基本信息 */}
-                          <div className="debug-section">
-                            <h4>基本信息</h4>
-                            <div className="debug-items">
-                              {Object.entries(debugInfo.基本信息).map(([key, value]) => (
-                                <div key={key} className="debug-item">
-                                  <span className="debug-key">{key}:</span>
-                                  <span className="debug-value">{value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 分组统计 */}
-                          {Object.keys(debugInfo.分组统计).length > 0 && (
-                            <div className="debug-section">
-                              <h4>分组统计</h4>
-                              <div className="debug-items">
-                                {Object.entries(debugInfo.分组统计).map(([groupKey, stats]) => (
-                                  <div key={groupKey} className="debug-item">
-                                    <span className="debug-key">{groupKey}:</span>
-                                    <span className="debug-value">
-                                      总数{stats.总数} / PS关联{stats.有PS关联}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 重复URL列表 */}
-                          {debugInfo.重复URL列表.length > 0 && (
-                            <div className="debug-section">
-                              <h4>重复URL ({debugInfo.重复URL列表.length}个)</h4>
-                              <div className="debug-items">
-                                {debugInfo.重复URL列表.map((url, index) => (
-                                  <div key={index} className="debug-item url-item">
-                                    <span className="debug-value">{url}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 环境信息 */}
-                          <div className="debug-section">
-                            <h4>环境信息</h4>
-                            <div className="debug-items">
-                              {Object.entries(debugInfo.环境信息).map(([key, value]) => (
-                                <div key={key} className="debug-item">
-                                  <span className="debug-key">{key}:</span>
-                                  <span className="debug-value">{String(value)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* 批量操作控制栏 - 只在待处理图片tab且有图片时显示 */}
             {activeTab === 'wait' && waitImages.length > 0 && isUXP && (
@@ -2897,96 +2543,6 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
               </div>
             )}
 
-            {/* 一键更新PS画布按钮 */}
-            {isUXP && activeTab === 'wait' && (() => {
-              const syncableStats = calculateSyncableCount(waitImages)
-              const { syncableCount, uniqueUrlCount, duplicates, totalCount } = syncableStats
-
-              // 使用唯一URL数量作为实际可同步数量
-              const actualSyncableCount = uniqueUrlCount
-
-              // 增强的调试信息
-              console.log('🔄 [批量更新按钮] 可同步图片统计:', {
-                isUXP,
-                activeTab,
-                totalImages: totalCount,
-                rawSyncableCount: syncableCount,
-                uniqueSyncableCount: actualSyncableCount,
-                hasDuplicates: duplicates.length > 0,
-                duplicateUrls: duplicates,
-                detailedStats: syncableStats
-              });
-
-              // 如果没有可同步的图片，显示调试信息
-              if (actualSyncableCount === 0 && totalCount > 0) {
-                return (
-                  <div className="batch-update-section" style={{ background: '#fff3cd', border: '1px solid #ffeaa7' }}>
-                    <div style={{ fontSize: '12px', color: '#856404', textAlign: 'center' }}>
-                      请先将图片同步到PS画布以建立关联关系
-                    </div>
-                  </div>
-                );
-              }
-
-              // 如果有重复关联，显示警告信息（生产环境中隐藏调试详情）
-              if (duplicates.length > 0 && actualSyncableCount > 0) {
-                return (
-                  <div className="batch-update-section">
-                    <div
-                      className={`action-btn special ${isBatchUpdating ? 'disabled updating' : ''}`}
-                      onClick={isBatchUpdating ? undefined : handleBatchUpdateFromCanvas}
-                      title={isBatchUpdating ? batchUpdateProgress : `一键将已同步的 ${actualSyncableCount} 张图片从PS画布更新回插件`}
-                    >
-                      {isBatchUpdating ? (
-                        <>
-                          <span className="update-icon">⟳</span>
-                          更新中...
-                          {batchUpdateStats.total > 0 && (
-                            <small>({batchUpdateStats.completed}/{batchUpdateStats.total})</small>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <span className="update-icon">⬇</span>
-                          一键更新PS画布 ({actualSyncableCount}张)
-                        </>
-                      )}
-                    </div>
-                    {isBatchUpdating && batchUpdateProgress && (
-                      <div className="progress-text">{batchUpdateProgress}</div>
-                    )}
-                  </div>
-                );
-              }
-
-              return actualSyncableCount > 0 && (
-                <div className="batch-update-section">
-                  <div
-                    className={`action-btn special ${isBatchUpdating ? 'disabled updating' : ''}`}
-                    onClick={isBatchUpdating ? undefined : handleBatchUpdateFromCanvas}
-                    title={isBatchUpdating ? batchUpdateProgress : `一键将已同步的 ${actualSyncableCount} 张图片从PS画布更新回插件`}
-                  >
-                    {isBatchUpdating ? (
-                      <>
-                        <span className="update-icon">⟳</span>
-                        更新中...
-                        {batchUpdateStats.total > 0 && (
-                          <small>({batchUpdateStats.completed}/{batchUpdateStats.total})</small>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <span className="update-icon">⬇</span>
-                        一键更新PS画布 ({actualSyncableCount}张)
-                      </>
-                    )}
-                  </div>
-                  {isBatchUpdating && batchUpdateProgress && (
-                    <div className="progress-text">{batchUpdateProgress}</div>
-                  )}
-                </div>
-              )
-            })()}
 
             {/* 图片展示区域 */}
             <div className="todo-images">
@@ -3047,11 +2603,30 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                 </>
               )}
               <div className="preview-image-wrap">
-                <img
-                  className="preview-image"
-                  src={previewList[previewIndex]}
-                  alt={`预览 ${previewIndex + 1}`}
-                />
+                {previewList[previewIndex] ? (
+                  <img
+                    className="preview-image"
+                    src={previewList[previewIndex]}
+                    alt={`预览 ${previewIndex + 1}`}
+                  />
+                ) : (
+                  <div
+                    className="preview-image-placeholder"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: '#f5f5f5',
+                      border: '2px dashed #ccc',
+                      color: '#999',
+                      fontSize: '16px',
+                      minHeight: '300px',
+                      width: '100%'
+                    }}
+                  >
+                    📁 本地图片未找到
+                  </div>
+                )}
               </div>
             </div>
           </div>

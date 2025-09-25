@@ -60,7 +60,7 @@ module.exports = (env, argv) => {
 					terserOptions: {
 						compress: {
 							// 删除 console/debugger 以及开发辅助代码
-							drop_console: true,
+							drop_console: false, // 保留console.log用于调试
 							drop_debugger: true,
 							passes: 2,
 						},

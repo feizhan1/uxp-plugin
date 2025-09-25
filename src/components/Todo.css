@@ -39,10 +39,84 @@
   font-size: 18px;
 }
 
-.close-btn {
+/* 头部控件容器 */
+.header-controls {
   position: absolute;
   top: 9px;
   right: 9px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+}
+
+/* 反向同步状态指示器 */
+.reverse-sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.reverse-sync-indicator.enabled {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.reverse-sync-indicator.enabled.listening {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.3);
+  animation: pulse-sync 2s infinite;
+}
+
+.reverse-sync-indicator.disabled {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.sync-icon {
+  font-size: 12px;
+}
+
+.sync-text {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sync-count {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: inherit;
+}
+
+@keyframes pulse-sync {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+.close-btn {
   background: none;
   border: none;
   font-size: 24px;
@@ -158,7 +232,7 @@
   margin-right: 8px;
 }
 
-.image-item {
+.todo-image-item {
   flex: 0 0 calc(33.333% - 12px);
   margin: 6px;
   border: 1px solid #eee;
@@ -173,38 +247,38 @@
 }
 
 /* UXP 兼容：通过伪元素占位确保 1:1 比例 */
-.image-item::before {
+.todo-image-item::before {
   content: '';
   display: block;
   padding-top: 100%;
 }
 
-.image-item:active {
+.todo-image-item:active {
   cursor: grabbing;
 }
 
-.image-item:hover {
+.todo-image-item:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* 防止按钮悬停时导致容器hover状态变化 */
-.image-item:hover .ps-drag-btn,
-.image-item:hover .delete-btn {
+.todo-image-item:hover .ps-drag-btn,
+.todo-image-item:hover .delete-btn {
   /* 确保按钮悬停时不影响父容器的hover状态 */
   pointer-events: auto;
   color: #fff;
 }
 
 /* 拖拽状态样式 */
-.image-item.dragging {
+.todo-image-item.dragging {
   opacity: 0.5;
   transform: rotate(5deg) scale(0.95);
   z-index: 1000;
   cursor: grabbing;
 }
 
-.image-item.drag-over {
+.todo-image-item.drag-over {
   border-color: var(--theme-color);
   border-width: 2px;
   transform: scale(1.05);
@@ -229,11 +303,11 @@
   pointer-events: none;
 }
 
-.image-item:hover .drag-hint {
+.todo-image-item:hover .drag-hint {
   opacity: 1;
 }
 
-.image-item img {
+.todo-image-item img {
   position: absolute;
   top: 0;
   right: 0;
@@ -293,16 +367,16 @@
 }
 
 
-.image-item.no-drag {
+.todo-image-item.no-drag {
   cursor: default;
 }
 
-.image-item.no-drag:hover {
+.todo-image-item.no-drag:hover {
   transform: none;
   box-shadow: none;
 }
 
-.image-item.no-drag .drag-hint {
+.todo-image-item.no-drag .drag-hint {
   display: none;
 }
 
@@ -332,8 +406,8 @@
 }
 
 /* 优化悬停检测，防止按钮闪动 */
-.image-item:hover .delete-btn,
-.image-item .delete-btn:hover,
+.todo-image-item:hover .delete-btn,
+.todo-image-item .delete-btn:hover,
 .delete-btn:focus {
   opacity: 1;
   pointer-events: auto;
@@ -380,8 +454,8 @@
 }
 
 /* 使用更稳定的悬停检测，避免闪动 */
-.image-item:hover .ps-drag-btn,
-.image-item .ps-drag-btn:hover,
+.todo-image-item:hover .ps-drag-btn,
+.todo-image-item .ps-drag-btn:hover,
 .ps-drag-btn:focus {
   opacity: 1;
   pointer-events: auto;
@@ -588,7 +662,7 @@
 .todo-content,
 .todo-images,
 .image-grid,
-.image-item {
+.todo-image-item {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
@@ -596,7 +670,7 @@
   touch-action: none; /* 防止触控下滚动干扰 Pointer 拖拽 */
 }
 
-.image-item img {
+.todo-image-item img {
   -webkit-user-drag: none; /* 禁止原生拖动图片 */
 }
 
@@ -629,21 +703,21 @@
 }
 
 /* UXP 模式下，尽量减少视觉动效对几何计算的干扰 */
-.todo-modal.uxp-mode .image-item {
+.todo-modal.uxp-mode .todo-image-item {
   transition: none; /* 禁止 hover 的 transform 动画 */
 }
 
-.todo-modal.uxp-mode .image-item:hover {
+.todo-modal.uxp-mode .todo-image-item:hover {
   transform: none; /* 取消 hover 上移 */
   box-shadow: none; /* 取消阴影 */
 }
 
-.todo-modal.uxp-mode .image-item.drag-over {
+.todo-modal.uxp-mode .todo-image-item.drag-over {
   transform: none; /* 保持几何不变，避免 getBoundingClientRect 偏差 */
   box-shadow: 0 0 0 2px rgba(var(--theme-rgb), 0.2);
 }
 
-.todo-modal.uxp-mode .image-item.dragging {
+.todo-modal.uxp-mode .todo-image-item.dragging {
   transform: none;
 }
 
@@ -653,7 +727,7 @@
 }
 
 /* 仅在 UXP 模式下，进一步避免任何 hover 提示 */
-.todo-modal.uxp-mode.is-dragging .image-item:hover .drag-hint {
+.todo-modal.uxp-mode.is-dragging .todo-image-item:hover .drag-hint {
   display: none !important;
 }
 
@@ -697,13 +771,13 @@
 }
 
 /* 选中状态的图片样式 */
-.image-item.selected {
+.todo-image-item.selected {
   border-color: #007bff;
   border-width: 2px;
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
-.image-item.selected::after {
+.todo-image-item.selected::after {
   content: '';
   position: absolute;
   top: 0;
@@ -794,8 +868,8 @@
   transition: opacity 0.2s ease-in-out, background-color 0.15s ease, transform 0.1s ease;
 }
 
-.image-item:hover .canvas-replace-btn,
-.image-item .canvas-replace-btn:hover,
+.todo-image-item:hover .canvas-replace-btn,
+.todo-image-item .canvas-replace-btn:hover,
 .canvas-replace-btn:focus {
   opacity: 1;
   pointer-events: auto;
@@ -821,94 +895,6 @@
   cursor: not-allowed;
 }
 
-/* 批量更新PS画布区域样式 */
-.batch-update-section {
-  display: flex;
-  flex-direction: column;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  margin: 12px 16px;
-  position: relative;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.batch-update-section .action-btn.special {
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  position: relative;
-  overflow: hidden;
-}
-
-.batch-update-section .action-btn.special:hover:not(.disabled) {
-  background: linear-gradient(135deg, #218838 0%, #1abc9c 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-}
-
-.batch-update-section .action-btn.special.disabled {
-  background: linear-gradient(135deg, #6c757d 0%, #adb5bd 100%);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.batch-update-section .action-btn.special.updating {
-  animation: updating-pulse 1.5s infinite;
-}
-
-@keyframes updating-pulse {
-  0%, 100% {
-    background: linear-gradient(135deg, #6c757d 0%, #adb5bd 100%);
-  }
-  50% {
-    background: linear-gradient(135deg, #495057 0%, #868e96 100%);
-  }
-}
-
-.update-icon {
-  font-size: 16px;
-  line-height: 1;
-  display: inline-block;
-}
-
-.action-btn.special.updating .update-icon {
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.batch-update-section .progress-text {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #6c757d;
-  text-align: center;
-  font-style: italic;
-  line-height: 1.3;
-}
-
-.batch-update-section .action-btn.special small {
-  margin-left: 4px;
-  font-size: 11px;
-  opacity: 0.9;
-  font-weight: normal;
-}
 
 /* 调试面板样式 */
 .debug-panel {

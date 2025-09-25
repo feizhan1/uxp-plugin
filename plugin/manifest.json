@@ -1,21 +1,24 @@
 {
   "id": "7d40622e",
   "name": "tvcmall help",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "main": "index.html",
   "manifestVersion": 5,
   "host": [
     {
       "app": "PS",
-      "minVersion": "23.5.0"
+      "minVersion": "23.3.0"
     }
   ],
   "requiredPermissions": {
     "allowCodeGenerationFromStrings": true,
-    "localFileSystem": "request",
+    "localFileSystem": "fullAccess",
+    "clipboard": "readAndWrite",
     "launchProcess": {
       "schemes": [
-        "https"
+        "https",
+        "mailto",
+        "file"
       ],
       "extensions": [
         ".svg",
@@ -23,7 +26,11 @@
         ".jpg",
         ".jpeg",
         ".gif",
-        ".json"
+        ".json",
+        ".txt",
+        ".bat",
+        ".cmd",
+        ".pdf"
       ]
     },
     "webview": {
