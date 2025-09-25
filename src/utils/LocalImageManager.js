@@ -48,6 +48,53 @@ const getMimeTypeFromExtension = (filename) => {
 };
 
 /**
+ * 检测浏览器/UXP环境是否支持WebP格式
+ * @returns {boolean} 是否支持WebP
+ */
+const isWebPSupported = (() => {
+  let supported = null;
+
+  return () => {
+    if (supported !== null) return supported;
+
+    try {
+      // 创建一个简单的WebP数据URL来测试支持
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+
+      // 尝试转换为WebP格式
+      const webpDataUrl = canvas.toDataURL('image/webp');
+      supported = webpDataUrl.indexOf('data:image/webp') === 0;
+
+      console.log(`[WebP检测] UXP环境WebP支持: ${supported}`);
+      return supported;
+    } catch (error) {
+      console.warn('[WebP检测] 检测WebP支持时出错:', error);
+      supported = false;
+      return supported;
+    }
+  };
+})();
+
+/**
+ * 获取兼容的MIME类型（WebP不支持时回退到PNG）
+ * @param {string} filename - 文件名
+ * @returns {string} MIME类型
+ */
+const getCompatibleMimeType = (filename) => {
+  const mimeType = getMimeTypeFromExtension(filename);
+
+  // 如果是WebP格式但环境不支持，则回退到PNG
+  if (mimeType === 'image/webp' && !isWebPSupported()) {
+    console.warn(`[MIME兼容] WebP不支持，回退到PNG: ${filename}`);
+    return 'image/png';
+  }
+
+  return mimeType;
+};
+
+/**
  * 本地图片管理器类
  * 提供产品图片的本地存储和管理功能
  */
@@ -671,7 +718,7 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const mimeType = getMimeTypeFromExtension(img.localPath);
+              const mimeType = getCompatibleMimeType(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
@@ -690,7 +737,7 @@ export class LocalImageManager {
                 try {
                   const localFile = await this.imageFolder.getEntry(img.localPath);
                   const arrayBuffer = await localFile.read({ format: formats.binary });
-                  const mimeType = getMimeTypeFromExtension(img.localPath);
+                  const mimeType = getCompatibleMimeType(img.localPath);
                   const blob = new Blob([arrayBuffer], { type: mimeType });
                   return URL.createObjectURL(blob);
                 } catch {
@@ -709,7 +756,7 @@ export class LocalImageManager {
             try {
               const localFile = await this.imageFolder.getEntry(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
-              const mimeType = getMimeTypeFromExtension(img.localPath);
+              const mimeType = getCompatibleMimeType(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
               return URL.createObjectURL(blob);
             } catch {
@@ -737,7 +784,7 @@ export class LocalImageManager {
 
       const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
       const arrayBuffer = await localFile.read({ format: formats.binary });
-      const mimeType = getMimeTypeFromExtension(imageInfo.localPath);
+      const mimeType = getCompatibleMimeType(imageInfo.localPath);
       const blob = new Blob([arrayBuffer], { type: mimeType });
       return URL.createObjectURL(blob);
     } catch {

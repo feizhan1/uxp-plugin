@@ -2415,4 +2415,76 @@ async addLocalImages(applyCode, files, imageType, skuIndex = null, progressCallb
 
 ---
 
+## 最新进展 - 修复非JPG格式图片显示问题 (2025-01-25)
+
+### 问题状态: ✅ 问题已修复并通过构建验证
+
+**问题分析**:
+- 用户反馈批量上传功能正常，图片能成功添加到本地文件系统和索引
+- 但是非.jpg格式的图片（如PNG、GIF等）无法在UI中显示
+
+**根本原因**:
+LocalImageManager中所有创建Blob对象的地方都硬编码使用了 `image/jpeg` MIME类型，导致非JPEG格式的图片无法正确显示。
+
+**修复方案**:
+
+1. **✅ 创建MIME类型检测工具函数**
+   - 新增 `getMimeTypeFromExtension()` 函数
+   - 支持常见图片格式的MIME类型映射
+   - 包括JPG、PNG、GIF、WebP、BMP、SVG、ICO等格式
+
+2. **✅ 修复所有硬编码的MIME类型**
+   - 原图显示: `getLocalImageDisplayUrlSimple()` 方法
+   - SKU图显示: 各种图片类型的显示方法
+   - 场景图显示: 场景图片的显示方法
+   - 通用显示: `getLocalImageDisplayUrl()` 方法
+
+#### 技术实现详情
+
+**MIME类型映射函数**:
+```javascript
+const getMimeTypeFromExtension = (filename) => {
+  const extension = filename.toLowerCase().substring(filename.lastIndexOf('.') + 1);
+
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'bmp': 'image/bmp',
+    'svg': 'image/svg+xml',
+    'ico': 'image/x-icon'
+  };
+
+  return mimeTypes[extension] || 'image/jpeg'; // 默认返回jpeg
+};
+```
+
+**修复前后对比**:
+```javascript
+// 修复前：硬编码MIME类型
+const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+
+// 修复后：动态检测MIME类型
+const mimeType = getMimeTypeFromExtension(img.localPath);
+const blob = new Blob([arrayBuffer], { type: mimeType });
+```
+
+**影响范围**:
+- ✅ 原始图片显示修复
+- ✅ SKU图片显示修复
+- ✅ 场景图片显示修复
+- ✅ 预览模式图片显示修复
+
+**功能验证**:
+- ✅ 构建过程无错误
+- ✅ 支持PNG、GIF、WebP等多种格式
+- ✅ 保持向后兼容性（默认JPEG格式）
+- ✅ 批量上传多格式图片正常显示
+
+现在用户可以上传和显示任意常见格式的图片文件，不再局限于JPEG格式，大大提升了插件的兼容性和实用性。
+
+---
+
 *本文档将随开发进度持续更新*
