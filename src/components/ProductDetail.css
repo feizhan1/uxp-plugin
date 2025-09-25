@@ -1296,6 +1296,37 @@
   border-color: var(--theme-color, #ec6608);
 }
 
+/* 跨类型拖拽插入的特殊样式 */
+.product-image-item.cross-type-drag-over-before::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, #2196f3, #1976d2);
+  z-index: 1000;
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+  animation: crossTypeInsertPulse 1s infinite;
+}
+
+.product-image-item.cross-type-drag-over-before {
+  background-color: rgba(33, 150, 243, 0.08);
+  border-color: #2196f3;
+  box-shadow: 0 0 12px rgba(33, 150, 243, 0.3);
+  transform: translateX(4px);
+  transition: all 0.3s ease;
+}
+
+/* 跨类型拖拽源图片的视觉反馈 */
+.product-image-item.cross-type-dragging {
+  opacity: 0.8;
+  transform: scale(0.95);
+  border: 2px solid #2196f3;
+  box-shadow: 0 4px 20px rgba(33, 150, 243, 0.4);
+}
+
 /* 拖拽禁用状态 */
 .product-image-item.drag-disabled {
   cursor: not-allowed !important;
@@ -2066,5 +2097,19 @@
   .preview-image-container {
     height: 1000px; /* 大屏设备上的明确高度 */
     min-height: 600px;
+  }
+}
+
+/* 跨类型拖拽插入动画 */
+@keyframes crossTypeInsertPulse {
+  0%, 100% {
+    opacity: 0.8;
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+    transform: scaleY(1);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(33, 150, 243, 0.8);
+    transform: scaleY(1.05);
   }
 }

@@ -1249,6 +1249,136 @@ export class LocalImageManager {
   }
 
   /**
+   * 跨类型图片引用插入 - 用于从原始图片区域拖拽到SKU/场景图片位置
+   * @param {string} applyCode 产品申请码
+   * @param {string} sourceImageUrl 源图片URL
+   * @param {string} sourceType 源图片类型
+   * @param {string} targetType 目标图片类型
+   * @param {number} targetIndex 目标插入位置
+   * @param {number|null} sourceSkuIndex 源SKU索引
+   * @param {number|null} targetSkuIndex 目标SKU索引
+   * @returns {Object} 操作结果
+   */
+  async insertImageReferenceAt(applyCode, sourceImageUrl, sourceType, targetType, targetIndex, sourceSkuIndex = null, targetSkuIndex = null) {
+    try {
+      console.log(`🔄 [insertImageReferenceAt] 开始跨类型插入图片引用:`, {
+        applyCode,
+        sourceImageUrl: sourceImageUrl.substring(0, 50) + '...',
+        sourceType,
+        targetType,
+        targetIndex,
+        sourceSkuIndex,
+        targetSkuIndex
+      });
+
+      const product = this.findProductByApplyCode(applyCode);
+      if (!product) {
+        throw new Error(`产品不存在: ${applyCode}`);
+      }
+
+      // 查找源图片
+      let sourceImage = null;
+
+      if (sourceType === 'original') {
+        sourceImage = product.originalImages?.find(img => img.imageUrl === sourceImageUrl);
+      } else if (sourceType === 'sku') {
+        const sourceSku = product.publishSkus?.find(s => s.skuIndex === sourceSkuIndex);
+        sourceImage = sourceSku?.skuImages?.find(img => img.imageUrl === sourceImageUrl);
+      } else if (sourceType === 'scene') {
+        sourceImage = product.senceImages?.find(img => img.imageUrl === sourceImageUrl);
+      }
+
+      if (!sourceImage) {
+        throw new Error(`源图片不存在: ${sourceImageUrl}`);
+      }
+
+      console.log(`✅ [insertImageReferenceAt] 找到源图片:`, sourceImage.imageUrl.substring(0, 50) + '...');
+
+      // 获取目标数组
+      let targetArray;
+
+      if (targetType === 'original') {
+        if (!product.originalImages) product.originalImages = [];
+        targetArray = product.originalImages;
+      } else if (targetType === 'sku') {
+        if (!product.publishSkus) {
+          throw new Error('产品没有SKU信息');
+        }
+
+        const targetSku = product.publishSkus.find(s => s.skuIndex === targetSkuIndex);
+        if (!targetSku) {
+          throw new Error(`目标SKU不存在: ${targetSkuIndex}`);
+        }
+
+        if (!targetSku.skuImages) targetSku.skuImages = [];
+        targetArray = targetSku.skuImages;
+      } else if (targetType === 'scene') {
+        if (!product.senceImages) product.senceImages = [];
+        targetArray = product.senceImages;
+      } else {
+        throw new Error(`无效的目标类型: ${targetType}`);
+      }
+
+      // 检查目标位置索引有效性
+      if (targetIndex < 0 || targetIndex > targetArray.length) {
+        throw new Error(`目标索引 ${targetIndex} 超出范围 [0, ${targetArray.length}]`);
+      }
+
+      // 检查目标位置是否已存在相同的图片
+      const existingImage = targetArray.find(img => img.imageUrl === sourceImageUrl);
+      if (existingImage) {
+        console.log(`ℹ️ [insertImageReferenceAt] 目标位置已存在相同图片，跳过插入`);
+        return {
+          success: false,
+          error: '目标位置已存在相同的图片'
+        };
+      }
+
+      // 创建新的图片引用对象
+      const newImageRef = {
+        ...sourceImage, // 复制所有属性
+        id: sourceImage.imageUrl, // 保持相同的ID以复用本地文件
+        imageUrl: sourceImage.imageUrl, // 保持相同的URL
+        // 重置状态相关字段，让插入的图片从待编辑状态开始
+        status: sourceImage.hasLocal ? 'pending_edit' : 'not_downloaded',
+        index: targetIndex, // 设置目标索引
+        modifiedPath: undefined, // 清除修改路径
+        modifiedTimestamp: undefined, // 清除修改时间戳
+        localPath: sourceImage.localPath, // 保持相同的本地路径以复用文件
+        hasLocal: sourceImage.hasLocal, // 保持本地文件状态
+        type: targetType, // 设置新的类型
+        skuIndex: targetType === 'sku' ? targetSkuIndex : undefined // 设置SKU索引（如果需要）
+      };
+
+      // 在目标位置插入新图片引用
+      targetArray.splice(targetIndex, 0, newImageRef);
+
+      // 重新计算目标数组的索引
+      targetArray.forEach((img, index) => {
+        img.index = index;
+      });
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [insertImageReferenceAt] 图片引用插入成功: ${sourceType} -> ${targetType}, 插入位置: ${targetIndex}`);
+
+      return {
+        success: true,
+        newImage: newImageRef,
+        targetArray: targetArray
+      };
+
+    } catch (error) {
+      console.error('❌ [insertImageReferenceAt] 跨类型插入失败:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * 标记图片已被修改（需要上传）
    * @param {string} imageId 图片ID
    * @param {File} modifiedFile 修改后的文件

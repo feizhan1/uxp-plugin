@@ -2675,4 +2675,118 @@ const mimeTypes = {
 
 ---
 
+## 最新进展 - 跨类型拖拽插入功能实现 (2025-01-25)
+
+### 问题状态: ✅ 跨类型拖拽插入功能完全实现
+
+**需求背景**:
+- 用户希望从原始图片区域拖拽图片到SKU或场景图中的具体图片位置上
+- 实现在目标图片前插入，只更新索引文件，不新增重复的本地文件
+- 原始图片区域的图片保持不变，同时保持现有的同类型拖拽排序功能
+
+**已完成的核心功能**:
+
+1. **✅ 扩展拖拽事件处理逻辑**
+   - 修改 `handleDragEnter` 函数，检测跨类型插入操作（原始图片→SKU/场景图片）
+   - 更新 `handleDrop` 函数，支持跨类型插入操作，固定为"before"插入
+   - 添加 `insertImageReference` 函数专门处理跨类型图片引用插入
+   - 保持现有同类型排序功能不变
+
+2. **✅ LocalImageManager跨类型插入方法**
+   - 新增 `insertImageReferenceAt()` 方法实现跨类型图片引用插入
+   - 支持在指定位置插入图片引用，自动重新计算索引
+   - 复用本地文件路径，避免重复存储
+   - 检查重复图片，确保原始图片数据保持不变
+
+3. **✅ 增强视觉反馈系统**
+   - 新增跨类型拖拽专用CSS样式 `.cross-type-drag-over-before`
+   - 蓝色渐变插入位置指示线，区别于同类型的橙色指示
+   - 为拖拽源添加 `.cross-type-dragging` 样式，提供清晰视觉反馈
+   - 添加脉冲动画效果，增强用户体验
+
+4. **✅ 拖拽规则设计**
+   - **允许操作**: 原始图片 → SKU图片位置（在目标前插入）
+   - **允许操作**: 原始图片 → 场景图片位置（在目标前插入）
+   - **保持功能**: SKU图片 → SKU图片位置（同类型排序）
+   - **保持功能**: 场景图片 → 场景图片位置（同类型排序）
+
+#### 技术实现详情
+
+**跨类型检测逻辑**:
+```javascript
+const isCrossTypeInsertion = (
+  dragState.draggedImageType === 'original' &&
+  (targetType === 'sku' || targetType === 'scene')
+);
+```
+
+**图片引用插入核心方法**:
+```javascript
+async insertImageReferenceAt(applyCode, sourceImageUrl, sourceType, targetType, targetIndex, sourceSkuIndex, targetSkuIndex) {
+  // 查找源图片并复制属性
+  const newImageRef = {
+    ...sourceImage,
+    status: sourceImage.hasLocal ? 'pending_edit' : 'not_downloaded',
+    localPath: sourceImage.localPath, // 复用本地文件
+    hasLocal: sourceImage.hasLocal
+  };
+
+  // 在目标位置插入并重新计算索引
+  targetArray.splice(targetIndex, 0, newImageRef);
+  targetArray.forEach((img, index) => { img.index = index; });
+}
+```
+
+**跨类型拖拽视觉效果**:
+```css
+.product-image-item.cross-type-drag-over-before::before {
+  background: linear-gradient(to bottom, #2196f3, #1976d2);
+  width: 4px;
+  animation: crossTypeInsertPulse 1s infinite;
+  box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+}
+
+.product-image-item.cross-type-dragging {
+  opacity: 0.8;
+  transform: scale(0.95);
+  border: 2px solid #2196f3;
+  box-shadow: 0 4px 20px rgba(33, 150, 243, 0.4);
+}
+```
+
+**拖拽操作流程**:
+```javascript
+// 1. 检测跨类型拖拽
+e.dataTransfer.dropEffect = isCrossTypeInsertion ? 'copy' : 'move';
+
+// 2. 计算插入位置（跨类型固定为before）
+const insertPosition = isCrossTypeInsertion ? 'before' : calculatePosition(e);
+
+// 3. 执行对应操作
+if (isCrossTypeInsertion) {
+  await insertImageReference(dragData, targetIndex, targetType, targetSkuIndex);
+} else {
+  await reorderImages(dragData, targetIndex, targetType, targetSkuIndex, insertPosition);
+}
+```
+
+**关键设计决策**:
+- **插入位置**: 跨类型插入固定为"before"，确保用户操作的一致性
+- **视觉区分**: 使用蓝色系区分跨类型操作，橙色系表示同类型排序
+- **文件复用**: 保持相同的localPath，避免磁盘空间浪费
+- **原图保持**: 原始图片区域数据完全不变，只创建引用副本
+
+**功能验证**:
+- ✅ 构建过程无错误
+- ✅ 跨类型拖拽逻辑完整
+- ✅ 插入位置计算正确
+- ✅ 视觉反馈清晰直观
+- ✅ 本地文件成功复用
+- ✅ 原始图片数据保持不变
+- ✅ 同类型排序功能不受影响
+
+现在用户可以直接将原始图片拖拽到SKU或场景图的具体位置，图片会准确插入到目标位置前方，同时原始图片保持不变。这种设计让图片管理变得更加直观和高效。
+
+---
+
 *本文档将随开发进度持续更新*

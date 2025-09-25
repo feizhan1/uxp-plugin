@@ -1065,11 +1065,21 @@ const ProductDetail = ({
   const handleDragEnter = useCallback((e, targetIndex, targetType, targetSkuIndex = null) => {
     if (!dragState.isDragging) return;
 
-    // 只允许同类型内部排序
-    if (dragState.draggedImageType !== targetType || dragState.draggedSkuIndex !== targetSkuIndex) {
+    // 检查是否为跨类型插入操作（从原始图片拖拽到SKU/场景图片）
+    const isCrossTypeInsertion = (
+      dragState.draggedImageType === 'original' &&
+      (targetType === 'sku' || targetType === 'scene')
+    );
+
+    // 允许同类型内部排序或跨类型插入
+    if (!isCrossTypeInsertion &&
+        (dragState.draggedImageType !== targetType || dragState.draggedSkuIndex !== targetSkuIndex)) {
       e.dataTransfer.dropEffect = 'none';
       return;
     }
+
+    // 设置拖拽效果：跨类型为复制，同类型为移动
+    e.dataTransfer.dropEffect = isCrossTypeInsertion ? 'copy' : 'move';
 
     // 清除之前的定时器
     if (dragEnterTimeoutRef.current) {
@@ -1096,7 +1106,8 @@ const ProductDetail = ({
               index: targetIndex,
               type: targetType,
               skuIndex: targetSkuIndex,
-              position: insertPosition
+              position: insertPosition,
+              isCrossTypeInsertion: isCrossTypeInsertion
             }
           };
         }
@@ -1143,21 +1154,32 @@ const ProductDetail = ({
 
       const dragData = JSON.parse(dragDataStr);
 
-      // 只允许同类型内部排序
-      if (dragData.imageType !== targetType || dragData.skuIndex !== targetSkuIndex) {
-        console.warn('⚠️ [handleDrop] 不支持跨类型拖拽排序');
+      // 检查是否为跨类型插入操作
+      const isCrossTypeInsertion = (
+        dragData.imageType === 'original' &&
+        (targetType === 'sku' || targetType === 'scene')
+      );
+
+      // 允许同类型内部排序或跨类型插入
+      if (!isCrossTypeInsertion &&
+          (dragData.imageType !== targetType || dragData.skuIndex !== targetSkuIndex)) {
+        console.warn('⚠️ [handleDrop] 不支持此类型的拖拽操作');
         return;
       }
 
-      // 计算插入位置
-      const rect = e.currentTarget.getBoundingClientRect();
-      const midPoint = rect.left + rect.width / 2;
-      const insertPosition = e.clientX < midPoint ? 'before' : 'after';
+      // 计算插入位置（跨类型插入固定为before，同类型可before或after）
+      const insertPosition = isCrossTypeInsertion ? 'before' :
+        (e.clientX < (e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2) ? 'before' : 'after');
 
-      console.log(`📍 [handleDrop] 放置图片: ${dragData.imageId} 到位置 ${targetIndex} (${insertPosition})`);
+      console.log(`📍 [handleDrop] ${isCrossTypeInsertion ? '跨类型插入' : '同类型排序'}: ${dragData.imageId} 到位置 ${targetIndex} (${insertPosition})`);
 
-      // 执行重排序
-      await reorderImages(dragData, targetIndex, targetType, targetSkuIndex, insertPosition);
+      if (isCrossTypeInsertion) {
+        // 执行跨类型图片引用插入
+        await insertImageReference(dragData, targetIndex, targetType, targetSkuIndex);
+      } else {
+        // 执行同类型重排序
+        await reorderImages(dragData, targetIndex, targetType, targetSkuIndex, insertPosition);
+      }
 
     } catch (error) {
       console.error('❌ [handleDrop] 拖拽放置失败:', error);
@@ -1171,6 +1193,66 @@ const ProductDetail = ({
         draggedSkuIndex: null,
         hoveredDropTarget: null
       });
+    }
+  };
+
+  /**
+   * 跨类型图片引用插入核心逻辑
+   */
+  const insertImageReference = async (dragData, targetIndex, targetType, targetSkuIndex) => {
+    try {
+      setError(null);
+
+      console.log(`🔄 [insertImageReference] 开始跨类型插入图片引用:`, {
+        from: dragData.imageType,
+        to: targetType,
+        imageId: dragData.imageId,
+        targetIndex: targetIndex,
+        targetSkuIndex: targetSkuIndex
+      });
+
+      // 保存滚动位置
+      let savedScrollPosition = 0;
+      if (contentRef.current) {
+        savedScrollPosition = contentRef.current.scrollTop;
+        console.log('💾 [insertImageReference] 保存滚动位置:', savedScrollPosition);
+      }
+
+      // 调用LocalImageManager插入图片引用
+      const result = await localImageManager.insertImageReferenceAt(
+        currentProduct.applyCode,
+        dragData.imageId,
+        dragData.imageType,
+        targetType,
+        targetIndex,
+        dragData.skuIndex,
+        targetSkuIndex
+      );
+
+      if (result.success) {
+        console.log(`✅ [insertImageReference] 跨类型插入成功`);
+
+        // 刷新图片数据
+        await initializeImageData();
+
+        // 恢复滚动位置
+        if (savedScrollPosition > 0 && contentRef.current) {
+          setTimeout(() => {
+            if (contentRef.current) {
+              contentRef.current.scrollTop = savedScrollPosition;
+              console.log('✅ [insertImageReference] 滚动位置已恢复:', savedScrollPosition);
+            }
+          }, 100);
+        }
+
+        console.log(`🎉 [insertImageReference] 图片已插入到 ${targetType} 区域的位置 ${targetIndex}`);
+      } else {
+        setError(`插入图片失败: ${result.error || '未知错误'}`);
+      }
+
+    } catch (error) {
+      console.error('❌ [insertImageReference] 跨类型插入失败:', error);
+      setError(`插入图片失败: ${error.message}`);
     }
   };
 
@@ -1797,15 +1879,22 @@ const ProductDetail = ({
             </div>
             <div className="image-grid">
               {virtualizedImageGroups.original.map((image, index) => {
-                // 使用预计算的拖拽状态
+                // 使用预计算的拖拽状态，支持跨类型拖拽样式
                 const dragOverClass = image.isHovered
-                  ? `drag-over-${dragState.hoveredDropTarget.position}`
+                  ? (dragState.hoveredDropTarget.isCrossTypeInsertion
+                      ? `cross-type-drag-over-${dragState.hoveredDropTarget.position}`
+                      : `drag-over-${dragState.hoveredDropTarget.position}`)
                   : '';
+
+                // 为拖拽源添加跨类型拖拽样式
+                const crossTypeDragClass = (dragState.isDragging &&
+                  dragState.draggedImageId === image.id &&
+                  dragState.draggedImageType === 'original') ? 'cross-type-dragging' : '';
 
                 return (
                   <div
                     key={image.id}
-                    className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass}`}
+                    className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'original')}
                     onDragOver={handleDragOver}
@@ -1874,15 +1963,20 @@ const ProductDetail = ({
               </div>
               <div className="image-grid">
                 {sku.images.map((image, imgIndex) => {
-                  // 使用预计算的拖拽状态
+                  // 使用预计算的拖拽状态，支持跨类型拖拽样式
                   const dragOverClass = image.isHovered
-                    ? `drag-over-${dragState.hoveredDropTarget.position}`
+                    ? (dragState.hoveredDropTarget.isCrossTypeInsertion
+                        ? `cross-type-drag-over-${dragState.hoveredDropTarget.position}`
+                        : `drag-over-${dragState.hoveredDropTarget.position}`)
                     : '';
+
+                  // SKU图片不作为跨类型拖拽源，所以crossTypeDragClass留空
+                  const crossTypeDragClass = '';
 
                   return (
                     <div
                       key={image.id}
-                      className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass}`}
+                      className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, image.id, 'sku', sku.skuIndex || skuIndex)}
                       onDragOver={handleDragOver}
@@ -1951,15 +2045,20 @@ const ProductDetail = ({
             </div>
             <div className="image-grid">
               {virtualizedImageGroups.scenes.map((image, index) => {
-                // 使用预计算的拖拽状态
+                // 使用预计算的拖拽状态，支持跨类型拖拽样式
                 const dragOverClass = image.isHovered
-                  ? `drag-over-${dragState.hoveredDropTarget.position}`
+                  ? (dragState.hoveredDropTarget.isCrossTypeInsertion
+                      ? `cross-type-drag-over-${dragState.hoveredDropTarget.position}`
+                      : `drag-over-${dragState.hoveredDropTarget.position}`)
                   : '';
+
+                // 场景图片不作为跨类型拖拽源，所以crossTypeDragClass留空
+                const crossTypeDragClass = '';
 
                 return (
                   <div
                     key={image.id}
-                    className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass}`}
+                    className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'scene')}
                     onDragOver={handleDragOver}
