@@ -105,12 +105,6 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleCli
           <div className="syncing-text">同步中...</div>
         </div>
       )}
-      {isCompleted && !isOpening && !isSyncing && (
-        <div className="completed-indicator">
-          <div className="completed-icon">🎯</div>
-          <div className="completed-text">已完成</div>
-        </div>
-      )}
       {isRecentlyUpdated && !isOpening && !isSyncing && !isCompleted && (
         <div className="updated-indicator">
           <div className="updated-icon">✅</div>
