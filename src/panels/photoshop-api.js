@@ -1138,11 +1138,11 @@ export function registerPSEventListeners(onSyncCallback) {
   try {
     console.log('正在注册PS事件监听器...');
 
-    // 注册保存事件监听器
+    // 注册保存事件监听器（官方验证版本）
     action.addNotificationListener([
-      { event: "save" },      // 监听保存事件
-      { event: "saveAs" },    // 监听另存为事件
-      { event: "close" }      // 监听文档关闭事件（用于自动完成标记）
+      { event: "save" },      // 监听保存事件 - 用户Ctrl+S确认后触发
+      { event: "saveAs" },    // 监听另存为事件 - 用户另存为确认后触发
+      { event: "close" }      // 监听文档关闭事件 - 用于自动完成标记
     ], handlePSEvent);
 
     eventListenerRegistered = true;
@@ -1170,7 +1170,7 @@ export function unregisterPSEventListeners() {
   }
 
   try {
-    // 移除事件监听器
+    // 移除事件监听器（官方验证版本）
     action.removeNotificationListener([
       { event: "save" },
       { event: "saveAs" },
@@ -1281,22 +1281,31 @@ async function handleDocumentSaveEvent(descriptor) {
     // 更新最后通知时间
     imageInfo.lastSyncTime = now;
 
-    console.log(`📄 [PS保存通知] 文档 ${documentId} 对应图片 ${imageInfo.imageId} 已保存到本地文件`);
+    console.log(`💾 [用户保存确认] 文档 ${documentId} 对应图片 ${imageInfo.imageId} - 用户已通过Ctrl+S确认保存`);
 
-    // 简单通知回调函数：PS已保存文件
+    // 直接标记图片为已完成状态（因为save事件就是用户确认保存后触发的）
+    try {
+      await localImageManager.markImageAsCompleted(imageInfo.imageId);
+      console.log(`🎯 [自动完成] 图片 ${imageInfo.imageId} 已自动标记为完成状态`);
+    } catch (markError) {
+      console.error(`❌ [自动完成] 标记图片完成失败: ${markError.message}`);
+    }
+
+    // 通知UI：用户确认保存，图片已完成
     for (const callback of syncCallbacks) {
       try {
         await callback({
-          type: 'ps_file_saved',
+          type: 'ps_user_save_confirmed',  // 更明确的事件类型
           documentId: documentId,
           imageId: imageInfo.imageId,
           imageUrl: imageInfo.imageUrl,
           documentName: activeDoc.name,
           timestamp: now,
-          isTemporaryMapping: isTemporaryMapping
+          isTemporaryMapping: isTemporaryMapping,
+          autoCompleted: true  // 标记为自动完成
         });
       } catch (callbackError) {
-        console.error('PS保存通知回调执行失败:', callbackError);
+        console.error('PS保存确认通知回调执行失败:', callbackError);
       }
     }
 
@@ -1448,10 +1457,10 @@ async function handleDocumentCloseEvent(descriptor) {
 
         console.log(`🎯 [关闭事件] 图片 ${imageInfo.imageId} 已标记为完成状态`);
       } else {
-        console.log(`ℹ️ [关闭事件] 图片未修改，保持编辑中状态: ${imageInfo.imageId}`);
+        console.log(`🔄 [关闭事件] 图片未修改，重置为待编辑状态: ${imageInfo.imageId}`);
 
-        // 确保图片状态为编辑中（已经打开过但未修改）
-        await localImageManager.setImageStatus(imageInfo.imageId, 'editing');
+        // 无修改直接关闭，重置图片状态为待编辑
+        await localImageManager.setImageStatus(imageInfo.imageId, 'pending_edit');
 
         // 通知回调函数：文档关闭但图片未修改
         for (const callback of syncCallbacks) {

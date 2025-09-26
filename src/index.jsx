@@ -20,6 +20,7 @@ globalErrorHandler.addErrorListener((error) => {
 });
 
 const aboutController = new CommandController(({ dialog }) => <About dialog={dialog} />, { id: "showAbout", title: "React Starter Plugin Demo", size: { width: 480, height: 480 } });
+
 const todoListController = new PanelController(() => <TodoList/>, {
     id: "todoList",
     label: {default: "待处理产品图片"},
@@ -28,6 +29,7 @@ const todoListController = new PanelController(() => <TodoList/>, {
         { id: "dialog1", label: "About this Plugin", enabled: true, checked: false, oninvoke: () => aboutController.run() },
     ]
 });
+
 
 entrypoints.setup({
     plugin: {

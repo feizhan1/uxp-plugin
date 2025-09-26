@@ -172,6 +172,7 @@ const ProductDetail = ({
   const [syncingImages, setSyncingImages] = useState(new Set()); // 正在同步的图片ID集合
   const [recentlyUpdatedImages, setRecentlyUpdatedImages] = useState(new Set()); // 最近更新的图片ID集合
   const [completedImages, setCompletedImages] = useState(new Set()); // 已完成的图片ID集合
+  const [editingImages, setEditingImages] = useState(new Set()); // 编辑中的图片ID集合
   const [showWorkflowGuide, setShowWorkflowGuide] = useState(false); // 显示工作流程指引
   const [imageLayout, setImageLayout] = useState('small'); // 图片布局尺寸：small(100px), medium(140px), large(180px)
   const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(false); // 全局控制是否跳过删除确认
@@ -337,9 +338,9 @@ const ProductDetail = ({
 
     const handlePSFileSaved = async (syncResult) => {
       try {
-        // 处理PS保存事件
-        if (syncResult.type === 'ps_file_saved') {
-          console.log(`🎯 [PS事件监听] 接收到PS保存通知:`, syncResult);
+        // 处理PS用户保存确认事件
+        if (syncResult.type === 'ps_user_save_confirmed') {
+          console.log(`💾 [PS事件监听] 用户确认保存事件:`, syncResult);
 
           // 检查是否是当前产品的图片
           const isCurrentProductImage = await checkIfCurrentProductImage(syncResult.imageId);
@@ -348,21 +349,26 @@ const ProductDetail = ({
             return;
           }
 
-          console.log(`✅ [PS事件监听] 检测到当前产品图片保存: ${syncResult.imageId}`);
+          console.log(`✅ [PS事件监听] 检测到当前产品图片用户保存确认: ${syncResult.imageId}`);
 
-          // 标记为正在同步
-          setSyncingImages(prev => new Set([...prev, syncResult.imageId]));
+          // 如果后端已自动标记为完成，直接更新UI状态
+          if (syncResult.autoCompleted) {
+            console.log(`🎯 [PS事件监听] 图片已自动完成，更新UI状态: ${syncResult.imageId}`);
 
-          // 检查文件是否真的被修改
-          const wasModified = await localImageManager.checkFileModification(syncResult.imageId);
+            // 直接标记为已完成
+            setCompletedImages(prev => new Set([...prev, syncResult.imageId]));
 
-          if (wasModified) {
-            console.log(`🔄 [PS事件监听] 文件已修改，开始刷新显示: ${syncResult.imageId}`);
+            // 移除编辑中状态
+            setEditingImages(prev => {
+              const next = new Set(prev);
+              next.delete(syncResult.imageId);
+              return next;
+            });
 
             // 刷新图片显示
             await handleImageFileUpdated(syncResult.imageId);
 
-            // 标记为最近更新
+            // 标记为最近更新（完成状态）
             setRecentlyUpdatedImages(prev => new Set([...prev, syncResult.imageId]));
 
             // 3秒后清除"最近更新"状态
@@ -374,12 +380,27 @@ const ProductDetail = ({
               });
             }, 3000);
 
-            console.log(`🎉 [PS事件监听] 图片更新完成: ${syncResult.imageId}`);
+            console.log(`🎉 [PS事件监听] 图片保存确认完成: ${syncResult.imageId}`);
           } else {
-            console.log(`ℹ️ [PS事件监听] 文件未发生修改: ${syncResult.imageId}`);
+            // 如果没有自动标记为完成，进行常规的文件修改检查
+            console.log(`🔄 [PS事件监听] 检查文件修改状态: ${syncResult.imageId}`);
+
+            const wasModified = await localImageManager.checkFileModification(syncResult.imageId);
+            if (wasModified) {
+              await handleImageFileUpdated(syncResult.imageId);
+              setRecentlyUpdatedImages(prev => new Set([...prev, syncResult.imageId]));
+
+              setTimeout(() => {
+                setRecentlyUpdatedImages(prev => {
+                  const next = new Set(prev);
+                  next.delete(syncResult.imageId);
+                  return next;
+                });
+              }, 3000);
+            }
           }
 
-          // 移除同步状态
+          // 移除同步状态（如果有）
           setSyncingImages(prev => {
             const next = new Set(prev);
             next.delete(syncResult.imageId);
@@ -411,8 +432,26 @@ const ProductDetail = ({
 
         // 处理PS文档关闭无修改事件
         else if (syncResult.type === 'ps_document_closed_no_change') {
-          console.log(`ℹ️ [PS事件监听] PS文档关闭但图片未修改: ${syncResult.imageId}`);
-          // 这种情况下不需要特殊处理，只是记录日志
+          console.log(`🔄 [PS事件监听] PS文档关闭但图片未修改，重置为待编辑状态: ${syncResult.imageId}`);
+
+          // 检查是否是当前产品的图片
+          const isCurrentProductImage = await checkIfCurrentProductImage(syncResult.imageId);
+          if (!isCurrentProductImage) {
+            console.log(`ℹ️ [PS事件监听] 非当前产品图片，跳过: ${syncResult.imageId}`);
+            return;
+          }
+
+          // 移除编辑中状态
+          setEditingImages(prev => {
+            const next = new Set(prev);
+            next.delete(syncResult.imageId);
+            return next;
+          });
+
+          // 更新图片组状态为待编辑
+          updateImageStatusInState(syncResult.imageId, 'pending_edit');
+
+          console.log(`✅ [PS事件监听] 图片状态已重置为待编辑: ${syncResult.imageId}`);
         }
 
       } catch (error) {
@@ -2394,6 +2433,17 @@ const ProductDetail = ({
       const documentId = await placeImageInPS(psImageInfo, { directOpen: true });
 
       console.log('✅ [handleOpenImageInPS] 图片在PS中打开成功，文档ID:', documentId);
+
+      // 立即更新UI状态为"编辑中"
+      console.log('🔄 [handleOpenImageInPS] 更新UI状态为编辑中:', imageId);
+
+      // 1. 更新编辑中状态集合
+      setEditingImages(prev => new Set([...prev, imageId]));
+
+      // 2. 更新图片组状态，更新localStatus字段
+      updateImageStatusInState(imageId, 'editing');
+
+      console.log('✅ [handleOpenImageInPS] UI状态已更新为编辑中');
 
     } catch (error) {
       console.error('❌ [handleOpenImageInPS] 在PS中打开图片失败:', error);
