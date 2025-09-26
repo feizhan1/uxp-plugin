@@ -1381,6 +1381,7 @@
   width: 100%;
   height: 100% !important; /* 强制确保高度 */
   min-height: 100px; /* 确保最小高度 */
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
