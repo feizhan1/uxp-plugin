@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { localImageManager } from '../utils/LocalImageManager.js';
+import { ConcurrentUploadManager } from '../utils/ConcurrentUploadManager.js';
 import { placeImageInPS, registerPSEventListeners, unregisterPSEventListeners } from '../panels/photoshop-api.js';
+import { post } from '../utils/http.js';
 import './ProductDetail.css';
 
 /**
@@ -163,6 +165,8 @@ const ProductDetail = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null); // 批量上传进度 {current: 0, total: 0}
+  const [uploadStats, setUploadStats] = useState(null); // 上传统计信息
+  const [uploadErrors, setUploadErrors] = useState([]); // 上传错误列表
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const [openingImageId, setOpeningImageId] = useState(null);
   const [syncingImages, setSyncingImages] = useState(new Set()); // 正在同步的图片ID集合
@@ -864,26 +868,495 @@ const ProductDetail = ({
   };
 
   /**
-   * 提交审核
+   * 提交审核 - 完整的批量图片上传流程
    */
   const handleSubmitReview = async () => {
     try {
       setIsSubmitting(true);
       setError(null);
+      setUploadProgress(null);
+      setUploadStats(null);
+      setUploadErrors([]);
 
-      // TODO: 实现提交逻辑
-      console.log('提交审核:', currentProduct.applyCode);
+      console.log('🚀 开始提交审核:', currentProduct.applyCode);
 
-      // 临时模拟提交过程
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 1. 获取当前产品需要上传的图片（SKU+场景）
+      await localImageManager.initialize();
+      const modifiedImages = localImageManager.getModifiedImages(currentProduct.applyCode);
 
-      onSubmit?.(currentProduct);
+      if (modifiedImages.length === 0) {
+        console.log('✅ 没有需要上传的图片，直接提交审核');
+
+        // 没有图片需要上传，直接调用提交API
+        await submitForReview();
+        return;
+      }
+
+      // 2. 按图片类型分组统计
+      const imageStats = modifiedImages.reduce((stats, img) => {
+        stats[img.imageType] = (stats[img.imageType] || 0) + 1;
+        return stats;
+      }, {});
+
+      console.log('📊 需要上传的图片统计:', imageStats);
+      console.log(`📤 开始上传 ${modifiedImages.length} 张图片...`);
+
+      // 3. 创建并发上传管理器
+      const uploadManager = new ConcurrentUploadManager({
+        concurrency: 3, // 并发数
+        retryTimes: 3,   // 重试次数
+        retryDelay: 1000 // 初始重试延迟
+      });
+
+      // 4. 设置上传队列
+      uploadManager.setQueue(modifiedImages, {
+        applyCode: currentProduct.applyCode,
+        userId: currentProduct.userId || 0,
+        userCode: currentProduct.userCode || null
+      });
+
+      // 5. 开始上传并处理进度和结果
+      const results = await uploadManager.startUpload(
+        // 进度回调
+        (progress) => {
+          setUploadProgress({
+            total: progress.total,
+            completed: progress.completed,
+            success: progress.success,
+            failed: progress.failed,
+            running: progress.running,
+            currentTask: progress.currentTask
+          });
+          console.log(`📈 上传进度: ${progress.completed}/${progress.total} (成功:${progress.success}, 失败:${progress.failed})`);
+        },
+
+        // 单个成功回调
+        (task, result) => {
+          console.log(`✅ 图片上传成功: ${task.imageId} -> ${result.url}`);
+
+          // 同时更新UI状态和currentProduct数据源
+          updateImageGroupsLocally(groups => {
+            const updateImage = (images) => {
+              console.log(`🔍 [UI更新] 开始查找图片进行URL更新:`, {
+                imageType: task.imageType,
+                imageIndex: task.imageIndex,
+                skuIndex: task.skuIndex,
+                originalImageId: task.originalImageId,
+                newUrl: result.url,
+                imagesCount: images?.length || 0
+              });
+
+              if (!images || images.length === 0) {
+                console.warn(`⚠️ [UI更新] 图片数组为空`);
+                return;
+              }
+
+              // 方法1: 使用imageIndex进行精确匹配
+              if (typeof task.imageIndex === 'number' && task.imageIndex >= 0 && task.imageIndex < images.length) {
+                const targetImg = images[task.imageIndex];
+                console.log(`🎯 [UI更新] 按索引[${task.imageIndex}]匹配图片:`, {
+                  currentUrl: targetImg.imageUrl,
+                  originalImageId: task.originalImageId,
+                  indexMatch: true
+                });
+
+                targetImg.imageUrl = result.url;
+                targetImg.localStatus = 'synced';
+                console.log(`✅ [UI更新] 按索引匹配成功: [${task.imageIndex}] -> ${result.url}`);
+                return;
+              }
+
+              // 方法2: 多重匹配条件查找
+              let foundImage = null;
+              let foundIndex = -1;
+
+              for (let i = 0; i < images.length; i++) {
+                const img = images[i];
+                console.log(`🔍 [UI更新] 检查图片[${i}]:`, {
+                  imageUrl: img.imageUrl,
+                  id: img.id,
+                  index: img.index,
+                  localPath: img.localPath
+                });
+
+                // 匹配条件1: originalImageId匹配
+                if (img.imageUrl === task.originalImageId || img.id === task.originalImageId) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [UI更新] originalImageId匹配成功 [${i}]`);
+                  break;
+                }
+
+                // 匹配条件2: localPath匹配
+                if (img.localPath === task.localPath) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [UI更新] localPath匹配成功 [${i}]`);
+                  break;
+                }
+
+                // 匹配条件3: 图片索引匹配
+                if (typeof task.imageIndex === 'number' && (img.index === task.imageIndex || i === task.imageIndex)) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [UI更新] 图片索引匹配成功 [${i}]`);
+                  break;
+                }
+              }
+
+              if (foundImage) {
+                foundImage.imageUrl = result.url;
+                foundImage.localStatus = 'synced';
+                console.log(`✅ [UI更新] 图片URL更新成功 [${foundIndex}]: ${task.originalImageId} -> ${result.url}`);
+              } else {
+                console.error(`❌ [UI更新] 未找到匹配的图片:`, {
+                  originalImageId: task.originalImageId,
+                  localPath: task.localPath,
+                  imageIndex: task.imageIndex,
+                  availableImages: images.map((img, idx) => ({
+                    index: idx,
+                    imageUrl: img.imageUrl,
+                    id: img.id,
+                    localPath: img.localPath
+                  }))
+                });
+              }
+            };
+
+            if (task.imageType === 'original') {
+              updateImage(groups.original);
+            } else if (task.imageType === 'sku') {
+              const sku = groups.skus.find(s => s.skuIndex === task.skuIndex);
+              if (sku) updateImage(sku.images);
+            } else if (task.imageType === 'scene') {
+              updateImage(groups.scenes);
+            }
+          });
+
+          // 同步更新currentProduct中的imageUrl
+          setCurrentProduct(prevProduct => {
+            const updatedProduct = { ...prevProduct };
+
+            const updateProductImage = (images) => {
+              if (!images) {
+                console.warn(`⚠️ [currentProduct更新] 图片数组为空`);
+                return;
+              }
+
+              console.log(`🔍 [currentProduct更新] 开始查找图片进行URL更新:`, {
+                imageType: task.imageType,
+                imageIndex: task.imageIndex,
+                skuIndex: task.skuIndex,
+                originalImageId: task.originalImageId,
+                newUrl: result.url,
+                imagesCount: images.length
+              });
+
+              // 方法1: 使用imageIndex进行精确匹配
+              if (typeof task.imageIndex === 'number' && task.imageIndex >= 0 && task.imageIndex < images.length) {
+                const targetImg = images[task.imageIndex];
+                console.log(`🎯 [currentProduct更新] 按索引[${task.imageIndex}]匹配图片:`, {
+                  currentUrl: targetImg.imageUrl,
+                  originalImageId: task.originalImageId,
+                  indexMatch: true
+                });
+
+                targetImg.imageUrl = result.url;
+                console.log(`✅ [currentProduct更新] 按索引匹配成功: [${task.imageIndex}] -> ${result.url}`);
+                return;
+              }
+
+              // 方法2: 多重匹配条件查找
+              let foundImage = null;
+              let foundIndex = -1;
+
+              for (let i = 0; i < images.length; i++) {
+                const img = images[i];
+                console.log(`🔍 [currentProduct更新] 检查图片[${i}]:`, {
+                  imageUrl: img.imageUrl,
+                  id: img.id,
+                  index: img.index,
+                  localPath: img.localPath
+                });
+
+                // 匹配条件1: originalImageId匹配
+                if (img.imageUrl === task.originalImageId || img.id === task.originalImageId) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [currentProduct更新] originalImageId匹配成功 [${i}]`);
+                  break;
+                }
+
+                // 匹配条件2: localPath匹配
+                if (img.localPath === task.localPath) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [currentProduct更新] localPath匹配成功 [${i}]`);
+                  break;
+                }
+
+                // 匹配条件3: 图片索引匹配
+                if (typeof task.imageIndex === 'number' && (img.index === task.imageIndex || i === task.imageIndex)) {
+                  foundImage = img;
+                  foundIndex = i;
+                  console.log(`✅ [currentProduct更新] 图片索引匹配成功 [${i}]`);
+                  break;
+                }
+              }
+
+              if (foundImage) {
+                foundImage.imageUrl = result.url;
+                console.log(`✅ [currentProduct更新] 图片URL更新成功 [${foundIndex}]: ${task.originalImageId} -> ${result.url}`);
+              } else {
+                console.error(`❌ [currentProduct更新] 未找到匹配的图片:`, {
+                  originalImageId: task.originalImageId,
+                  localPath: task.localPath,
+                  imageIndex: task.imageIndex,
+                  availableImages: images.map((img, idx) => ({
+                    index: idx,
+                    imageUrl: img.imageUrl,
+                    id: img.id,
+                    localPath: img.localPath
+                  }))
+                });
+              }
+            };
+
+            if (task.imageType === 'original') {
+              updateProductImage(updatedProduct.originalImages);
+            } else if (task.imageType === 'sku') {
+              const sku = updatedProduct.publishSkus?.find(s => s.skuIndex === task.skuIndex);
+              if (sku) updateProductImage(sku.skuImages);
+            } else if (task.imageType === 'scene') {
+              updateProductImage(updatedProduct.senceImages);
+            }
+
+            return updatedProduct;
+          });
+        },
+
+        // 单个错误回调
+        (task, error) => {
+          console.error(`❌ 图片上传失败: ${task.imageId} - ${error.message}`);
+
+          setUploadErrors(prev => [...prev, {
+            imageId: task.imageId,
+            imageType: task.imageType,
+            error: error.message,
+            attempts: task.attempts
+          }]);
+        },
+
+        // 全部完成回调
+        async (finalResults, duration) => {
+          setUploadStats({
+            ...finalResults,
+            duration,
+            imageStats
+          });
+
+          console.log('🏁 图片上传完成:', finalResults);
+
+          // 检查上传结果
+          if (finalResults.failed > 0) {
+            const failedCount = finalResults.failed;
+            const totalCount = finalResults.total;
+
+            setError(`上传过程中有 ${failedCount}/${totalCount} 张图片失败。请检查错误信息或重试。`);
+
+            // 询问用户是否继续提交审核
+            const shouldContinue = window.confirm(
+              `有 ${failedCount} 张图片上传失败。\n\n是否继续提交审核？\n点击"确定"继续提交，点击"取消"停止流程。`
+            );
+
+            if (!shouldContinue) {
+              console.log('🛑 用户选择停止提交流程');
+              return;
+            }
+          }
+
+          // 6. 验证上传结果
+          console.log('🔍 开始验证图片上传结果...');
+          console.log('📊 上传统计:', {
+            total: finalResults.total,
+            success: finalResults.success,
+            failed: finalResults.failed
+          });
+
+          // 从上传管理器获取成功上传的图片ID列表
+          const successfulImageIds = Object.keys(finalResults.newUrls || {});
+          console.log('🆔 成功上传的图片ID:', successfulImageIds);
+
+          const validationResults = await localImageManager.validateUploadResults(
+            currentProduct.applyCode,
+            successfulImageIds
+          );
+
+          if (!validationResults.success) {
+            const errorMsg = `图片URL更新验证失败: ${validationResults.errors.join(', ')}`;
+            console.error('❌ 验证失败:', errorMsg);
+            setError(errorMsg);
+
+            const shouldContinue = window.confirm(
+              `发现 ${validationResults.errors.length} 个URL更新问题。\n\n是否仍然继续提交审核？\n点击"确定"继续提交，点击"取消"停止流程。`
+            );
+
+            if (!shouldContinue) {
+              console.log('🛑 用户选择停止提交流程（验证失败）');
+              return;
+            }
+          } else {
+            console.log(`✅ 验证成功: ${validationResults.totalUpdated} 张图片URL已正确更新`);
+          }
+
+          // 7. 所有图片处理完成后，提交审核
+          await submitForReview();
+        }
+      );
 
     } catch (error) {
-      console.error('提交失败:', error);
+      console.error('❌ 提交审核失败:', error);
       setError(`提交失败: ${error.message}`);
     } finally {
       setIsSubmitting(false);
+      // 保留上传进度和统计信息供用户查看
+    }
+  };
+
+  /**
+   * 调用审核API
+   */
+  const submitForReview = async () => {
+    try {
+      console.log('📋 提交产品审核...');
+
+      // 构建完整的API请求体
+      const payload = {
+        userId: currentProduct.userId || 0,
+        userCode: currentProduct.userCode || null,
+        applyCode: currentProduct.applyCode,
+
+        // 原始图片 - 只包含imageUrl
+        originalImages: (currentProduct.originalImages || []).map(img => ({
+          imageUrl: img.imageUrl
+        })),
+
+        // SKU图片 - 包含完整的SKU结构
+        publishSkus: (currentProduct.publishSkus || []).map(sku => ({
+          attrClasses: sku.attrClasses || [],
+          skuImages: (sku.skuImages || []).map(img => ({
+            imageUrl: img.imageUrl,
+            index: img.index || 0
+          })),
+          skuIndex: sku.skuIndex || 0
+        })),
+
+        // 场景图片 - 包含imageUrl和index
+        senceImages: (currentProduct.senceImages || []).map(img => ({
+          imageUrl: img.imageUrl,
+          index: img.index || 0
+        }))
+      };
+
+      console.log('📤 提交审核 payload:', payload);
+      console.log('📊 数据统计:', {
+        originalImages: payload.originalImages.length,
+        publishSkus: payload.publishSkus.length,
+        senceImages: payload.senceImages.length,
+        totalSkuImages: payload.publishSkus.reduce((sum, sku) => sum + sku.skuImages.length, 0)
+      });
+
+      // TODO: 调用审核API (暂时注释用于本地调试)
+      console.log('🚧 [调试模式] 审核API调用已注释，仅输出日志');
+      console.log('🔗 API端点: POST /api/publish/submit_product_image');
+      console.log('📦 请求头:', {
+        'Content-Type': 'application/json',
+        'Accept': 'text/plain'
+      });
+      console.log('📋 请求体详情:', JSON.stringify(payload, null, 2));
+
+      /*
+      const response = await post('/api/publish/submit_product_image', payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/plain'
+        }
+      });
+
+      const { statusCode, message, errors } = response || {};
+
+      // 检查响应状态
+      if (statusCode !== 200) {
+        if (errors && Object.keys(errors).length > 0) {
+          const errorMessage = Object.values(errors).flat().join('\n');
+          throw new Error(errorMessage || message);
+        } else {
+          throw new Error(message || '审核提交失败');
+        }
+      }
+
+      console.log('✅ 产品审核提交成功:', message);
+
+      // API成功后的清理和导航逻辑
+      await handleSubmitSuccess(message);
+      */
+
+      // 模拟API成功响应进行调试
+      console.log('✅ [调试模式] 模拟审核提交成功');
+      const mockMessage = '产品审核提交成功 - 调试模式';
+      await handleSubmitSuccess(mockMessage);
+
+    } catch (error) {
+      console.error('❌ 审核API调用失败:', error);
+      throw new Error(`审核提交失败: ${error.message}`);
+    }
+  };
+
+  /**
+   * 处理提交成功后的清理和导航
+   *
+   * 🚧 本地测试模式 - 清理功能已暂时禁用
+   * 为了便于本地调试和验证，暂时注释掉数据清理和页面导航功能
+   */
+  const handleSubmitSuccess = async (successMessage) => {
+    try {
+      console.log('🎉 提交成功:', successMessage || '审核提交完成');
+      console.log('🚧 [本地测试模式] 清理功能已禁用，保留产品数据和本地图片');
+
+      // TODO: 本地测试完成后取消下面的注释
+
+      /*
+      console.log('🧹 开始清理产品数据...');
+
+      // 1. 从本地索引移除产品数据（包含本地图片文件删除）
+      const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+      if (removed) {
+        console.log('✅ 产品数据已从本地索引移除');
+      }
+
+      // 2. 关闭产品详情页 - 延迟执行确保用户看到成功状态
+      setTimeout(() => {
+        if (onClose) {
+          console.log('📱 关闭产品详情页');
+          onClose();
+        }
+      }, 1500);
+
+      // 3. 触发父组件更新 - 通知移除产品
+      if (onUpdate) {
+        console.log('🔄 通知父组件更新产品列表');
+        onUpdate(currentProduct.applyCode, 'submitted');
+      }
+      */
+
+    } catch (error) {
+      console.error('⚠️ 清理过程出现错误:', error);
+      // 即使清理失败，也不阻止页面关闭
+      setTimeout(() => {
+        if (onClose) {
+          onClose();
+        }
+      }, 1500);
     }
   };
 

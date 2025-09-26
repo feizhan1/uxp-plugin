@@ -1450,43 +1450,93 @@ export class LocalImageManager {
 
   /**
    * 获取需要上传的图片列表
+   * @param {string} applyCode 产品编号，如果提供则只获取该产品的图片
    * @returns {Array} 需要上传的图片信息数组
    */
-  getModifiedImages() {
+  getModifiedImages(applyCode = null) {
     const modifiedImages = [];
 
-    // 遍历所有产品查找状态为modified的图片
+    // 遍历所有产品或指定产品查找需要上传的图片
     for (const product of this.indexData) {
-      // 检查原始图片
+      // 如果指定了产品编号，只处理该产品
+      if (applyCode && product.applyCode !== applyCode) {
+        continue;
+      }
+
+      // 检查原始图片 - 所有原始图片都需要上传，不检查状态
       if (product.originalImages) {
-        for (const img of product.originalImages) {
-          if (img.status === 'modified') {
-            modifiedImages.push({
-              imageId: img.imageUrl || img.localPath,
-              applyCode: product.applyCode,
-              ...img
-            });
-          }
+        for (let index = 0; index < product.originalImages.length; index++) {
+          const img = product.originalImages[index];
+          const uniqueImageId = `${product.applyCode}_original_${index}`;
+          modifiedImages.push({
+            imageId: uniqueImageId,
+            originalImageId: img.imageUrl || img.localPath, // 保留原始ID用于兼容
+            applyCode: product.applyCode,
+            imageType: 'original',
+            imageIndex: index,
+            ...img
+          });
         }
       }
 
-      // 检查SKU图片
+      // 检查SKU图片 - 所有SKU图片都需要上传，不检查状态
       if (product.publishSkus) {
         for (const sku of product.publishSkus) {
           if (sku.skuImages) {
-            for (const img of sku.skuImages) {
-              if (img.status === 'modified') {
-                modifiedImages.push({
-                  imageId: img.imageUrl || img.localPath,
-                  applyCode: product.applyCode,
-                  skuIndex: sku.skuIndex,
-                  ...img
-                });
-              }
+            for (let imageIndex = 0; imageIndex < sku.skuImages.length; imageIndex++) {
+              const img = sku.skuImages[imageIndex];
+              const uniqueImageId = `${product.applyCode}_sku_${sku.skuIndex}_${imageIndex}`;
+              modifiedImages.push({
+                imageId: uniqueImageId,
+                originalImageId: img.imageUrl || img.localPath, // 保留原始ID用于兼容
+                applyCode: product.applyCode,
+                imageType: 'sku',
+                skuIndex: sku.skuIndex,
+                imageIndex: imageIndex,
+                ...img
+              });
             }
           }
         }
       }
+
+      // 检查场景图片 - 所有场景图片都需要上传，不检查状态
+      if (product.senceImages) {
+        for (let index = 0; index < product.senceImages.length; index++) {
+          const img = product.senceImages[index];
+          const uniqueImageId = `${product.applyCode}_scene_${index}`;
+          modifiedImages.push({
+            imageId: uniqueImageId,
+            originalImageId: img.imageUrl || img.localPath, // 保留原始ID用于兼容
+            applyCode: product.applyCode,
+            imageType: 'scene',
+            imageIndex: index,
+            ...img
+          });
+        }
+      }
+    }
+
+    console.log(`🔍 [getModifiedImages] ${applyCode ? `产品${applyCode}` : '所有产品'}需要上传的图片: ${modifiedImages.length} 张`);
+
+    // 添加详细的图片分组统计
+    const imageStats = modifiedImages.reduce((stats, img) => {
+      const key = `${img.imageType}`;
+      stats[key] = (stats[key] || 0) + 1;
+      return stats;
+    }, {});
+
+    console.log(`📊 [getModifiedImages] 图片类型统计:`, imageStats);
+
+    // 输出每个图片的唯一ID用于调试验证
+    if (modifiedImages.length > 0) {
+      console.log(`🆔 [getModifiedImages] 生成的唯一图片ID列表:`);
+      modifiedImages.forEach((img, index) => {
+        console.log(`   ${index + 1}. ${img.imageId} (${img.imageType})`);
+        console.log(`      - localPath: ${img.localPath}`);
+        console.log(`      - currentUrl: ${img.imageUrl}`);
+        console.log(`      - originalImageId: ${img.originalImageId}`);
+      });
     }
 
     return modifiedImages;
@@ -1496,82 +1546,369 @@ export class LocalImageManager {
    * 标记图片上传完成
    * @param {string} imageId 图片ID
    * @param {string} newUrl 新的云端URL
+   * @param {string} imageType 图片类型 ('original', 'sku', 'scene')
+   * @param {number} skuIndex SKU索引（仅sku类型需要）
    */
-  async markImageAsUploaded(imageId, newUrl) {
-    // 遍历产品数组查找并更新图片状态
-    let imageFound = false;
+  async markImageAsUploaded(imageId, newUrl, imageType = null, skuIndex = null) {
+    console.log(`🔄 [markImageAsUploaded] 开始更新图片URL: ${imageId} -> ${newUrl}`);
 
-    for (const product of this.indexData) {
-      // 检查原始图片
-      if (product.originalImages) {
-        for (const img of product.originalImages) {
-          if (img.imageUrl === imageId || img.localPath === imageId) {
-            img.status = 'synced';
-            img.imageUrl = newUrl;
-            img.uploadedTimestamp = Date.now();
+    // 解析唯一图片ID
+    const parsedId = this.parseUniqueImageId(imageId);
+    if (!parsedId) {
+      console.warn(`⚠️ [markImageAsUploaded] 无法解析图片ID格式: ${imageId}`);
+      return false;
+    }
 
-            // 清理修改后的文件
-            if (img.modifiedPath) {
-              try {
-                const modifiedFile = await this.imageFolder.getEntry(img.modifiedPath);
-                if (modifiedFile) {
-                  await modifiedFile.delete();
-                }
-              } catch (error) {
-                console.warn(`清理修改文件失败: ${error.message}`);
-              }
-              delete img.modifiedPath;
-            }
+    console.log(`📋 [markImageAsUploaded] 解析图片信息:`, parsedId);
 
-            imageFound = true;
-            console.log(`原始图片 ${imageId} 已标记为已上传`);
-            break;
+    // 查找对应的产品
+    const product = this.indexData.find(p => p.applyCode === parsedId.applyCode);
+    if (!product) {
+      console.warn(`⚠️ [markImageAsUploaded] 找不到产品: ${parsedId.applyCode}`);
+      return false;
+    }
+
+    // 清理修改文件的通用方法
+    const cleanupModifiedFile = async (img) => {
+      if (img.modifiedPath) {
+        try {
+          const modifiedFile = await this.imageFolder.getEntry(img.modifiedPath);
+          if (modifiedFile) {
+            await modifiedFile.delete();
           }
+        } catch (error) {
+          console.warn(`清理修改文件失败: ${error.message}`);
+        }
+        delete img.modifiedPath;
+      }
+    };
+
+    // 根据图片类型精确定位图片
+    let targetImage = null;
+    let imageLocation = '';
+
+    try {
+      if (parsedId.imageType === 'original') {
+        if (product.originalImages && product.originalImages[parsedId.imageIndex]) {
+          targetImage = product.originalImages[parsedId.imageIndex];
+          imageLocation = `原图[${parsedId.imageIndex}]`;
+        }
+      } else if (parsedId.imageType === 'sku') {
+        // 改进SKU查找逻辑，支持多种匹配方式
+        let sku = null;
+
+        // 方法1: 精确的skuIndex匹配
+        sku = product.publishSkus?.find(s => s.skuIndex === parsedId.skuIndex);
+
+        // 方法2: 如果skuIndex匹配失败，尝试数组索引匹配
+        if (!sku && typeof parsedId.skuIndex === 'number' && product.publishSkus && parsedId.skuIndex < product.publishSkus.length) {
+          sku = product.publishSkus[parsedId.skuIndex];
+          console.log(`🔍 [markImageAsUploaded] SKU按数组索引匹配: [${parsedId.skuIndex}]`);
+        }
+
+        if (sku?.skuImages && sku.skuImages[parsedId.imageIndex]) {
+          targetImage = sku.skuImages[parsedId.imageIndex];
+          imageLocation = `SKU[${parsedId.skuIndex}]图片[${parsedId.imageIndex}]`;
+          console.log(`🎯 [markImageAsUploaded] 找到SKU图片:`, {
+            skuIndex: parsedId.skuIndex,
+            imageIndex: parsedId.imageIndex,
+            currentUrl: targetImage.imageUrl,
+            hasAttrClasses: Array.isArray(sku.attrClasses),
+            attrClasses: sku.attrClasses
+          });
+        } else {
+          console.warn(`⚠️ [markImageAsUploaded] SKU图片查找失败:`, {
+            skuIndex: parsedId.skuIndex,
+            imageIndex: parsedId.imageIndex,
+            skuFound: !!sku,
+            skuImagesCount: sku?.skuImages?.length || 0,
+            totalSkus: product.publishSkus?.length || 0
+          });
+        }
+      } else if (parsedId.imageType === 'scene') {
+        if (product.senceImages && product.senceImages[parsedId.imageIndex]) {
+          targetImage = product.senceImages[parsedId.imageIndex];
+          imageLocation = `场景图[${parsedId.imageIndex}]`;
         }
       }
 
-      // 检查SKU图片
-      if (!imageFound && product.publishSkus) {
-        for (const sku of product.publishSkus) {
-          if (sku.skuImages) {
-            for (const img of sku.skuImages) {
-              if (img.imageUrl === imageId || img.localPath === imageId) {
-                img.status = 'synced';
-                img.imageUrl = newUrl;
-                img.uploadedTimestamp = Date.now();
+      if (!targetImage) {
+        console.warn(`⚠️ [markImageAsUploaded] 找不到目标图片: ${imageId} (${imageLocation})`);
+        return false;
+      }
 
-                // 清理修改后的文件
-                if (img.modifiedPath) {
-                  try {
-                    const modifiedFile = await this.imageFolder.getEntry(img.modifiedPath);
-                    if (modifiedFile) {
-                      await modifiedFile.delete();
-                    }
-                  } catch (error) {
-                    console.warn(`清理修改文件失败: ${error.message}`);
-                  }
-                  delete img.modifiedPath;
-                }
+      // 验证图片匹配（可选的额外验证）
+      const originalImageId = targetImage.imageUrl || targetImage.localPath;
+      console.log(`🔍 [markImageAsUploaded] 验证图片匹配:`, {
+        uniqueId: imageId,
+        targetLocation: imageLocation,
+        originalImageId: originalImageId,
+        currentUrl: targetImage.imageUrl,
+        localPath: targetImage.localPath,
+        status: targetImage.status
+      });
 
-                imageFound = true;
-                console.log(`SKU图片 ${imageId} 已标记为已上传`);
-                break;
+      // 添加更详细的匹配前数据记录
+      console.log(`📋 [markImageAsUploaded] 更新前的完整图片信息:`, {
+        imageLocation,
+        targetImage: {
+          imageUrl: targetImage.imageUrl,
+          localPath: targetImage.localPath,
+          status: targetImage.status,
+          index: targetImage.index,
+          id: targetImage.id
+        },
+        updateInfo: {
+          newUrl,
+          imageType: parsedId.imageType,
+          imageIndex: parsedId.imageIndex,
+          skuIndex: parsedId.skuIndex
+        }
+      });
+
+      // 更新图片信息
+      const oldUrl = targetImage.imageUrl;
+      targetImage.status = 'synced';
+      targetImage.imageUrl = newUrl;
+      targetImage.uploadedTimestamp = Date.now();
+
+      console.log(`🔄 [markImageAsUploaded] 即将更新图片信息:`);
+      console.log(`   位置: ${imageLocation}`);
+      console.log(`   旧URL: ${oldUrl}`);
+      console.log(`   新URL: ${newUrl}`);
+      console.log(`   更新后的targetImage.imageUrl: ${targetImage.imageUrl}`);
+
+      // 验证更新是否生效
+      if (targetImage.imageUrl !== newUrl) {
+        console.error(`❌ [markImageAsUploaded] URL更新失败! targetImage.imageUrl = ${targetImage.imageUrl}, 期望值 = ${newUrl}`);
+        return false;
+      }
+
+      // 清理修改文件
+      await cleanupModifiedFile(targetImage);
+
+      console.log(`✅ [markImageAsUploaded] ${imageLocation} 更新成功:`);
+      console.log(`   最终URL: ${targetImage.imageUrl}`);
+      console.log(`   状态: ${targetImage.status}`);
+
+      // 验证在 indexData 中的更新
+      console.log(`🔍 [markImageAsUploaded] 验证索引数据中的更新:`);
+      const productInIndex = this.indexData.find(p => p.applyCode === parsedId.applyCode);
+      let verifyImage = null;
+
+      if (parsedId.imageType === 'original') {
+        verifyImage = productInIndex.originalImages?.[parsedId.imageIndex];
+      } else if (parsedId.imageType === 'sku') {
+        const verifySkus = productInIndex.publishSkus?.find(s => s.skuIndex === parsedId.skuIndex);
+        verifyImage = verifySkus?.skuImages?.[parsedId.imageIndex];
+      } else if (parsedId.imageType === 'scene') {
+        verifyImage = productInIndex.senceImages?.[parsedId.imageIndex];
+      }
+
+      if (verifyImage && verifyImage.imageUrl === newUrl) {
+        console.log(`✅ [markImageAsUploaded] 索引数据验证成功: ${verifyImage.imageUrl}`);
+      } else {
+        console.error(`❌ [markImageAsUploaded] 索引数据验证失败! 索引中的URL: ${verifyImage?.imageUrl}, 期望: ${newUrl}`);
+        return false;
+      }
+
+      // 保存索引数据
+      console.log(`💾 [markImageAsUploaded] 准备保存索引数据...`);
+      await this.saveIndexData();
+      console.log(`💾 [markImageAsUploaded] 索引数据已保存`);
+
+      // 保存后再次验证数据是否正确写入
+      console.log(`🔍 [markImageAsUploaded] 保存后最终验证:`);
+      const finalProduct = this.indexData.find(p => p.applyCode === parsedId.applyCode);
+      let finalImage = null;
+
+      if (parsedId.imageType === 'original') {
+        finalImage = finalProduct?.originalImages?.[parsedId.imageIndex];
+      } else if (parsedId.imageType === 'sku') {
+        const finalSku = finalProduct?.publishSkus?.find(s => s.skuIndex === parsedId.skuIndex) ||
+                         finalProduct?.publishSkus?.[parsedId.skuIndex];
+        finalImage = finalSku?.skuImages?.[parsedId.imageIndex];
+      } else if (parsedId.imageType === 'scene') {
+        finalImage = finalProduct?.senceImages?.[parsedId.imageIndex];
+      }
+
+      if (finalImage && finalImage.imageUrl === newUrl) {
+        console.log(`✅ [markImageAsUploaded] 最终验证成功: ${imageLocation} URL = ${finalImage.imageUrl}`);
+      } else {
+        console.error(`❌ [markImageAsUploaded] 最终验证失败: ${imageLocation}`, {
+          expected: newUrl,
+          actual: finalImage?.imageUrl,
+          finalImageExists: !!finalImage
+        });
+        return false;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error(`❌ [markImageAsUploaded] 更新失败: ${imageId}`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 验证图片上传后的URL更新结果
+   * @param {string} applyCode 产品编号
+   * @param {Array} uploadedImageIds 已上传的图片ID列表
+   * @returns {Object} 验证结果
+   */
+  async validateUploadResults(applyCode, uploadedImageIds) {
+    console.log(`🔍 [validateUploadResults] 开始验证产品 ${applyCode} 的上传结果`);
+
+    const product = this.indexData.find(p => p.applyCode === applyCode);
+    if (!product) {
+      return { success: false, error: '产品不存在' };
+    }
+
+    const results = {
+      success: true,
+      totalUpdated: 0,
+      errors: [],
+      details: {
+        original: { total: 0, updated: 0, failed: [] },
+        sku: { total: 0, updated: 0, failed: [] },
+        scene: { total: 0, updated: 0, failed: [] }
+      }
+    };
+
+    // 验证原图
+    if (product.originalImages) {
+      results.details.original.total = product.originalImages.length;
+      for (let i = 0; i < product.originalImages.length; i++) {
+        const img = product.originalImages[i];
+        const expectedId = `${applyCode}_original_${i}`;
+
+        if (uploadedImageIds.includes(expectedId)) {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+            results.details.original.updated++;
+            results.totalUpdated++;
+            console.log(`✅ [validateUploadResults] 原图[${i}] URL已更新: ${img.imageUrl}`);
+          } else {
+            results.details.original.failed.push(`原图[${i}] URL未正确更新`);
+            results.errors.push(`原图[${i}] URL未正确更新: ${img.imageUrl}`);
+            results.success = false;
+          }
+        }
+      }
+    }
+
+    // 验证SKU图
+    if (product.publishSkus) {
+      for (const sku of product.publishSkus) {
+        if (sku.skuImages) {
+          results.details.sku.total += sku.skuImages.length;
+          for (let i = 0; i < sku.skuImages.length; i++) {
+            const img = sku.skuImages[i];
+            const expectedId = `${applyCode}_sku_${sku.skuIndex}_${i}`;
+
+            if (uploadedImageIds.includes(expectedId)) {
+              if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+                results.details.sku.updated++;
+                results.totalUpdated++;
+                console.log(`✅ [validateUploadResults] SKU[${sku.skuIndex}]图片[${i}] URL已更新: ${img.imageUrl}`);
+              } else {
+                const errorMsg = `SKU[${sku.skuIndex}]图片[${i}] URL未正确更新`;
+                results.details.sku.failed.push(errorMsg);
+                results.errors.push(`${errorMsg}: ${img.imageUrl}`);
+                results.success = false;
               }
             }
           }
-          if (imageFound) break;
         }
       }
-
-      if (imageFound) break;
     }
 
-    if (!imageFound) {
-      console.warn(`尝试标记不存在的图片为已上传: ${imageId}`);
-      return;
+    // 验证场景图
+    if (product.senceImages) {
+      results.details.scene.total = product.senceImages.length;
+      for (let i = 0; i < product.senceImages.length; i++) {
+        const img = product.senceImages[i];
+        const expectedId = `${applyCode}_scene_${i}`;
+
+        if (uploadedImageIds.includes(expectedId)) {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+            results.details.scene.updated++;
+            results.totalUpdated++;
+            console.log(`✅ [validateUploadResults] 场景图[${i}] URL已更新: ${img.imageUrl}`);
+          } else {
+            results.details.scene.failed.push(`场景图[${i}] URL未正确更新`);
+            results.errors.push(`场景图[${i}] URL未正确更新: ${img.imageUrl}`);
+            results.success = false;
+          }
+        }
+      }
     }
 
-    await this.saveIndexData();
+    console.log(`📊 [validateUploadResults] 验证完成:`, {
+      success: results.success,
+      totalUpdated: results.totalUpdated,
+      errorCount: results.errors.length
+    });
+
+    if (!results.success) {
+      console.warn(`⚠️ [validateUploadResults] 发现 ${results.errors.length} 个问题:`, results.errors);
+    }
+
+    return results;
+  }
+
+  /**
+   * 解析唯一图片ID
+   * @param {string} uniqueImageId 唯一图片ID，格式: applyCode_imageType_index 或 applyCode_sku_skuIndex_imageIndex
+   * @returns {Object|null} 解析结果
+   */
+  parseUniqueImageId(uniqueImageId) {
+    if (!uniqueImageId || typeof uniqueImageId !== 'string') {
+      return null;
+    }
+
+    const parts = uniqueImageId.split('_');
+    if (parts.length < 3) {
+      return null;
+    }
+
+    // 处理 applyCode 可能包含下划线的情况
+    // 格式1: applyCode_original_index
+    // 格式2: applyCode_scene_index
+    // 格式3: applyCode_sku_skuIndex_imageIndex
+
+    if (parts.length >= 4 && parts[parts.length - 3] === 'sku') {
+      // SKU图片格式: applyCode_sku_skuIndex_imageIndex
+      const imageIndex = parseInt(parts[parts.length - 1]);
+      const skuIndex = parseInt(parts[parts.length - 2]);
+      const applyCode = parts.slice(0, -3).join('_');
+
+      if (isNaN(imageIndex) || isNaN(skuIndex)) {
+        return null;
+      }
+
+      return {
+        applyCode,
+        imageType: 'sku',
+        skuIndex,
+        imageIndex
+      };
+    } else {
+      // 原图或场景图格式: applyCode_imageType_index
+      const imageIndex = parseInt(parts[parts.length - 1]);
+      const imageType = parts[parts.length - 2];
+      const applyCode = parts.slice(0, -2).join('_');
+
+      if (isNaN(imageIndex) || !['original', 'scene'].includes(imageType)) {
+        return null;
+      }
+
+      return {
+        applyCode,
+        imageType,
+        imageIndex
+      };
+    }
   }
 
   /**
@@ -1666,6 +2003,112 @@ export class LocalImageManager {
 
     console.log(`清理完成: 删除了 ${results.deleted} 张过期图片`);
     return results;
+  }
+
+  /**
+   * 移除产品及其所有相关数据
+   * @param {string} applyCode 产品编号
+   * @returns {Promise<boolean>} 是否成功移除
+   */
+  async removeProduct(applyCode) {
+    try {
+      console.log(`🗑️ [removeProduct] 开始移除产品: ${applyCode}`);
+
+      // 查找要删除的产品
+      const productIndex = this.indexData.findIndex(p => p.applyCode === applyCode);
+      if (productIndex === -1) {
+        console.warn(`⚠️ [removeProduct] 产品不存在: ${applyCode}`);
+        return false;
+      }
+
+      const product = this.indexData[productIndex];
+      let deletedFilesCount = 0;
+      let totalFilesCount = 0;
+
+      // 收集所有需要删除的文件路径（使用Set自动去重）
+      const filesToDelete = new Set();
+
+      // 原始图片文件
+      if (product.originalImages) {
+        for (const img of product.originalImages) {
+          totalFilesCount++;
+          if (img.localPath) {
+            filesToDelete.add(img.localPath);
+          }
+          if (img.modifiedPath) {
+            filesToDelete.add(img.modifiedPath);
+          }
+        }
+      }
+
+      // SKU图片文件
+      if (product.publishSkus) {
+        for (const sku of product.publishSkus) {
+          if (sku.skuImages) {
+            for (const img of sku.skuImages) {
+              totalFilesCount++;
+              if (img.localPath) {
+                filesToDelete.add(img.localPath);
+              }
+              if (img.modifiedPath) {
+                filesToDelete.add(img.modifiedPath);
+              }
+            }
+          }
+        }
+      }
+
+      // 场景图片文件
+      if (product.senceImages) {
+        for (const img of product.senceImages) {
+          totalFilesCount++;
+          if (img.localPath) {
+            filesToDelete.add(img.localPath);
+          }
+          if (img.modifiedPath) {
+            filesToDelete.add(img.modifiedPath);
+          }
+        }
+      }
+
+      console.log(`📁 [removeProduct] 需要删除 ${filesToDelete.size} 个唯一文件，共 ${totalFilesCount} 张图片引用`);
+
+      // 删除本地文件
+      for (const filePath of filesToDelete) {
+        try {
+          const file = await this.imageFolder.getEntry(filePath);
+          if (file) {
+            await file.delete();
+            deletedFilesCount++;
+            console.log(`🗂️ [removeProduct] 已删除文件: ${filePath}`);
+          }
+        } catch (error) {
+          // 检查是否是"文件不存在"错误，这是正常情况（可能已被删除）
+          if (error.message.includes('Could not find an entry')) {
+            console.log(`📝 [removeProduct] 文件已不存在，跳过: ${filePath}`);
+          } else {
+            // 只对真正的文件系统错误输出警告
+            console.warn(`⚠️ [removeProduct] 删除文件时发生错误 ${filePath}:`, error.message);
+          }
+          // 继续删除其他文件，不因单个文件失败而中断
+        }
+      }
+
+      // 从索引数据中移除产品
+      this.indexData.splice(productIndex, 1);
+
+      // 保存更新后的索引文件
+      await this.saveIndexData();
+
+      console.log(`✅ [removeProduct] 产品移除完成: ${applyCode}`);
+      console.log(`📊 [removeProduct] 删除统计: ${deletedFilesCount}/${filesToDelete.size} 个文件成功删除`);
+
+      return true;
+
+    } catch (error) {
+      console.error(`❌ [removeProduct] 移除产品失败: ${applyCode}`, error);
+      throw new Error(`移除产品失败: ${error.message}`);
+    }
   }
 
   /**
