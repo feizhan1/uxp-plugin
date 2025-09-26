@@ -1171,6 +1171,7 @@ const ProductDetail = ({
 
             if (!shouldContinue) {
               console.log('🛑 用户选择停止提交流程');
+              setUploadProgress(null); // 用户取消时立即清理进度条
               return;
             }
           }
@@ -1203,6 +1204,7 @@ const ProductDetail = ({
 
             if (!shouldContinue) {
               console.log('🛑 用户选择停止提交流程（验证失败）');
+              setUploadProgress(null); // 用户取消时立即清理进度条
               return;
             }
           } else {
@@ -1219,7 +1221,10 @@ const ProductDetail = ({
       setError(`提交失败: ${error.message}`);
     } finally {
       setIsSubmitting(false);
-      // 保留上传进度和统计信息供用户查看
+      // 上传完成后延迟清理进度条，让用户看到完成状态
+      setTimeout(() => {
+        setUploadProgress(null);
+      }, 2000); // 2秒后清理进度条
     }
   };
 
@@ -1418,7 +1423,7 @@ const ProductDetail = ({
 
       // 初始化进度状态
       if (files.length > 1) {
-        setUploadProgress({ current: 0, total: files.length });
+        setUploadProgress({ completed: 0, total: files.length, success: 0, failed: 0, running: 0 });
       }
 
       // 保存滚动位置
@@ -1437,7 +1442,7 @@ const ProductDetail = ({
         imageType,
         skuIndex,
         files.length > 1 ? (current) => {
-          setUploadProgress({ current, total: files.length });
+          setUploadProgress({ completed: current, total: files.length, success: current, failed: 0, running: 0 });
         } : null
       );
 
@@ -2716,16 +2721,20 @@ const ProductDetail = ({
         <div className="upload-progress-container">
           <div className="upload-progress-header">
             <span className="upload-progress-text">
-              正在上传图片... ({uploadProgress.current}/{uploadProgress.total})
+              {uploadProgress.completed >= uploadProgress.total ? '上传完成' : '上传中'} {uploadProgress.completed || 0}/{uploadProgress.total || 0}
+              {uploadProgress.running > 0 && ` (${uploadProgress.running}个并发)`}
+              {uploadProgress.failed > 0 && ` | ❌${uploadProgress.failed}`}
             </span>
             <div className="upload-progress-percent">
-              {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+              {uploadProgress.total > 0 ? Math.round(((uploadProgress.completed || 0) / uploadProgress.total) * 100) : 0}%
             </div>
           </div>
           <div className="upload-progress-bar">
             <div
               className="upload-progress-fill"
-              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+              style={{
+                width: uploadProgress.total > 0 ? `${((uploadProgress.completed || 0) / uploadProgress.total) * 100}%` : '0%'
+              }}
             />
           </div>
         </div>
