@@ -9,7 +9,7 @@ import './ProductDetail.css';
  * 本地图片组件 - 仅显示本地文件系统中的图片
  * 使用React.memo优化性能
  */
-const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus }) => {
+const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefresh, onRefreshComplete, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus }) => {
   const [displaySrc, setDisplaySrc] = useState(null);
   const [loading, setLoading] = useState(hasLocal);
 
@@ -53,7 +53,15 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, onDoubleCli
     return () => {
       isMounted = false;
     };
-  }, [imageUrl, hasLocal]);
+  }, [imageUrl, hasLocal, needsRefresh]);
+
+  // 当刷新完成时通知父组件
+  useEffect(() => {
+    if (needsRefresh && displaySrc && onRefreshComplete) {
+      console.log(`✅ [LocalImage] 图片刷新完成: ${imageUrl.substring(0, 30)}...`);
+      onRefreshComplete();
+    }
+  }, [needsRefresh, displaySrc, onRefreshComplete, imageUrl]);
 
   if (!hasLocal) {
     return (
@@ -167,6 +175,7 @@ const ProductDetail = ({
   const [recentlyUpdatedImages, setRecentlyUpdatedImages] = useState(new Set()); // 最近更新的图片ID集合
   const [completedImages, setCompletedImages] = useState(new Set()); // 已完成的图片ID集合
   const [editingImages, setEditingImages] = useState(new Set()); // 编辑中的图片ID集合
+  const [refreshingImages, setRefreshingImages] = useState(new Set()); // 需要刷新的图片ID集合
   const [showWorkflowGuide, setShowWorkflowGuide] = useState(false); // 显示工作流程指引
   const [imageLayout, setImageLayout] = useState('small'); // 图片布局尺寸：small(100px), medium(140px), large(180px)
   const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(false); // 全局控制是否跳过删除确认
@@ -418,8 +427,8 @@ const ProductDetail = ({
           // 标记为已完成
           setCompletedImages(prev => new Set([...prev, syncResult.imageId]));
 
-          // 刷新图片数据以显示最新状态
-          await initializeImageData();
+          // 标记单个图片需要刷新（局部刷新，避免整页重新加载）
+          setRefreshingImages(prev => new Set([...prev, syncResult.imageId]));
 
           console.log(`🎉 [PS事件监听] 图片已标记为完成状态: ${syncResult.imageId}`);
         }
@@ -727,6 +736,18 @@ const ProductDetail = ({
         return [];
     }
   };
+
+  /**
+   * 处理图片刷新完成事件
+   */
+  const handleImageRefreshComplete = useCallback((imageId) => {
+    console.log(`🔄 [图片刷新] 完成刷新，移除刷新标识: ${imageId}`);
+    setRefreshingImages(prev => {
+      const next = new Set(prev);
+      next.delete(imageId);
+      return next;
+    });
+  }, []);
 
   /**
    * 获取所有待编辑状态的图片
@@ -2849,6 +2870,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`原始图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
+                        needsRefresh={refreshingImages.has(image.id)}
+                        onRefreshComplete={() => handleImageRefreshComplete(image.id)}
                         onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         isOpening={openingImageId === image.id}
@@ -2932,6 +2955,8 @@ const ProductDetail = ({
                           imageUrl={image.imageUrl}
                           alt={`${sku.skuTitle} 图片 ${imgIndex + 1}`}
                           hasLocal={image.hasLocal}
+                          needsRefresh={refreshingImages.has(image.id)}
+                          onRefreshComplete={() => handleImageRefreshComplete(image.id)}
                           onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                           onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                           isOpening={openingImageId === image.id}
@@ -3013,6 +3038,8 @@ const ProductDetail = ({
                         imageUrl={image.imageUrl}
                         alt={`场景图片 ${index + 1}`}
                         hasLocal={image.hasLocal}
+                        needsRefresh={refreshingImages.has(image.id)}
+                        onRefreshComplete={() => handleImageRefreshComplete(image.id)}
                         onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
                         isOpening={openingImageId === image.id}
@@ -3061,6 +3088,8 @@ const ProductDetail = ({
                   imageUrl={previewMode.imageList[previewMode.currentImageIndex]?.imageUrl}
                   alt={previewMode.imageList[previewMode.currentImageIndex]?.displayName}
                   hasLocal={previewMode.imageList[previewMode.currentImageIndex]?.hasLocal}
+                  needsRefresh={refreshingImages.has(previewMode.imageList[previewMode.currentImageIndex]?.id)}
+                  onRefreshComplete={() => handleImageRefreshComplete(previewMode.imageList[previewMode.currentImageIndex]?.id)}
                   onDoubleClick={() => {
                     const currentImage = previewMode.imageList[previewMode.currentImageIndex];
                     handleOpenImageInPS(currentImage.id, currentImage.imageUrl);
