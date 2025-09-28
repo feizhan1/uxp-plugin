@@ -911,6 +911,19 @@ export class LocalImageManager {
           }
         }
       }
+
+      // 查找senceImages (场景图片)
+      if (product.senceImages) {
+        const found = product.senceImages.find(img =>
+          img.imageUrl === imageId || img.localPath === imageId
+        );
+        if (found) {
+          return {
+            ...found,
+            applyCode: product.applyCode
+          };
+        }
+      }
     }
 
     return null;
