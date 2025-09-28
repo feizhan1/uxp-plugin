@@ -1323,7 +1323,7 @@ const ProductDetail = ({
       });
       console.log('📋 请求体详情:', JSON.stringify(payload, null, 2));
 
-      /*
+      
       const response = await post('/api/publish/submit_product_image', payload, {
         headers: {
           'Content-Type': 'application/json',
@@ -1347,7 +1347,7 @@ const ProductDetail = ({
 
       // API成功后的清理和导航逻辑
       await handleSubmitSuccess(message);
-      */
+      
 
       // 模拟API成功响应进行调试
       console.log('✅ [调试模式] 模拟审核提交成功');
@@ -3013,13 +3013,15 @@ const ProductDetail = ({
                         >
                           {image.isCompleted || completedImages.has(image.id) ? '完成' : '√'}
                         </div>
-                        <button
+                        <div
                           className="top-delete-btn"
                           onClick={() => handleConfirmDelete(image)}
                           title="删除图片"
+                          role="button"
+                          tabIndex="0"
                         >
-                          ×
-                        </button>
+                          x
+                        </div>
                       </div>
                     </div>
                     <div className="image-preview">

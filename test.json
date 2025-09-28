@@ -1,0 +1,54 @@
+ {
+  "userId": 14387,
+  "userCode": "9087",
+  "applyCode": "test_2508160028",
+  "originalImages": [
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/2fbd9a89-5925-4e0a-b14f-9c5d46f0a462.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/442d8c8e-bb1c-4365-a47a-dc56fa08a6e4.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/c4891a20-4682-4370-b924-28ca9b84c13a.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/d790d82a-786a-4346-9720-7284aa53e2d0.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/6aaa05c4-3831-4dc2-88cd-fc4f5c0b8646.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/64aa1f4c-dc58-4647-9718-64d61fd92bab.png"
+    },
+    {
+      "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/4ae543c8-f677-44de-8b25-7f5f12c195e5.png"
+    }
+  ],
+  "publishSkus": [
+    {
+      "attrClasses": [
+        {
+          "attrName": "颜色款式",
+          "attrValue": "彩钻花白"
+        }
+      ],
+      "skuImages": [
+        {
+          "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/d81792fb-c1da-46c8-bd26-646a4347253a.png",
+          "index": 1
+        },
+        {
+          "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/a9ed5ebe-9c35-4bfd-a3cf-1eb35a969681.png",
+          "index": 2
+        },
+        {
+          "imageUrl": "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508160028/d9a1c0a4-ffb7-4f87-bb7b-353ebf02c27e.png",
+          "index": 3
+        }
+      ],
+      "skuIndex": 1
+    }
+  ],
+  "senceImages": []
+}
