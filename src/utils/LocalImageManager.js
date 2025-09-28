@@ -2388,18 +2388,70 @@ export class LocalImageManager {
 
       const currentModified = metadata.dateModified.getTime();
       const recordedModified = imageInfo.lastModified || imageInfo.timestamp || 0;
+      const currentSize = metadata.size || 0;
+      const recordedSize = imageInfo.fileSize || 0;
 
-      console.log(`📊 [checkFileModification] 时间比较:`, {
+      // 计算时间差（毫秒）
+      const timeDifference = currentModified - recordedModified;
+      const TIME_TOLERANCE_MS = 3000; // 3秒容忍度，避免PS读取操作造成的微小时间变化被误判
+
+      // 检查是否有其他图片共享此文件
+      let sharedImagesCount = 0;
+      const sharedImageIds = [];
+      for (const product of this.indexData) {
+        // 检查所有图片类型
+        const allImages = [
+          ...(product.originalImages || []),
+          ...(product.publishSkus?.flatMap(sku => sku.skuImages || []) || []),
+          ...(product.senceImages || [])
+        ];
+
+        for (const img of allImages) {
+          if (img.localPath === imageInfo.localPath) {
+            sharedImagesCount++;
+            sharedImageIds.push(img.imageUrl || img.localPath);
+          }
+        }
+      }
+
+      console.log(`📊 [checkFileModification] 详细检测信息:`, {
         imageId: imageId,
         localPath: imageInfo.localPath,
         currentModified: new Date(currentModified).toLocaleString(),
         recordedModified: new Date(recordedModified).toLocaleString(),
-        hasBeenModified: currentModified > recordedModified
+        timeDifferenceMs: timeDifference,
+        timeDifferenceSeconds: (timeDifference / 1000).toFixed(1),
+        timeToleranceMs: TIME_TOLERANCE_MS,
+        currentSize: currentSize,
+        recordedSize: recordedSize,
+        sizeChanged: currentSize !== recordedSize,
+        sharedImagesCount: sharedImagesCount,
+        hasSharedImages: sharedImagesCount > 1,
+        sharedImageIds: sharedImagesCount > 1 ? sharedImageIds.map(id => id.substring(0, 20) + '...') : []
+      });
+
+      // 增强的修改判断逻辑
+      const hasSignificantTimeChange = timeDifference > TIME_TOLERANCE_MS;
+      const hasSizeChange = currentSize !== recordedSize && recordedSize > 0; // 避免初始化时的误判
+      const isModified = hasSignificantTimeChange || hasSizeChange;
+
+      console.log(`🔍 [checkFileModification] 修改判断结果:`, {
+        hasSignificantTimeChange,
+        hasSizeChange,
+        isModified,
+        reason: isModified ?
+          (hasSignificantTimeChange && hasSizeChange ? '时间和大小都发生变化' :
+           hasSignificantTimeChange ? '时间发生显著变化' : '文件大小发生变化') :
+          '未检测到修改'
       });
 
       // 如果文件已被修改，更新记录
-      if (currentModified > recordedModified) {
+      if (isModified) {
         console.log(`✅ [checkFileModification] 检测到文件修改: ${imageInfo.localPath}`);
+
+        if (sharedImagesCount > 1) {
+          console.log(`⚠️ [checkFileModification] 注意：此文件被 ${sharedImagesCount} 个图片共享，修改可能影响其他图片`);
+        }
 
         // 更新图片信息
         imageInfo.lastModified = currentModified;
@@ -2413,7 +2465,7 @@ export class LocalImageManager {
         return true;
       }
 
-      console.log(`ℹ️ [checkFileModification] 文件未修改: ${imageInfo.localPath}`);
+      console.log(`ℹ️ [checkFileModification] 文件未修改: ${imageInfo.localPath} (时间差: ${(timeDifference / 1000).toFixed(1)}s, 在容忍范围内)`);
       return false;
 
     } catch (error) {
@@ -2621,7 +2673,10 @@ export class LocalImageManager {
       console.log(`🔄 [setImageStatus] 设置图片状态: ${imageId} → ${status}`);
 
       let imageFound = false;
+      let targetImage = null;
+      let targetLocalPath = null;
 
+      // 第一遍：找到目标图片并更新状态
       for (const product of this.indexData) {
         // 检查原始图片
         if (product.originalImages) {
@@ -2638,6 +2693,8 @@ export class LocalImageManager {
                 img.completedTimestamp = Date.now();
               }
 
+              targetImage = img;
+              targetLocalPath = img.localPath;
               imageFound = true;
               console.log(`✅ [setImageStatus] 原始图片状态更新: ${imageId} (${oldStatus} → ${status})`);
               break;
@@ -2661,6 +2718,8 @@ export class LocalImageManager {
                     img.completedTimestamp = Date.now();
                   }
 
+                  targetImage = img;
+                  targetLocalPath = img.localPath;
                   imageFound = true;
                   console.log(`✅ [setImageStatus] SKU图片状态更新: ${imageId} (${oldStatus} → ${status})`);
                   break;
@@ -2685,6 +2744,8 @@ export class LocalImageManager {
                 img.completedTimestamp = Date.now();
               }
 
+              targetImage = img;
+              targetLocalPath = img.localPath;
               imageFound = true;
               console.log(`✅ [setImageStatus] 场景图片状态更新: ${imageId} (${oldStatus} → ${status})`);
               break;
@@ -2700,6 +2761,11 @@ export class LocalImageManager {
         return false;
       }
 
+      // 关键修复：如果设置为'editing'状态，同步更新所有共享同一文件的图片的时间基准
+      if (status === 'editing' && targetLocalPath && targetImage) {
+        await this.syncFileTimeBaseline(targetLocalPath, imageId);
+      }
+
       // 保存索引数据
       await this.saveIndexData();
       return true;
@@ -2707,6 +2773,118 @@ export class LocalImageManager {
     } catch (error) {
       console.error(`❌ [setImageStatus] 设置图片状态失败:`, error);
       return false;
+    }
+  }
+
+  /**
+   * 同步共享文件的时间基准
+   * 解决相同图片文件时间戳污染问题
+   * @param {string} localPath - 文件路径
+   * @param {string} currentImageId - 当前操作的图片ID
+   * @returns {Promise<void>}
+   */
+  async syncFileTimeBaseline(localPath, currentImageId) {
+    try {
+      if (!localPath) {
+        console.log(`⚠️ [syncFileTimeBaseline] localPath为空，跳过同步`);
+        return;
+      }
+
+      console.log(`🔄 [syncFileTimeBaseline] 开始同步共享文件时间基准: ${localPath}`);
+
+      // 获取文件的真实修改时间
+      let currentFileTime = null;
+      try {
+        const file = await this.imageFolder.getEntry(localPath);
+        const metadata = await file.getMetadata();
+        currentFileTime = metadata.dateModified.getTime();
+        console.log(`📁 [syncFileTimeBaseline] 文件真实修改时间: ${new Date(currentFileTime).toLocaleString()}`);
+      } catch (fileError) {
+        console.warn(`⚠️ [syncFileTimeBaseline] 无法获取文件时间，跳过同步:`, fileError.message);
+        return;
+      }
+
+      // 收集所有使用相同localPath的图片
+      const sharedImages = [];
+      for (const product of this.indexData) {
+        // 检查原始图片
+        if (product.originalImages) {
+          for (const img of product.originalImages) {
+            if (img.localPath === localPath) {
+              sharedImages.push({
+                type: 'original',
+                imageId: img.imageUrl || img.localPath,
+                imageObject: img,
+                applyCode: product.applyCode
+              });
+            }
+          }
+        }
+
+        // 检查SKU图片
+        if (product.publishSkus) {
+          for (const sku of product.publishSkus) {
+            if (sku.skuImages) {
+              for (const img of sku.skuImages) {
+                if (img.localPath === localPath) {
+                  sharedImages.push({
+                    type: 'sku',
+                    imageId: img.imageUrl || img.localPath,
+                    imageObject: img,
+                    applyCode: product.applyCode,
+                    skuIndex: sku.skuIndex
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 检查场景图片
+        if (product.senceImages) {
+          for (const img of product.senceImages) {
+            if (img.localPath === localPath) {
+              sharedImages.push({
+                type: 'scene',
+                imageId: img.imageUrl || img.localPath,
+                imageObject: img,
+                applyCode: product.applyCode
+              });
+            }
+          }
+        }
+      }
+
+      console.log(`🔍 [syncFileTimeBaseline] 找到 ${sharedImages.length} 个共享此文件的图片:`,
+        sharedImages.map(img => ({
+          id: img.imageId.substring(0, 30) + '...',
+          type: img.type,
+          applyCode: img.applyCode,
+          isCurrentImage: img.imageId === currentImageId
+        }))
+      );
+
+      if (sharedImages.length <= 1) {
+        console.log(`ℹ️ [syncFileTimeBaseline] 只有一个图片使用此文件，无需同步`);
+        return;
+      }
+
+      // 批量更新所有共享图片的时间基准
+      let syncedCount = 0;
+      for (const sharedImg of sharedImages) {
+        const oldTime = sharedImg.imageObject.lastModified || sharedImg.imageObject.timestamp || 0;
+        sharedImg.imageObject.lastModified = currentFileTime;
+
+        if (oldTime !== currentFileTime) {
+          syncedCount++;
+          console.log(`✅ [syncFileTimeBaseline] 同步图片时间基准: ${sharedImg.imageId.substring(0, 30)}... (${new Date(oldTime).toLocaleString()} → ${new Date(currentFileTime).toLocaleString()})`);
+        }
+      }
+
+      console.log(`🎉 [syncFileTimeBaseline] 时间基准同步完成: 共处理 ${sharedImages.length} 个图片，实际更新 ${syncedCount} 个`);
+
+    } catch (error) {
+      console.error(`❌ [syncFileTimeBaseline] 同步文件时间基准失败:`, error);
     }
   }
 
