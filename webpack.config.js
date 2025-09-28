@@ -60,10 +60,10 @@ module.exports = (env, argv) => {
 					terserOptions: {
 						compress: {
 							// 删除 console/debugger 以及开发辅助代码
-							drop_console: false, // 保留console语句，使用pure_funcs精确控制
+							drop_console: true, // 保留console语句，使用pure_funcs精确控制
 							drop_debugger: true,
 							passes: 2,
-							pure_funcs: ['console.log'], // 只移除console.log，保留warn和error
+							//pure_funcs: ['console.log'], // 只移除console.log，保留warn和error
 						},
 						mangle: true,
 						format: {

@@ -237,9 +237,17 @@ const TodoList = () => {
             userCode: loginInfo.data.UserCode,
           }
 
-          const imageRes = await get('/api/publish/get_product_images', {
-            params,
-          })
+          let imageRes
+          try {
+            console.log(`🌐 [collectProductImages] 请求产品 ${product.applyCode} 图片API...`, params)
+            imageRes = await get('/api/publish/get_product_images', {
+              params,
+            })
+            console.log(`✅ [collectProductImages] 产品 ${product.applyCode} API调用成功`)
+          } catch (apiError) {
+            console.error(`❌ [collectProductImages] 产品 ${product.applyCode} API调用失败:`, apiError)
+            throw new Error(`获取产品图片API失败: ${apiError.message || String(apiError)}`)
+          }
 
           console.log(`🆕 [collectProductImages] 新产品 ${product.applyCode} API响应:`, {
             statusCode: imageRes?.statusCode,
@@ -256,6 +264,7 @@ const TodoList = () => {
             // 🔥 保存新产品的完整数据到LocalImageManager索引中
             try {
               console.log(`📦 [collectProductImages] 正在保存新产品 ${product.applyCode} 的数据到本地索引...`)
+              console.log('API响应的imageRes.dataClass结构:', JSON.stringify(imageRes.dataClass, null, 2))
 
               // 确保LocalImageManager已初始化
               await localImageManager.initialize()
@@ -265,6 +274,23 @@ const TodoList = () => {
 
               // 更新产品数据 - 使用API返回的完整数据结构
               const { originalImages, publishSkus, senceImages } = imageRes.dataClass
+              console.log('解构后的数据类型检查:', {
+                originalImages: {
+                  type: typeof originalImages,
+                  isArray: Array.isArray(originalImages),
+                  length: originalImages?.length
+                },
+                publishSkus: {
+                  type: typeof publishSkus,
+                  isArray: Array.isArray(publishSkus),
+                  length: publishSkus?.length
+                },
+                senceImages: {
+                  type: typeof senceImages,
+                  isArray: Array.isArray(senceImages),
+                  length: senceImages?.length
+                }
+              })
 
               // 更新originalImages
               if (Array.isArray(originalImages)) {
