@@ -3507,3 +3507,70 @@ await initializeImageData();
 - ✅ 用户在图片上右键 → PS打开 → 保存后，页面自动回到原图片位置
 - ✅ 保持与其他场景的滚动位置恢复行为一致
 - ✅ 提升用户体验，减少手动滚动查找的操作
+
+
+## 任务36: 修复搜索按钮功能
+
+**日期**: 2025-09-28
+**状态**: ✅ 已完成
+**类型**: 功能修复
+
+### 问题描述
+搜索按钮显示不可用状态，用户无法进行搜索操作。
+
+### 技术分析
+1. **原始问题**:
+   - 使用`sp-textfield`组件在UXP环境中事件处理不兼容
+   - 复杂的事件监听器绑定逻辑导致状态同步问题
+
+2. **根本原因**:
+   - UXP环境对Spectrum Web Components支持有限
+   - sp-textfield的input事件在UXP中可能无法正常触发
+
+### 解决方案
+1. **替换组件**: 将`sp-textfield`改为标准`input`元素
+2. **简化事件处理**: 使用React标准的`onChange`事件处理
+3. **优化交互**: 移除Enter键搜索，只通过点击按钮触发搜索
+
+### 具体修改
+**修改前**:
+```jsx
+<sp-textfield
+  ref={searchInputRef}
+  className="todolist-search-input"
+  placeholder="输入产品名称或编号"
+  value={searchQuery}
+  size="s"
+/>
+// 复杂的useEffect事件绑定逻辑
+```
+
+**修改后**:
+```jsx
+<input
+  ref={searchInputRef}
+  className="todolist-search-input"
+  placeholder="输入产品名称或编号"
+  value={searchQuery}
+  onChange={(e) => setSearchQuery(e.target.value)}
+/>
+```
+
+**修改文件**:
+- `src/panels/TodoList.jsx` - 替换sp-textfield为input元素，简化事件处理
+
+**核心改进**:
+1. **兼容性提升** - 使用标准HTML input元素，确保UXP环境兼容性
+2. **代码简化** - 移除复杂的事件监听器，使用React标准事件处理
+3. **交互优化** - 明确搜索触发方式，只通过按钮点击执行搜索
+
+**测试状态**:
+- ✅ 代码逻辑检查通过
+- ✅ Webpack构建成功
+- ⏳ 待用户手动测试验证
+
+**预期效果**:
+- ✅ 搜索输入框可正常输入内容
+- ✅ 搜索按钮根据输入内容正确显示可用/不可用状态
+- ✅ 点击搜索按钮可正常执行搜索功能
+- ✅ 提升UXP环境下的组件稳定性

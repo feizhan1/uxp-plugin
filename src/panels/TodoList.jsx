@@ -977,36 +977,6 @@ const TodoList = () => {
     setSearchResults([])
   }, [])
 
-  // 处理sp-textfield的事件
-  useEffect(() => {
-    const searchEl = searchInputRef.current
-    const handleSearchInput = (e) => {
-      const newValue = e?.target?.value ?? e?.detail?.value ?? ''
-      setSearchQuery(newValue)
-    }
-    const handleKeyPress = (e) => {
-      if (e.key === 'Enter') {
-        handleSearch()
-      }
-    }
-    if (searchEl) {
-      searchEl.addEventListener('input', handleSearchInput)
-      searchEl.addEventListener('keypress', handleKeyPress)
-    }
-    return () => {
-      if (searchEl) {
-        searchEl.removeEventListener('input', handleSearchInput)
-        searchEl.removeEventListener('keypress', handleKeyPress)
-      }
-    }
-  }, [handleSearch])
-
-  // 同步value到sp-textfield
-  useEffect(() => {
-    if (searchInputRef.current && searchInputRef.current.value !== searchQuery) {
-      searchInputRef.current.value = searchQuery
-    }
-  }, [searchQuery])
 
   // 未登录时，显示登录组件
   if (!loginInfo?.success) {
@@ -1028,12 +998,12 @@ const TodoList = () => {
             <div className="header-left">
               {!searchMode ? (
                 <div className="todolist-search-input-group">
-                  <sp-textfield
+                  <input
                     ref={searchInputRef}
                     className="todolist-search-input"
                     placeholder="输入产品名称或编号"
                     value={searchQuery}
-                    size="s"
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                   <button
                     className="action-btn secondary"
