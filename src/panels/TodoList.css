@@ -502,29 +502,11 @@
   max-width: 300px;
 }
 
+
+
 .todolist-search-input {
-  /* UXP重置样式 - 参考App.css中的input重置 */
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  outline: none;
-
-  /* 自定义样式 */
-  flex: 1;
-  padding: 6px 8px;
-  height: 28px;
-  border: 1px solid #ddd;
   border-radius: 6px;
-  font-size: 12px;
-  background: white;
-  min-width: 150px;
-  box-sizing: border-box;
-}
-
-.todolist-search-input:focus {
-  outline: none;
-  border-color: var(--theme-color, #ec6608);
-  box-shadow: 0 0 0 2px rgba(236, 102, 8, 0.25);
+  padding: 0 8px;
 }
 
 .todolist-search-result-info {

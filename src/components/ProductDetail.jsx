@@ -2884,8 +2884,7 @@ const ProductDetail = ({
 
         {/* 颜色款式图片 */}
         {virtualizedImageGroups.skus.map((sku, skuIndex) => (
-          sku.images.length > 0 && (
-            <div key={sku.skuIndex || skuIndex} className="sku-group">
+          <div key={sku.skuIndex || skuIndex} className="sku-group">
               <div className="sku-header">
                 <h3>{sku.skuTitle} ({sku.images.length})</h3>
               </div>
@@ -2965,7 +2964,6 @@ const ProductDetail = ({
                 </div>
               </div>
             </div>
-          )
         ))}
 
         {/* 场景图片 */}
