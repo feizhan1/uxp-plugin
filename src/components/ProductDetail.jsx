@@ -2222,6 +2222,13 @@ const ProductDetail = ({
       const newDisplayUrl = await localImageManager.refreshImageDisplayUrl(imageId);
 
       if (newDisplayUrl) {
+        // 保存当前滚动位置
+        if (contentRef.current) {
+          const currentScrollPosition = contentRef.current.scrollTop;
+          setSavedScrollPosition(currentScrollPosition);
+          console.log('💾 [handleImageFileUpdated] 保存滚动位置:', currentScrollPosition);
+        }
+
         // 触发组件重新渲染 - 通过重新初始化图片数据
         await initializeImageData();
         console.log(`✅ [handleImageFileUpdated] 图片显示已更新: ${imageId}`);

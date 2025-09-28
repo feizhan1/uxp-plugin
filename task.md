@@ -3456,3 +3456,54 @@ const togglePanelController = new CommandController(() => {
 ---
 
 *本文档将随开发进度持续更新*
+
+## 任务35: 修复PS保存后滚动位置保持问题
+
+**日期**: 2025-09-28
+**状态**: ✅ 已完成
+**类型**: 用户体验优化
+
+### 问题描述
+在产品详情页中，用户在图片上右键单击 → 在PS中打开 → 保存后，页面没有回到图片原来的滚动位置，需要用户手动滚动找回。
+
+### 技术分析
+1. **现有机制**:
+   - 组件已有滚动位置保持逻辑(`useEffect` 490-512行)
+   - 通过`savedScrollPosition`状态管理滚动位置恢复
+
+2. **问题根因**:
+   - PS事件监听器触发后调用`handleImageFileUpdated`函数
+   - 该函数调用`initializeImageData()`重新加载数据
+   - 但在重新加载前没有保存当前滚动位置
+
+### 解决方案
+修改`handleImageFileUpdated`函数(2225-2230行)，在调用`initializeImageData()`前保存滚动位置:
+
+```javascript
+// 保存当前滚动位置
+if (contentRef.current) {
+  const currentScrollPosition = contentRef.current.scrollTop;
+  setSavedScrollPosition(currentScrollPosition);
+  console.log('💾 [handleImageFileUpdated] 保存滚动位置:', currentScrollPosition);
+}
+
+// 触发组件重新渲染 - 通过重新初始化图片数据
+await initializeImageData();
+```
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 在`handleImageFileUpdated`函数中添加滚动位置保存逻辑
+
+**核心改进**:
+1. **最小化修改** - 复用现有的滚动恢复机制，只添加保存逻辑
+2. **一致性保持** - 与现有代码风格和滚动保持逻辑保持一致
+3. **可靠性提升** - 利用已测试的滚动恢复useEffect逻辑
+
+**测试状态**:
+- ✅ 代码逻辑检查通过
+- ⏳ 待用户手动测试验证
+
+**预期效果**:
+- ✅ 用户在图片上右键 → PS打开 → 保存后，页面自动回到原图片位置
+- ✅ 保持与其他场景的滚动位置恢复行为一致
+- ✅ 提升用户体验，减少手动滚动查找的操作
