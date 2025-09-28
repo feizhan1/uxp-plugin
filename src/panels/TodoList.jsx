@@ -169,7 +169,11 @@ const TodoList = () => {
           console.log('✅ [fetchListAndImages] 产品列表状态已更新')
 
           // 单独处理图片收集，不影响产品列表显示
-          collectProductImages(productList).catch(error => {
+          collectProductImages(productList).then(allImages => {
+            if (allImages && allImages.length > 0) {
+              setProductImages(allImages)
+            }
+          }).catch(error => {
             console.warn('⚠️ [fetchListAndImages] 图片收集失败，但不影响产品列表显示:', error)
           })
         } else {
@@ -670,6 +674,107 @@ const TodoList = () => {
     setError(`图片上传失败: ${error.message}`)
   }
 
+  // 收集产品的图片信息（增量同步）
+  const collectProductImages = useCallback(async (productList) => {
+    if (!productList || productList.length === 0) {
+      return []
+    }
+
+    console.log('🔄 [collectProductImages] 开始增量收集产品图片信息...')
+
+    // 确保LocalImageManager已初始化
+    await localImageManager.initialize()
+
+    // 过滤出需要同步的产品（本地索引中不存在的）
+    const productsToSync = []
+    const existingProducts = []
+
+    for (const product of productList) {
+      const existingProduct = localImageManager.findProductByApplyCode(product.applyCode)
+      if (existingProduct) {
+        existingProducts.push(product.applyCode)
+      } else {
+        productsToSync.push(product)
+      }
+    }
+
+    console.log(`📊 [collectProductImages] 同步统计:`, {
+      总产品数: productList.length,
+      已存在产品: existingProducts.length,
+      需同步产品: productsToSync.length,
+      已存在的产品编号: existingProducts,
+      需同步的产品编号: productsToSync.map(p => p.applyCode)
+    })
+
+    if (productsToSync.length === 0) {
+      console.log('✅ [collectProductImages] 所有产品都已同步，跳过图片收集')
+      return []
+    }
+
+    const allImages = []
+
+    for (const product of productsToSync) {
+      try {
+        const params = {
+          applyCode: product.applyCode,
+          userId: loginInfo.data.UserId,
+          userCode: loginInfo.data.UserCode,
+        }
+
+        const imageRes = await get('/api/publish/get_product_images', {
+          params,
+        })
+
+        if (imageRes.statusCode === 200 && imageRes.dataClass) {
+          const productImages = parseProductImages(product, imageRes.dataClass)
+          allImages.push(...productImages)
+
+          // 保存新产品的完整数据到LocalImageManager索引中
+          try {
+            const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
+            const { originalImages, publishSkus, senceImages } = imageRes.dataClass
+
+            if (Array.isArray(originalImages)) {
+              productRecord.originalImages = originalImages.map((img, index) => ({
+                ...img,
+                status: 'not_downloaded',
+                timestamp: Date.now()
+              }))
+            }
+
+            if (Array.isArray(publishSkus)) {
+              productRecord.publishSkus = publishSkus.map(sku => ({
+                ...sku,
+                skuImages: (sku.skuImages || []).map((img, index) => ({
+                  ...img,
+                  status: 'not_downloaded',
+                  timestamp: Date.now()
+                }))
+              }))
+            }
+
+            if (Array.isArray(senceImages)) {
+              productRecord.senceImages = senceImages.map((img, index) => ({
+                ...img,
+                status: 'not_downloaded',
+                timestamp: Date.now()
+              }))
+            }
+
+            await localImageManager.saveIndexData()
+          } catch (error) {
+            console.error(`❌ [collectProductImages] 保存新产品 ${product.applyCode} 数据失败:`, error)
+          }
+        }
+      } catch (error) {
+        console.error(`❌ [collectProductImages] 获取新产品 ${product.applyCode} 图片失败:`, error)
+      }
+    }
+
+    console.log(`✅ [collectProductImages] 增量同步完成，新收集到 ${allImages.length} 张图片`)
+    return allImages
+  }, [loginInfo, parseProductImages])
+
   // 执行同步（手动或自动）
   const executeSync = useCallback(async (syncType = 'manual') => {
     console.log(`🚀🚀🚀 === executeSync 函数被调用 === 🚀🚀🚀`)
@@ -707,154 +812,8 @@ const TodoList = () => {
 
       setSyncStatus('正在收集图片信息...')
 
-      // 收集所有产品的图片信息
-      const allImages = []
-      console.log(`开始收集 ${productList.length} 个产品的图片信息`)
-
-      for (let i = 0; i < productList.length; i++) {
-        const product = productList[i]
-        setSyncStatus(`正在收集图片信息... (${i + 1}/${productList.length})`)
-        console.log(`处理产品 ${i + 1}/${productList.length}: ${product.applyCode}`)
-
-        const params = {
-          applyCode: product.applyCode,
-          userId: loginInfo.data.UserId,
-          userCode: loginInfo.data.UserCode,
-        }
-
-        try {
-
-          console.log(`请求产品 ${product.applyCode} 图片，参数:`, params)
-
-          const imageRes = await get('/api/publish/get_product_images', {
-            params,
-          })
-
-          console.log(`产品 ${product.applyCode} API响应:`, {
-            statusCode: imageRes?.statusCode,
-            hasDataClass: !!imageRes?.dataClass,
-            message: imageRes?.message,
-            dataClassKeys: imageRes?.dataClass ? Object.keys(imageRes.dataClass) : null,
-            imagesFieldExists: imageRes?.dataClass?.hasOwnProperty('images'),
-            imagesFieldValue: imageRes?.dataClass?.images,
-            imagesFieldType: typeof imageRes?.dataClass?.images,
-            fullResponse: imageRes // 完整响应用于调试
-          })
-
-          if (imageRes.statusCode === 200 && imageRes.dataClass) {
-            const { originalImages, publishSkus, senceImages } = imageRes.dataClass
-
-            console.log(`产品 ${product.applyCode} 图片数据结构:`, {
-              hasOriginalImages: Array.isArray(originalImages),
-              originalImagesLength: originalImages?.length || 0,
-              hasPublishSkus: Array.isArray(publishSkus),
-              publishSkusLength: publishSkus?.length || 0,
-              hasSenceImages: Array.isArray(senceImages),
-              senceImagesLength: senceImages?.length || 0
-            })
-
-            const productImages = parseProductImages(product, imageRes.dataClass)
-            allImages.push(...productImages)
-
-            // 🔍 手动同步 - 检查attrClasses数据
-            console.log(`🔍 [attrClasses跟踪] executeSync中 ${product.applyCode} API响应的publishSkus:`, publishSkus?.map(sku => ({
-              hasAttrClasses: Array.isArray(sku.attrClasses),
-              attrClassesLength: sku.attrClasses?.length || 0,
-              attrClassesData: sku.attrClasses,
-              skuImagesCount: sku.skuImages?.length || 0
-            })))
-
-            console.log(`产品 ${product.applyCode} 共收集到 ${productImages.length} 张有效图片`)
-            console.log(`  - 场景图片: ${senceImages?.length || 0} 张`)
-            console.log(`  - SKU图片: ${publishSkus?.reduce((sum, sku) => sum + (sku.skuImages?.length || 0), 0) || 0} 张`)
-            console.log(`  - 原始图片: ${originalImages?.length || 0} 张`)
-
-            // 🔥 重要：在executeSync中也要保存产品数据到本地索引，确保attrClasses不丢失
-            try {
-              console.log(`📦 [executeSync] 正在保存产品 ${product.applyCode} 的数据到本地索引...`)
-              await localImageManager.initialize()
-              const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
-
-              // 更新publishSkus，保留attrClasses数据
-              if (Array.isArray(publishSkus)) {
-                console.log(`🔍 [attrClasses跟踪] executeSync保存前 ${product.applyCode} publishSkus数据:`, publishSkus.map(sku => ({
-                  hasAttrClasses: Array.isArray(sku.attrClasses),
-                  attrClassesLength: sku.attrClasses?.length || 0,
-                  attrClassesData: sku.attrClasses
-                })))
-
-                productRecord.publishSkus = publishSkus.map(sku => ({
-                  ...sku,
-                  skuImages: (sku.skuImages || []).map((img, index) => ({
-                    ...img,
-                    status: productRecord.publishSkus?.find(existingSku =>
-                      JSON.stringify(existingSku.attrClasses) === JSON.stringify(sku.attrClasses)
-                    )?.skuImages?.[index]?.status || 'not_downloaded',
-                    timestamp: Date.now()
-                  }))
-                }))
-
-                console.log(`🔍 [attrClasses跟踪] executeSync保存到productRecord的publishSkus:`, productRecord.publishSkus.map(sku => ({
-                  hasAttrClasses: Array.isArray(sku.attrClasses),
-                  attrClassesLength: sku.attrClasses?.length || 0,
-                  attrClassesData: sku.attrClasses
-                })))
-              }
-
-              // 更新其他字段
-              if (Array.isArray(originalImages)) {
-                productRecord.originalImages = originalImages.map((img, index) => ({
-                  ...img,
-                  status: productRecord.originalImages?.[index]?.status || 'not_downloaded',
-                  timestamp: Date.now()
-                }))
-              }
-
-              if (Array.isArray(senceImages)) {
-                productRecord.senceImages = senceImages.map((img, index) => ({
-                  ...img,
-                  status: productRecord.senceImages?.[index]?.status || 'not_downloaded',
-                  timestamp: Date.now()
-                }))
-              }
-
-              await localImageManager.saveIndexData()
-              console.log(`✅ [executeSync] 产品 ${product.applyCode} 数据已保存到本地索引`)
-
-              // 验证保存后的attrClasses数据
-              const savedProduct = localImageManager.findProductByApplyCode(product.applyCode)
-              if (savedProduct) {
-                console.log(`🔍 [attrClasses跟踪] executeSync保存后验证 ${product.applyCode} publishSkus中的attrClasses:`,
-                  savedProduct.publishSkus.map((sku, index) => ({
-                    skuIndex: index,
-                    hasAttrClasses: Array.isArray(sku.attrClasses),
-                    attrClassesLength: sku.attrClasses?.length || 0,
-                    attrClassesData: sku.attrClasses
-                  }))
-                )
-              }
-            } catch (error) {
-              console.error(`❌ [executeSync] 保存产品 ${product.applyCode} 数据失败:`, error)
-            }
-          } else {
-            console.warn(`产品 ${product.applyCode} 图片请求失败:`, {
-              statusCode: imageRes?.statusCode,
-              message: imageRes?.message,
-              hasDataClass: !!imageRes?.dataClass
-            })
-          }
-        } catch (error) {
-          console.error(`=== 手动同步-获取产品 ${product.applyCode} 图片异常 ===`)
-          console.error('请求参数:', params)
-          console.error('错误类型:', typeof error)
-          console.error('错误消息:', error.message)
-          console.error('错误名称:', error.name)
-          console.error('错误堆栈:', error.stack)
-          console.error('完整错误对象:', error)
-          console.error('错误字符串:', String(error))
-          console.error('==========================================')
-        }
-      }
+      // 🎯 使用增量同步：调用现有的collectProductImages函数
+      const allImages = await collectProductImages(productList) || []
 
       console.log(`=== 图片收集汇总 ===`)
       console.log(`总共收集到 ${allImages.length} 张图片`)
