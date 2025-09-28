@@ -1277,7 +1277,7 @@ const ProductDetail = ({
   const submitForReview = async () => {
     try {
       console.log('📋 提交产品审核...');
-
+      console.log('📋 请求体详情 currentProduct:', JSON.stringify(currentProduct, null, 2));
       // 构建完整的API请求体
       const payload = {
         userId: currentProduct.userId || 0,
@@ -1305,8 +1305,8 @@ const ProductDetail = ({
           index: img.index || 0
         }))
       };
-
-      console.log('📤 提交审核 payload:', payload);
+      console.log('📋 请求体详情 payload:', JSON.stringify(payload, null, 2));
+      //console.log('📤 提交审核 payload:', payload);
       /*
       console.log('📊 数据统计:', {
         originalImages: payload.originalImages.length,

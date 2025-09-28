@@ -273,6 +273,9 @@ const TodoList = () => {
                   status: 'not_downloaded', // 初始状态
                   timestamp: Date.now()
                 }))
+              } else {
+                // 确保originalImages始终是数组
+                productRecord.originalImages = []
               }
 
               // 更新publishSkus
@@ -310,6 +313,9 @@ const TodoList = () => {
                     attrClassesData: sku.attrClasses
                   }))
                 )
+              } else {
+                // 确保publishSkus始终是数组
+                productRecord.publishSkus = []
               }
 
               // 更新senceImages
@@ -319,10 +325,19 @@ const TodoList = () => {
                   status: 'not_downloaded', // 初始状态
                   timestamp: Date.now()
                 }))
+              } else {
+                // 确保senceImages始终是数组
+                productRecord.senceImages = []
               }
 
               // 保存索引数据
-              await localImageManager.saveIndexData()
+              try {
+                await localImageManager.saveIndexData()
+                console.log(`✅ [collectProductImages] ${product.applyCode} 索引数据保存成功`)
+              } catch (saveError) {
+                console.error(`❌ [collectProductImages] ${product.applyCode} 索引数据保存失败:`, saveError)
+                throw saveError // 重新抛出错误，让外层catch处理
+              }
 
               console.log(`✅ [collectProductImages] 新产品 ${product.applyCode} 数据已保存到本地索引`)
               console.log(`  - 原始图片: ${productRecord.originalImages.length} 张`)
@@ -427,11 +442,13 @@ const TodoList = () => {
         } catch (error) {
           console.error(`=== 获取新产品 ${product.applyCode} 图片失败 ===`)
           console.error('错误类型:', typeof error)
-          console.error('错误消息:', error.message)
-          console.error('错误名称:', error.name)
-          console.error('错误堆栈:', error.stack)
+          console.error('错误消息:', error?.message || 'undefined')
+          console.error('错误名称:', error?.name || 'undefined')
+          console.error('错误堆栈:', error?.stack || 'undefined')
           console.error('完整错误对象:', error)
           console.error('错误字符串:', String(error))
+          console.error('是否为Error实例:', error instanceof Error)
+          console.error('构造函数名称:', error?.constructor?.name || 'undefined')
           console.error('======================================')
         }
       }
