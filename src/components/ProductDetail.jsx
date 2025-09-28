@@ -1307,6 +1307,7 @@ const ProductDetail = ({
       };
 
       console.log('📤 提交审核 payload:', payload);
+      /*
       console.log('📊 数据统计:', {
         originalImages: payload.originalImages.length,
         publishSkus: payload.publishSkus.length,
@@ -1353,6 +1354,7 @@ const ProductDetail = ({
       console.log('✅ [调试模式] 模拟审核提交成功');
       const mockMessage = '产品审核提交成功 - 调试模式';
       await handleSubmitSuccess(mockMessage);
+      */
 
     } catch (error) {
       console.error('❌ 审核API调用失败:', error);
@@ -2967,8 +2969,7 @@ const ProductDetail = ({
         ))}
 
         {/* 场景图片 */}
-        {virtualizedImageGroups.scenes.length > 0 && (
-          <div className="scene-images">
+        <div className="scene-images">
             <div className="section-header">
               <h3>场景图片 ({virtualizedImageGroups.scenes.length})</h3>
             </div>
@@ -3048,7 +3049,6 @@ const ProductDetail = ({
               </div>
             </div>
           </div>
-        )}
       </div>
 
       {/* 全屏预览模式 */}
