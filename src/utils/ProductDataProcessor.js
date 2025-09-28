@@ -21,7 +21,7 @@ export class ProductDataProcessor {
     }
 
     const { dataClass } = apiData;
-    const { applyCode, originalImages = [], publishSkus = [] } = dataClass;
+    const { applyCode, originalImages = [], publishSkus = [], senceImages = [] } = dataClass;
 
     if (!applyCode) {
       throw new Error('缺少申请码(applyCode)');
@@ -68,6 +68,24 @@ export class ProductDataProcessor {
             console.log(`✅ [ProductDataProcessor] SKU图片 ${skuIndex}-${imageIndex}: ${imageInfo.id} -> ${imageItem.imageUrl}`);
           }
         });
+      });
+
+      // 处理 senceImages (场景图片)
+      console.log(`📸 [ProductDataProcessor] 处理 ${senceImages.length} 张场景图片...`);
+      senceImages.forEach((imageItem, index) => {
+        if (imageItem?.imageUrl) {
+          const imageInfo = {
+            id: this.generateImageId(imageItem.imageUrl),
+            url: imageItem.imageUrl,
+            applyCode: applyCode,
+            sourceIndex: index,
+            imageType: 'scene', // 标识为场景图片
+            originalData: imageItem
+          };
+
+          imageList.push(imageInfo);
+          console.log(`✅ [ProductDataProcessor] 场景图片 ${index}: ${imageInfo.id} -> ${imageItem.imageUrl}`);
+        }
       });
 
       console.log(`🎉 [ProductDataProcessor] 处理完成，共生成 ${imageList.length} 个图片条目`);
@@ -126,9 +144,12 @@ export class ProductDataProcessor {
         idSet.add(item.id);
       }
 
-      // 统计数量（简化：根据是否有skuIndex区分）
+      // 统计数量（根据imageType和skuIndex区分）
       if (item.skuIndex !== undefined && item.skuIndex !== null) {
         result.stats.sku++;
+      } else if (item.imageType === 'scene') {
+        // 为场景图片添加统计（如果需要的话可以扩展stats结构）
+        result.stats.original++; // 暂时计入原始图片统计
       } else {
         result.stats.original++;
       }

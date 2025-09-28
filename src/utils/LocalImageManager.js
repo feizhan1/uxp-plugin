@@ -465,8 +465,24 @@ export class LocalImageManager {
         // 更新产品数据中的图片信息
         const product = this.getOrCreateProduct(applyCode);
 
-        // 根据是否有skuIndex判断图片类型
-        if (skuIndex !== undefined && skuIndex !== null) {
+        // 根据imageType和skuIndex判断图片类型
+        if (imageInfo.imageType === 'scene') {
+          // 处理场景图片
+          let sceneImage = product.senceImages.find(img => img.imageUrl === url);
+          if (!sceneImage) {
+            sceneImage = { imageUrl: url };
+            product.senceImages.push(sceneImage);
+          }
+
+          // 更新图片信息
+          Object.assign(sceneImage, {
+            localPath: localFilename,
+            status: 'pending_edit',
+            timestamp: Date.now(),
+            fileSize: arrayBuffer.byteLength,
+            index: sourceIndex
+          });
+        } else if (skuIndex !== undefined && skuIndex !== null) {
           // 处理SKU图片
           let sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
           if (!sku) {

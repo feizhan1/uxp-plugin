@@ -2960,7 +2960,16 @@ const ProductDetail = ({
                   );
                 })}
                 {/* 添加图片按钮 */}
-                <div className="add-image-btn in-grid" onClick={() => handleAddImage('sku', sku.skuIndex || skuIndex)} role="button" tabIndex="0">
+                <div
+                  className="add-image-btn in-grid"
+                  onClick={() => handleAddImage('sku', sku.skuIndex || skuIndex)}
+                  role="button"
+                  tabIndex="0"
+                  onDragOver={handleDragOver}
+                  onDragEnter={(e) => handleDragEnter(e, 0, 'sku', sku.skuIndex || skuIndex)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, 0, 'sku', sku.skuIndex || skuIndex)}
+                >
                   + 添加图片
                 <div className="format-hint">(支持PNG、JPG格式)</div>
                 </div>
@@ -3043,7 +3052,16 @@ const ProductDetail = ({
                 );
               })}
               {/* 添加图片按钮 */}
-              <div className="add-image-btn in-grid" onClick={() => handleAddImage('scene')} role="button" tabIndex="0">
+              <div
+                className="add-image-btn in-grid"
+                onClick={() => handleAddImage('scene')}
+                role="button"
+                tabIndex="0"
+                onDragOver={handleDragOver}
+                onDragEnter={(e) => handleDragEnter(e, 0, 'scene')}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, 0, 'scene')}
+              >
                 + 添加图片
                 <div className="format-hint">(支持PNG、JPG格式)</div>
               </div>
