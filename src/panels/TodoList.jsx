@@ -1119,12 +1119,15 @@ const TodoList = () => {
             >
               文件
             </button>
-            <div
-              className="login-badge"
-              onClick={() => setShowLogoutConfirm(true)}
-            >
-              已登录
-            </div>
+            {/* 只在非搜索模式下显示已登录徽章 */}
+            {!searchMode && (
+              <div
+                className="login-badge"
+                onClick={() => setShowLogoutConfirm(true)}
+              >
+                已登录
+              </div>
+            )}
           </div>
         </div>
       )}
