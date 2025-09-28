@@ -750,31 +750,19 @@ const ProductDetail = ({
   }, []);
 
   /**
-   * 获取所有待编辑状态的图片
+   * 获取所有待编辑状态的图片（仅统计SKU和场景图片，相同图片去重）
    */
   const getAllPendingEditImages = useCallback(() => {
     const pendingImages = [];
-
-    // 从原始图片收集待编辑状态的图片
-    if (imageGroups.original) {
-      imageGroups.original.forEach(img => {
-        if (img.localStatus === 'pending_edit' && img.hasLocal) {
-          pendingImages.push({
-            ...img,
-            category: 'original',
-            categoryName: '原始图片',
-            displayName: `原始图片 ${img.index + 1}`
-          });
-        }
-      });
-    }
+    const seenUrls = new Set(); // 用于去重的URL集合
 
     // 从SKU图片收集待编辑状态的图片
     if (imageGroups.skus) {
       imageGroups.skus.forEach((sku, skuIndex) => {
         if (sku.images) {
           sku.images.forEach((img, imgIndex) => {
-            if (img.localStatus === 'pending_edit' && img.hasLocal) {
+            if (img.localStatus === 'pending_edit' && img.hasLocal && !seenUrls.has(img.imageUrl)) {
+              seenUrls.add(img.imageUrl);
               pendingImages.push({
                 ...img,
                 category: 'sku',
@@ -791,7 +779,8 @@ const ProductDetail = ({
     // 从场景图片收集待编辑状态的图片
     if (imageGroups.scenes) {
       imageGroups.scenes.forEach((img, index) => {
-        if (img.localStatus === 'pending_edit' && img.hasLocal) {
+        if (img.localStatus === 'pending_edit' && img.hasLocal && !seenUrls.has(img.imageUrl)) {
+          seenUrls.add(img.imageUrl);
           pendingImages.push({
             ...img,
             category: 'scene',
@@ -802,7 +791,7 @@ const ProductDetail = ({
       });
     }
 
-    console.log(`🔍 [getAllPendingEditImages] 找到 ${pendingImages.length} 张待编辑图片`);
+    console.log(`🔍 [getAllPendingEditImages] 找到 ${pendingImages.length} 张待编辑图片（仅SKU和场景图片，已去重）`);
     return pendingImages;
   }, [imageGroups]);
 
