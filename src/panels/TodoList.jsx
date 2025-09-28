@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Todo } from '../components'
 import { Toast } from '../components'
 import { Confirm } from '../components'
@@ -37,6 +37,12 @@ const TodoList = () => {
   const [showLocalFileManager, setShowLocalFileManager] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
+
+  // 搜索功能相关状态
+  const [searchMode, setSearchMode] = useState(false) // 是否处于搜索模式
+  const [searchQuery, setSearchQuery] = useState('') // 搜索关键字
+  const [searchResults, setSearchResults] = useState([]) // 搜索结果
+  const searchInputRef = useRef(null) // sp-textfield的ref
 // loginInfo
 //   {
 //     "success": true,
@@ -987,6 +993,62 @@ const TodoList = () => {
     })
   }
 
+  // 搜索相关函数
+  const handleSearch = useCallback(() => {
+    if (!searchQuery.trim()) {
+      setError('请输入搜索关键字')
+      return
+    }
+
+    // 在现有数据中搜索
+    const results = data.filter(product =>
+      product?.productName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product?.applyCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+
+    setSearchResults(results)
+    setSearchMode(true)
+    setSuccessMsg(`找到 ${results.length} 个相关产品`)
+  }, [searchQuery, data])
+
+  const handleExitSearch = useCallback(() => {
+    setSearchMode(false)
+    setSearchQuery('')
+    setSearchResults([])
+  }, [])
+
+  // 处理sp-textfield的事件
+  useEffect(() => {
+    const searchEl = searchInputRef.current
+    const handleSearchInput = (e) => {
+      const newValue = e?.target?.value ?? e?.detail?.value ?? ''
+      setSearchQuery(newValue)
+    }
+    const handleKeyPress = (e) => {
+      if (e.key === 'Enter') {
+        handleSearch()
+      }
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', handleSearchInput)
+      searchEl.addEventListener('keypress', handleKeyPress)
+    }
+    return () => {
+      if (searchEl) {
+        searchEl.removeEventListener('input', handleSearchInput)
+        searchEl.removeEventListener('keypress', handleKeyPress)
+      }
+    }
+  }, [handleSearch])
+
+  // 同步value到sp-textfield
+  useEffect(() => {
+    if (searchInputRef.current && searchInputRef.current.value !== searchQuery) {
+      searchInputRef.current.value = searchQuery
+    }
+  }, [searchQuery])
+
   // 未登录时，显示登录组件
   if (!loginInfo?.success) {
     return (
@@ -999,29 +1061,70 @@ const TodoList = () => {
 
   return (
     <div className="todo-list">
-      {/* 右上角操作区域 */}
+      {/* 顶部操作区域 - 左右布局 */}
       {loginInfo?.success && (
         <div className="header-actions">
-          <button
-            className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
-            onClick={handleManualSync}
-            disabled={isSyncing}
-            title={isSyncing ? syncStatus : "同步所有图片到本地"}
-          >
-            {isSyncing ? '同步中' : '同步'}
-          </button>
-          <button
-            className="action-btn secondary"
-            onClick={() => setShowLocalFileManager(true)}
-            title="本地文件管理"
-          >
-            文件
-          </button>
-          <div
-            className="login-badge"
-            onClick={() => setShowLogoutConfirm(true)}
-          >
-            已登录
+          {/* 左侧搜索区域 - 只在非ProductDetail页面显示 */}
+          {!showProductDetail && (
+            <div className="header-left">
+              {!searchMode ? (
+                <div className="todolist-search-input-group">
+                  <sp-textfield
+                    ref={searchInputRef}
+                    className="todolist-search-input"
+                    placeholder="输入产品名称或编号"
+                    value={searchQuery}
+                    size="s"
+                  />
+                  <button
+                    className="action-btn secondary"
+                    onClick={handleSearch}
+                    disabled={!searchQuery.trim()}
+                  >
+                    搜索
+                  </button>
+                </div>
+              ) : (
+                <div className="todolist-search-result-info">
+                  <span className="todolist-search-query">"{searchQuery}"</span>
+                  <span className="todolist-search-count">({searchResults.length} 个产品)</span>
+                  <button
+                    className="action-btn secondary"
+                    onClick={handleExitSearch}
+                  >
+                    返回列表
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 右侧操作按钮 */}
+          <div className="header-right">
+            {/* 只在非搜索模式下显示同步按钮 */}
+            {!searchMode && (
+              <button
+                className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                title={isSyncing ? syncStatus : "同步所有图片到本地"}
+              >
+                {isSyncing ? '同步中' : '同步'}
+              </button>
+            )}
+            <button
+              className="action-btn secondary"
+              onClick={() => setShowLocalFileManager(true)}
+              title="本地文件管理"
+            >
+              文件
+            </button>
+            <div
+              className="login-badge"
+              onClick={() => setShowLogoutConfirm(true)}
+            >
+              已登录
+            </div>
           </div>
         </div>
       )}
@@ -1087,12 +1190,42 @@ const TodoList = () => {
         </div>
       )}
       {data.length > 0 && <div className='product-list'>
-        <div className='list-header'>
-          <h2 className='list-title'>待处理产品列表 ({data.length})</h2>
-          <div className='list-subtitle'>点击"去处理"进入产品详情页面</div>
-        </div>
-        <div className='product-grid'>
-          {data.map((item, index) => (
+        {/* 只在非搜索模式下显示list-header */}
+        {!searchMode && (
+          <div className='list-header'>
+            <h2 className='list-title'>待处理产品列表 ({data.length})</h2>
+            <div className='list-subtitle'>点击"去处理"进入产品详情页面</div>
+          </div>
+        )}
+        {searchMode ? (
+          // 搜索结果展示区域 - 显示多个ProductDetail组件
+          <div className="todolist-search-results">
+            {searchResults.length === 0 ? (
+              <div className="no-results">
+                <div className="no-results-icon">🔍</div>
+                <div className="no-results-text">未找到匹配的产品</div>
+                <div className="no-results-hint">请尝试其他关键字</div>
+              </div>
+            ) : (
+              searchResults.map((product, index) => (
+                <div key={product.id || product.applyCode || index} className="todolist-search-result-item">
+                  <ProductDetail
+                    productData={product}
+                    onClose={() => {
+                      // 在搜索结果中不需要关闭单个产品详情
+                      console.log('搜索结果中的产品详情不支持单独关闭')
+                    }}
+                    onSubmit={handleUpdate}
+                    onUpdate={handleUpdate}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          // 原有的产品卡片列表
+          <div className='product-grid'>
+            {data.map((item, index) => (
             <div className='product-card' key={item.applyCode || item.id}>
               <div className='card-header'>
                 <div className='product-id'>
@@ -1128,8 +1261,9 @@ const TodoList = () => {
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>}
       {/* Todo 对话框 */}
       {showTodo && (

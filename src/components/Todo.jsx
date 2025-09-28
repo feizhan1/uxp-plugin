@@ -3,6 +3,7 @@ import './Todo.css'
 import Confirm from './Confirm'
 import Toast from './Toast'
 import UploadToS3 from './UploadToS3'
+import ProductDetail from './ProductDetail'
 import { localImageManager } from '../utils/LocalImageManager.js'
 import ProductDataProcessor from '../utils/ProductDataProcessor.js'
 import {
@@ -507,6 +508,11 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
   // 调试面板显示状态
   const [showDebugPanel, setShowDebugPanel] = useState(false)
+
+  // 搜索功能相关状态
+  const [searchMode, setSearchMode] = useState(false) // 是否处于搜索模式
+  const [searchQuery, setSearchQuery] = useState('') // 搜索关键字
+  const [searchResults, setSearchResults] = useState([]) // 搜索结果
 
   console.log('Todo data', data)
 
@@ -2332,6 +2338,37 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
     uploadLog('上传处理完成，数据已更新')
   }
 
+  // 搜索相关函数
+  const handleSearch = useCallback(() => {
+    if (!searchQuery.trim()) {
+      showToast('请输入搜索关键字', 'warning')
+      return
+    }
+
+    // 这里应该调用API获取搜索结果，暂时模拟
+    // TODO: 实现真正的搜索API调用
+    console.log('执行搜索:', searchQuery)
+
+    // 模拟搜索结果 - 这里应该替换为真实的API调用
+    const mockResults = [
+      // 复制当前产品数据作为搜索结果示例
+      data
+    ].filter(product =>
+      product?.productName?.includes(searchQuery) ||
+      product?.applyCode?.includes(searchQuery)
+    )
+
+    setSearchResults(mockResults)
+    setSearchMode(true)
+    showToast(`找到 ${mockResults.length} 个相关产品`, 'success')
+  }, [searchQuery, data, showToast])
+
+  const handleExitSearch = useCallback(() => {
+    setSearchMode(false)
+    setSearchQuery('')
+    setSearchResults([])
+  }, [])
+
   // 渲染原图网格（保持不变）
   const renderImageGrid = (images, type) => {
     if (!images || images.length === 0) {
@@ -2490,8 +2527,50 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
         {/* 无数据时显示简单提示 */}
         {data && (
           <>
-            {/* Tab切换 */}
-            <div className="todo-tabs">
+            {/* 搜索功能区 */}
+            {!searchMode && (
+              <div className="search-section">
+                <div className="search-input-group">
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="输入产品名称或编号"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    style={{ fontSize: '11px' }}
+                  />
+                  <button
+                    className="search-btn"
+                    onClick={handleSearch}
+                    disabled={!searchQuery.trim()}
+                    style={{ fontSize: '11px' }}
+                  >
+                    搜索
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 搜索结果模式标题栏 */}
+            {searchMode && (
+              <div className="search-result-header">
+                <div className="search-title" style={{ fontSize: '12px' }}>
+                  搜索结果: "{searchQuery}" ({searchResults.length} 个产品)
+                </div>
+                <button
+                  className="exit-search-btn"
+                  onClick={handleExitSearch}
+                  style={{ fontSize: '11px' }}
+                >
+                  返回列表
+                </button>
+              </div>
+            )}
+
+            {/* Tab切换 - 只在非搜索模式显示 */}
+            {!searchMode && (
+              <div className="todo-tabs">
               <div 
                 className={`tab-btn ${activeTab === 'origin' ? 'active' : ''}`}
                 onClick={() => setActiveTab('origin')}
@@ -2505,6 +2584,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                 待处理图片 ({waitImages.length})
               </div>
             </div>
+            )}
 
 
             {/* 批量操作控制栏 - 只在待处理图片tab且有图片时显示 */}
@@ -2546,8 +2626,51 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
 
             {/* 图片展示区域 */}
             <div className="todo-images">
-              {activeTab === 'origin' && renderImageGrid(originImages, 'origin')}
-              {activeTab === 'wait' && renderWaitImagesGrouped()}
+              {searchMode ? (
+                // 搜索结果展示区域
+                <div className="search-results">
+                  {searchResults.length === 0 ? (
+                    <div className="no-images">
+                      <p>未找到匹配的产品</p>
+                    </div>
+                  ) : (
+                    searchResults.map((product, index) => (
+                      <div key={product.id || product.applyCode || index} className="search-result-item">
+                        <div className="product-title" style={{ fontSize: '12px', marginBottom: '8px', fontWeight: 'bold' }}>
+                          {product.productName || product.applyCode || `产品 ${index + 1}`}
+                        </div>
+                        <ProductDetail
+                          productData={product}
+                          onClose={() => {
+                            // 在搜索结果中不需要关闭单个产品详情，这里可以为空或显示提示
+                            console.log('搜索结果中的产品详情不支持单独关闭')
+                          }}
+                          onSubmit={(productId, status) => {
+                            // 处理产品提交
+                            console.log('产品提交:', productId, status)
+                            if (onUpdate) {
+                              onUpdate(productId, status)
+                            }
+                          }}
+                          onUpdate={(productId, status) => {
+                            // 处理产品更新
+                            console.log('产品更新:', productId, status)
+                            if (onUpdate) {
+                              onUpdate(productId, status)
+                            }
+                          }}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                // 原有的Tab内容
+                <>
+                  {activeTab === 'origin' && renderImageGrid(originImages, 'origin')}
+                  {activeTab === 'wait' && renderWaitImagesGrouped()}
+                </>
+              )}
             </div>
             
             {/* Photoshop错误提示 */}

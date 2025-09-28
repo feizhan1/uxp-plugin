@@ -2602,13 +2602,6 @@ const ProductDetail = ({
           </div>
         </div>
         <div className="header-right">
-          <button
-            className="help-btn"
-            onClick={() => setShowWorkflowGuide(!showWorkflowGuide)}
-            title="查看工作流程说明"
-          >
-            {showWorkflowGuide ? '关闭说明' : '工作流程'}
-          </button>
           <div className="layout-selector">
             <div
               className={`layout-btn ${imageLayout === 'small' ? 'active' : ''}`}

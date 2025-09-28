@@ -16,7 +16,7 @@
 
 /* 右上角操作区域 */
 .header-actions {
-  margin: 8px 8px 0 0;
+  padding: 8px 8px 0 8px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -25,6 +25,7 @@
 }
 
 .header-actions .action-btn {
+  margin-left: 12px;
   padding: 6px 12px;
   height: 28px;
   border: 1px solid #ddd;
@@ -471,4 +472,147 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 搜索功能样式 - header-actions中的左右布局 */
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 16px;
+}
+
+.header-left {
+  flex: 1;
+  min-width: 200px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.todolist-search-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 300px;
+}
+
+.todolist-search-input {
+  /* UXP重置样式 - 参考App.css中的input重置 */
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  outline: none;
+
+  /* 自定义样式 */
+  flex: 1;
+  padding: 6px 8px;
+  height: 28px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+  min-width: 150px;
+  box-sizing: border-box;
+}
+
+.todolist-search-input:focus {
+  outline: none;
+  border-color: var(--theme-color, #ec6608);
+  box-shadow: 0 0 0 2px rgba(236, 102, 8, 0.25);
+}
+
+.todolist-search-result-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.todolist-search-query {
+  color: var(--theme-color, #ec6608);
+  font-weight: 500;
+}
+
+.todolist-search-count {
+  color: #666;
+}
+
+.todolist-search-results {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 自定义滚动条样式 */
+.todolist-search-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.todolist-search-results::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.todolist-search-results::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.todolist-search-results::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.todolist-search-result-item {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 0;
+  background: white;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+
+.todolist-search-result-item .product-detail {
+  position: static !important;
+  width: 100% !important;
+  height: auto !important;
+  background: transparent !important;
+  display: block !important;
+  border-radius: 0 !important;
+}
+
+/* 保持detail-header显示 */
+.todolist-search-result-item .product-detail .detail-header {
+  display: flex !important;
+}
+
+/* 隐藏搜索结果中的返回列表按钮 */
+.todolist-search-result-item .product-detail .back-btn {
+  display: none !important;
+}
+
+.no-results {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.no-results-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.no-results-text {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.no-results-hint {
+  font-size: 12px;
+  color: #999;
 }
