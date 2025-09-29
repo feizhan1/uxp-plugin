@@ -107,9 +107,9 @@
 /* 退出登录按钮 */
 .logout-btn {
   position: absolute;
-  left: 100%;
-  top: 0;
-  margin-left: 4px;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
   padding: 6px 12px;
   height: 28px;
   line-height: 16px;
@@ -129,7 +129,7 @@
   flex-shrink: 0;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-10px);
+  transform: translateY(-10px);
   z-index: 10;
 }
 
@@ -137,7 +137,7 @@
 .login-badge-container:hover .logout-btn {
   opacity: 1;
   visibility: visible;
-  transform: translateX(0);
+  transform: translateY(0);
 }
 
 .logout-btn:hover {
