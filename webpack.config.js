@@ -59,11 +59,10 @@ module.exports = (env, argv) => {
 				new TerserPlugin({
 					terserOptions: {
 						compress: {
-							// 删除 console/debugger 以及开发辅助代码
-							drop_console: true, // 保留console语句，使用pure_funcs精确控制
+							// 保留所有console语句用于生产环境调试
+							drop_console: false, // 保留console语句
 							drop_debugger: true,
 							passes: 2,
-							//pure_funcs: ['console.log'], // 只移除console.log，保留warn和error
 						},
 						mangle: true,
 						format: {

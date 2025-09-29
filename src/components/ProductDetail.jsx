@@ -154,6 +154,25 @@ const ProductDetail = ({
   onSubmit,         // 提交审核回调
   onUpdate          // 数据更新回调
 }) => {
+  // 获取登录信息的辅助函数
+  const getLoginInfo = () => {
+    try {
+      const loginInfoRaw = localStorage.getItem('loginInfo');
+      if (loginInfoRaw) {
+        const loginInfo = JSON.parse(loginInfoRaw);
+        if (loginInfo?.success && loginInfo?.data) {
+          return {
+            userId: loginInfo.data.UserId,
+            userCode: loginInfo.data.UserCode
+          };
+        }
+      }
+    } catch (error) {
+      console.error('❌ 解析登录信息失败:', error);
+    }
+    return { userId: null, userCode: null };
+  };
+
   // 状态管理
   const [currentProduct, setCurrentProduct] = useState(productData || {});
   const [imageGroups, setImageGroups] = useState({
@@ -934,21 +953,8 @@ const ProductDetail = ({
       console.log('🚀 开始提交审核:', currentProduct.applyCode);
 
       // 获取登录信息
-      let userId = 0;
-      let userCode = null;
-      try {
-        const loginInfoRaw = localStorage.getItem('loginInfo');
-        if (loginInfoRaw) {
-          const loginInfo = JSON.parse(loginInfoRaw);
-          if (loginInfo?.success && loginInfo?.data) {
-            userId = loginInfo.data.UserId;
-            userCode = loginInfo.data.UserCode;
-            console.log('✅ 获取登录信息成功:', { userId, userCode });
-          }
-        }
-      } catch (error) {
-        console.error('❌ 解析登录信息失败:', error);
-      }
+      const { userId, userCode } = getLoginInfo();
+      console.log('✅ 获取登录信息:', { userId, userCode });
 
       if (!userId || !userCode) {
         throw new Error('无法获取用户登录信息，请重新登录');
@@ -1309,10 +1315,17 @@ const ProductDetail = ({
     try {
       console.log('📋 提交产品审核...');
       console.log('📋 请求体详情 currentProduct:', JSON.stringify(currentProduct, null, 2));
+
+      // 获取登录信息
+      const { userId, userCode } = getLoginInfo();
+      if (!userId || !userCode) {
+        throw new Error('无法获取用户登录信息，请重新登录');
+      }
+
       // 构建完整的API请求体
       const payload = {
-        userId: currentProduct.userId || 0,
-        userCode: currentProduct.userCode || null,
+        userId: userId,
+        userCode: userCode,
         applyCode: currentProduct.applyCode,
 
         // 原始图片 - 只包含imageUrl
@@ -1338,7 +1351,7 @@ const ProductDetail = ({
       };
       console.log('📋 请求体详情 payload:', JSON.stringify(payload, null, 2));
       //console.log('📤 提交审核 payload:', payload);
-      /*
+      
       console.log('📊 数据统计:', {
         originalImages: payload.originalImages.length,
         publishSkus: payload.publishSkus.length,
@@ -1379,13 +1392,6 @@ const ProductDetail = ({
 
       // API成功后的清理和导航逻辑
       await handleSubmitSuccess(message);
-      
-
-      // 模拟API成功响应进行调试
-      console.log('✅ [调试模式] 模拟审核提交成功');
-      const mockMessage = '产品审核提交成功 - 调试模式';
-      await handleSubmitSuccess(mockMessage);
-      */
 
     } catch (error) {
       console.error('❌ 审核API调用失败:', error);
@@ -1406,7 +1412,7 @@ const ProductDetail = ({
 
       // TODO: 本地测试完成后取消下面的注释
 
-      /*
+    
       console.log('🧹 开始清理产品数据...');
 
       // 1. 从本地索引移除产品数据（包含本地图片文件删除）
@@ -1428,7 +1434,7 @@ const ProductDetail = ({
         console.log('🔄 通知父组件更新产品列表');
         onUpdate(currentProduct.applyCode, 'submitted');
       }
-      */
+    
 
     } catch (error) {
       console.error('⚠️ 清理过程出现错误:', error);
