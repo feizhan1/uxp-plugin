@@ -613,6 +613,19 @@ const TodoList = () => {
     setLoginInfo(null)
   }
 
+  // 直接退出登录（无确认框）
+  const handleDirectLogout = () => {
+    try {
+      localStorage.removeItem('loginInfo')
+    } catch {
+      // 忽略本地存储异常
+    }
+    setShowTodo(false)
+    setData([])
+    setError(null)
+    setLoginInfo(null)
+  }
+
   // 登录成功回调
   const handleLoginSuccess = (info) => {
     setLoginInfo(info)
@@ -1089,11 +1102,20 @@ const TodoList = () => {
             </button>
             {/* 只在非搜索模式下显示已登录徽章 */}
             {!searchMode && (
-              <div
-                className="login-badge"
-                onClick={() => setShowLogoutConfirm(true)}
-              >
-                已登录
+              <div className="login-badge-container">
+                <div
+                  className="login-badge"
+                  onClick={() => setShowLogoutConfirm(true)}
+                >
+                  已登录
+                </div>
+                <button
+                  className="logout-btn"
+                  onClick={handleDirectLogout}
+                  title="退出登录"
+                >
+                  退出登录
+                </button>
               </div>
             )}
           </div>
