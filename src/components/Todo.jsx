@@ -138,6 +138,8 @@ const WaitImageItem = React.memo(
     onDrop,
     onReplaceWithCanvas,
     onDragToPhotoshop,
+    onOpenInPS,
+    openingImageId,
     onImageError,
     isSelectionMode,
     isSelected,
@@ -159,13 +161,20 @@ const WaitImageItem = React.memo(
         onDrop={!isUXP ? (e) => onDrop(e, flatIndex) : undefined}
         onPointerDown={isUXP && supportsPointer && !isSelectionMode ? (e) => onBeginPointerMaybeDrag(e, flatIndex) : undefined}
         onMouseDown={isUXP && !supportsPointer && !isSelectionMode ? (e) => onBeginMouseMaybeDrag(e, flatIndex) : undefined}
-        onClick={() => { 
-          if (suppressClickRef.current) return; 
+        onClick={() => {
+          if (suppressClickRef.current) return;
           if (isSelectionMode) {
             onToggleSelection(flatIndex);
           } else {
             onOpenPreview(flatIndex);
           }
+        }}
+        onContextMenu={(e) => {
+          if (suppressClickRef.current) return;
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`👉 [TodoImageItem] 右键在PS中打开: ${item.id}`);
+          onOpenInPS && onOpenInPS(item.id, item.url);
         }}
       >
         {isSelectionMode && (
@@ -191,6 +200,12 @@ const WaitImageItem = React.memo(
         >
           ×
         </button>
+        {/* 正在PS中打开的加载状态 */}
+        {openingImageId === item.id && (
+          <div className="opening-overlay">
+            <div className="opening-text">正在PS中打开...</div>
+          </div>
+        )}
         {/* 已隐藏P和T按钮 */}
         <SmartImage
           imageId={item.id}
@@ -483,6 +498,7 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
   // 简单的防重复点击状态
   const [isSyncing, setIsSyncing] = useState(false) // 是否有同步操作在进行中
   const [isUpdating, setIsUpdating] = useState(false) // 数据更新状态标志
+  const [openingImageId, setOpeningImageId] = useState(null) // 正在PS中打开的图片ID
 
   // 简化的图片刷新机制
   const [autoRefresh, setAutoRefresh] = useState({
@@ -1371,6 +1387,37 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
       console.groupEnd()
     }
   }
+
+  // 在PS中打开图片进行编辑
+  const handleOpenImageInPS = async (imageId, imageUrl) => {
+    try {
+      setOpeningImageId(imageId);
+      setPSError(null);
+
+      console.log('🚀 [handleOpenImageInPS] 开始在PS中打开图片:', { imageId, imageUrl });
+
+      // 构建图片信息对象
+      const psImageInfo = {
+        imageId: imageId,
+        url: imageUrl,
+        type: 'smart' // 使用智能获取模式，优先本地缓存
+      };
+
+      // 使用directOpen模式直接在PS中打开图片
+      const documentId = await placeImageInPS(psImageInfo, { directOpen: true });
+
+      console.log('✅ [handleOpenImageInPS] 图片在PS中打开成功，文档ID:', documentId);
+
+      showToast('图片已在Photoshop中打开', 'success');
+
+    } catch (error) {
+      console.error('❌ [handleOpenImageInPS] 在PS中打开图片失败:', error);
+      setPSError(`在PS中打开图片失败: ${error.message}`);
+      showToast(`在PS中打开图片失败: ${error.message}`, 'error');
+    } finally {
+      setOpeningImageId(null);
+    }
+  };
 
   // 更新图片的PS文档关联状态（可复用函数）
   const updateImagePSDocumentId = useCallback(async (imageIndex, documentId) => {
@@ -2471,6 +2518,8 @@ const Todo = ({ data, onClose, onUpdate, onReorder }) => {
                     onDrop={handleDrop}
                     onReplaceWithCanvas={handleReplaceWithCanvas}
                     onDragToPhotoshop={handleDragToPhotoshop}
+                    onOpenInPS={handleOpenImageInPS}
+                    openingImageId={openingImageId}
                     onImageError={handleImageError}
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
