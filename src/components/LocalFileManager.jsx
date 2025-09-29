@@ -9,10 +9,9 @@ import './LocalFileManager.css';
  */
 const LocalFileManager = ({ onClose }) => {
   const [storageStats, setStorageStats] = useState(null);
-  const [imageList, setImageList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedTab, setSelectedTab] = useState('overview'); // overview, images, cleanup
+  const [selectedTab, setSelectedTab] = useState('overview'); // overview, cleanup
   const [storageInfo, setStorageInfo] = useState(null);
 
   useEffect(() => {
@@ -35,9 +34,6 @@ const LocalFileManager = ({ onClose }) => {
       const stats = await localImageManager.getStorageStats();
       setStorageStats(stats);
 
-      // 获取图片列表
-      const images = localImageManager.getAllImages();
-      setImageList(images);
 
       // 获取目录信息
       const pluginPath = fileSystemUtils.getPluginDataPath();
@@ -259,29 +255,6 @@ const LocalFileManager = ({ onClose }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  /**
-   * 格式化状态
-   */
-  const formatStatus = (status) => {
-    const statusMap = {
-      'downloaded': '已下载',
-      'modified': '已修改',
-      'synced': '已同步'
-    };
-    return statusMap[status] || status;
-  };
-
-  /**
-   * 获取状态颜色
-   */
-  const getStatusColor = (status) => {
-    const colorMap = {
-      'downloaded': '#2196f3',
-      'modified': '#ff9800',
-      'synced': '#4caf50'
-    };
-    return colorMap[status] || '#666';
-  };
 
   if (loading) {
     return (
@@ -310,12 +283,6 @@ const LocalFileManager = ({ onClose }) => {
             onClick={() => setSelectedTab('overview')}
           >
             概览
-          </button>
-          <button
-            className={`tab ${selectedTab === 'images' ? 'active' : ''}`}
-            onClick={() => setSelectedTab('images')}
-          >
-            图片列表
           </button>
           <button
             className={`tab ${selectedTab === 'cleanup' ? 'active' : ''}`}
@@ -446,45 +413,6 @@ const LocalFileManager = ({ onClose }) => {
             </div>
           )}
 
-          {/* 图片列表标签页 */}
-          {selectedTab === 'images' && (
-            <div className="images-section">
-              <div className="images-header">
-                <h4>图片列表 ({imageList.length})</h4>
-                <button className="btn-small" onClick={loadStorageInfo}>
-                  刷新
-                </button>
-              </div>
-
-              <div className="images-list">
-                {imageList.length === 0 ? (
-                  <div className="empty-message">暂无本地图片</div>
-                ) : (
-                  imageList.map((image) => (
-                    <div key={image.id} className="file-image-item">
-                      <div className="image-info">
-                        <div className="image-id">{image.id}</div>
-                        <div className="image-details">
-                          <div>文件: {image.localPath}</div>
-                          <div>大小: {formatSize(image.fileSize)}</div>
-                          <div>产品: {image.applyCode || '未知'}</div>
-                          <div>时间: {new Date(image.timestamp).toLocaleString()}</div>
-                        </div>
-                      </div>
-                      <div className="image-status">
-                        <span
-                          className="status-badge"
-                          style={{ backgroundColor: getStatusColor(image.status) }}
-                        >
-                          {formatStatus(image.status)}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
 
           {/* 清理工具标签页 */}
           {selectedTab === 'cleanup' && (
