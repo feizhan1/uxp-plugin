@@ -2857,7 +2857,7 @@ const ProductDetail = ({
 
                 return (
                   <div
-                    key={image.id}
+                    key={`original-${image.id}-${index}`}
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'original')}
@@ -2941,7 +2941,7 @@ const ProductDetail = ({
 
                   return (
                     <div
-                      key={image.id}
+                      key={`sku-${sku.skuIndex || skuIndex}-${image.id}-${imgIndex}`}
                       className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, image.id, 'sku', sku.skuIndex || skuIndex)}
@@ -3033,7 +3033,7 @@ const ProductDetail = ({
 
                 return (
                   <div
-                    key={image.id}
+                    key={`scene-${image.id}-${index}`}
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'scene')}
