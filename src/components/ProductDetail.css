@@ -927,6 +927,21 @@
   box-shadow: 0 3px 8px rgba(220, 53, 69, 0.25);
 }
 
+.image-actions-top .top-delete-btn.disabled {
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.image-actions-top .top-delete-btn.disabled:hover {
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
 /* 右上角悬浮操作按钮 */
 .image-actions.right-top {
   position: absolute;
@@ -2079,5 +2094,99 @@
     opacity: 1;
     box-shadow: 0 0 16px rgba(33, 150, 243, 0.8);
     transform: scaleY(1.05);
+  }
+}
+
+/* 批量同步相关样式 */
+.sku-batch-actions {
+  display: flex;
+  align-items: center;
+}
+
+.batch-sync-controls {
+  display: flex;
+  align-items: center;
+}
+
+.batch-sync-controls > * + * {
+  margin-left: 6px;
+}
+
+.batch-sync-btn, .sku-batch-actions .sync-btn, .cancel-btn {
+  padding: 6px 12px;
+  height: 24px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  min-width: 70px;
+  justify-content: center;
+  flex-shrink: 0;
+  background: white;
+}
+
+.batch-sync-btn:hover {
+  background: #f8f9fa;
+  border-color: #2196f3;
+  color: #2196f3;
+}
+
+.sku-batch-actions .sync-btn {
+  background: #2196f3;
+  color: white;
+  border-color: #2196f3;
+}
+
+.sku-batch-actions .sync-btn:hover:not(:disabled) {
+  background: #1976d2;
+  border-color: #1976d2;
+}
+
+.sku-batch-actions .sync-btn:disabled {
+  background: #999;
+  border-color: #999;
+  cursor: not-allowed;
+}
+
+.cancel-btn:hover {
+  background: #f8f9fa;
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+/* 图片勾选框样式 */
+.image-checkbox {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  z-index: 15;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 3px;
+  padding: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.image-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* UXP环境下的样式优化 */
+@media (max-width: 1024px) {
+  .batch-sync-btn, .sku-batch-actions .sync-btn, .cancel-btn {
+    font-size: 10px;
+    padding: 4px 8px;
+    height: 20px;
+    min-width: 60px;
+  }
+
+  .batch-sync-controls > * + * {
+    margin-left: 3px;
   }
 }

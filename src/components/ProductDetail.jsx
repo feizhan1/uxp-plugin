@@ -197,6 +197,13 @@ const ProductDetail = ({
   const [refreshingImages, setRefreshingImages] = useState(new Set()); // 需要刷新的图片ID集合
   const [showWorkflowGuide, setShowWorkflowGuide] = useState(false); // 显示工作流程指引
   const [imageLayout, setImageLayout] = useState('small'); // 图片布局尺寸：small(100px), medium(140px), large(180px)
+
+  // 批量同步相关状态
+  const [batchSyncMode, setBatchSyncMode] = useState(false); // 是否处于批量同步模式
+  const [selectedImages, setSelectedImages] = useState(new Set()); // 选中的图片ID集合
+  const [syncingBatch, setSyncingBatch] = useState(false); // 批量同步进行中状态
+
+
   const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(false); // 全局控制是否跳过删除确认
   const [dontAskAgain, setDontAskAgain] = useState(false); // 当前对话框中"不再询问"复选框状态
 
@@ -566,6 +573,7 @@ const ProductDetail = ({
       setSkipDeleteConfirmation(false);
     }
   };
+
 
   /**
    * 保存删除确认设置
@@ -2358,6 +2366,125 @@ const ProductDetail = ({
   };
 
   /**
+   * 开始批量同步模式
+   */
+  const handleStartBatchSync = () => {
+    setBatchSyncMode(true);
+    setSelectedImages(new Set());
+    console.log('🔄 [批量同步] 进入批量同步模式');
+  };
+
+  /**
+   * 取消批量同步模式
+   */
+  const handleCancelBatchSync = () => {
+    setBatchSyncMode(false);
+    setSelectedImages(new Set());
+    console.log('❌ [批量同步] 取消批量同步模式');
+  };
+
+  /**
+   * 切换图片选择状态
+   */
+  const handleToggleImageSelection = (imageId) => {
+    setSelectedImages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(imageId)) {
+        newSet.delete(imageId);
+        console.log(`☐ [批量同步] 取消选择图片: ${imageId}`);
+      } else {
+        newSet.add(imageId);
+        console.log(`☑ [批量同步] 选择图片: ${imageId}`);
+      }
+      console.log(`📋 [批量同步] 当前选中图片数量: ${newSet.size}`);
+      return newSet;
+    });
+  };
+
+  /**
+   * 执行批量同步操作
+   */
+  const handleExecuteSync = async () => {
+    try {
+      setSyncingBatch(true);
+      setError(null);
+
+      const selectedImageIds = Array.from(selectedImages);
+      const firstSku = virtualizedImageGroups.skus[0];
+      const selectedImageData = firstSku.images.filter(img =>
+        selectedImageIds.includes(img.id)
+      );
+
+      console.log(`🚀 [批量同步] 开始批量同步 ${selectedImageData.length} 张图片`);
+      console.log(`📋 [批量同步] 源SKU索引: ${firstSku.skuIndex}, 标题: ${firstSku.skuTitle}`);
+
+      // 获取其他SKU
+      const otherSkus = virtualizedImageGroups.skus.slice(1);
+
+      if (otherSkus.length === 0) {
+        throw new Error('没有其他颜色款式可同步');
+      }
+
+      console.log(`📋 [批量同步] 目标SKU数量: ${otherSkus.length}`);
+
+      let totalOperations = 0;
+      let successOperations = 0;
+
+      // 对每个目标SKU执行同步
+      for (const targetSku of otherSkus) {
+        console.log(`🎯 [批量同步] 同步到SKU: ${targetSku.skuTitle} (索引: ${targetSku.skuIndex})`);
+
+        for (const selectedImage of selectedImageData) {
+          totalOperations++;
+          try {
+            // 追加到目标SKU末尾
+            const targetIndex = targetSku.images.length;
+
+            await localImageManager.insertImageReferenceAt(
+              productData.applyCode,
+              selectedImage.imageUrl,
+              'sku',
+              'sku',
+              targetIndex,
+              firstSku.skuIndex, // 使用正确的源SKU索引
+              targetSku.skuIndex
+            );
+
+            successOperations++;
+            console.log(`✅ [批量同步] 成功同步图片 ${selectedImage.id} 到 SKU${targetSku.skuIndex}`);
+
+          } catch (error) {
+            console.error(`❌ [批量同步] 同步图片 ${selectedImage.id} 到 SKU${targetSku.skuIndex} 失败:`, error);
+          }
+        }
+      }
+
+      // 刷新数据
+      console.log('🔄 [批量同步] 刷新图片数据...');
+      await initializeImageData();
+
+      // 退出批量同步模式
+      setBatchSyncMode(false);
+      setSelectedImages(new Set());
+
+      // 显示成功提示
+      if (successOperations === totalOperations) {
+        console.log(`🎉 [批量同步] 成功同步 ${selectedImageData.length} 张图片到 ${otherSkus.length} 个颜色款式`);
+        console.log(`🎉 [批量同步] 完全成功: ${successOperations}/${totalOperations} 个操作完成`);
+      } else {
+        console.warn(`⚠️ [批量同步] 部分同步成功: ${successOperations}/${totalOperations} 个操作完成`);
+        console.warn(`⚠️ [批量同步] 部分成功: ${successOperations}/${totalOperations} 个操作完成`);
+      }
+
+    } catch (error) {
+      console.error('❌ [批量同步] 批量同步失败:', error);
+      setError(`批量同步失败: ${error.message}`);
+    } finally {
+      setSyncingBatch(false);
+    }
+  };
+
+  /**
    * 单击图片打开预览模式
    */
   const handleImageClick = useCallback((imageId, imageUrl) => {
@@ -2928,6 +3055,28 @@ const ProductDetail = ({
           <div key={sku.skuIndex || skuIndex} className="sku-group">
               <div className="sku-header">
                 <h3>{sku.skuTitle} ({sku.images.length})</h3>
+                {skuIndex === 0 && (
+                  <div className="sku-batch-actions">
+                    {!batchSyncMode ? (
+                      <button className="batch-sync-btn" onClick={handleStartBatchSync}>
+                        批量同步
+                      </button>
+                    ) : (
+                      <div className="batch-sync-controls">
+                        <button
+                          className="sync-btn"
+                          disabled={selectedImages.size === 0 || syncingBatch}
+                          onClick={handleExecuteSync}
+                        >
+                          同步 ({selectedImages.size})
+                        </button>
+                        <button className="cancel-btn" onClick={handleCancelBatchSync}>
+                          取消
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="image-grid">
                 {sku.images.map((image, imgIndex) => {
@@ -2959,6 +3108,17 @@ const ProductDetail = ({
                           {getStatusText(image.localStatus)}
                         </div>
                         <div className="image-actions-top">
+                          {/* 批量同步模式下的勾选框（仅第一个SKU） */}
+                          {batchSyncMode && skuIndex === 0 && (
+                            <div className="image-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={selectedImages.has(image.id)}
+                                onChange={() => handleToggleImageSelection(image.id)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          )}
                           <div
                             className={`top-complete-btn ${image.isCompleted || completedImages.has(image.id) ? 'completed' : ''}`}
                             onClick={() => handleToggleImageCompleted(image.id)}
@@ -2969,9 +3129,9 @@ const ProductDetail = ({
                             {image.isCompleted || completedImages.has(image.id) ? '完成' : '√'}
                           </div>
                           <div
-                            className="top-delete-btn"
-                            onClick={() => handleConfirmDelete(image)}
-                            title="删除图片"
+                            className={`top-delete-btn ${batchSyncMode && skuIndex === 0 ? 'disabled' : ''}`}
+                            onClick={batchSyncMode && skuIndex === 0 ? undefined : () => handleConfirmDelete(image)}
+                            title={batchSyncMode && skuIndex === 0 ? "批量同步模式下不可删除" : "删除图片"}
                             role="button"
                             tabIndex="0"
                           >
@@ -3206,6 +3366,7 @@ const ProductDetail = ({
           </div>
         </div>
       )}
+
     </div>
   );
 };
