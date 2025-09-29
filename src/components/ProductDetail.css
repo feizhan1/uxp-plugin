@@ -840,13 +840,13 @@
 
 /* 完成按钮样式 - div元素，宽度由内容决定 */
 .image-actions-top .top-complete-btn {
-  height: 14px;
-  padding: 0 3px;
+  height: 18px;
+  padding: 0 6px;
   min-width: 0;
   width: auto;
   max-width: none;
-  border-radius: 6px;
-  font-size: 9px;
+  border-radius: 8px;
+  font-size: 10px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -864,13 +864,13 @@
 
 /* 删除按钮样式 - div元素，宽度由内容决定 */
 .image-actions-top .top-delete-btn {
-  height: 14px;
-  padding: 0 3px;
+  height: 18px;
+  padding: 0 6px;
   min-width: 0;
   width: auto;
   max-width: none;
-  border-radius: 6px;
-  font-size: 9px;
+  border-radius: 8px;
+  font-size: 10px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;

@@ -1351,6 +1351,8 @@ const ProductDetail = ({
       };
       console.log('📋 请求体详情 payload:', JSON.stringify(payload, null, 2));
       //console.log('📤 提交审核 payload:', payload);
+
+      return
       
       console.log('📊 数据统计:', {
         originalImages: payload.originalImages.length,
