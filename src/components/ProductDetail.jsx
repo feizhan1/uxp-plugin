@@ -1429,10 +1429,10 @@ const ProductDetail = ({
         }
       }, 1500);
 
-      // 3. 触发父组件更新 - 通知移除产品
-      if (onUpdate) {
-        console.log('🔄 通知父组件更新产品列表');
-        onUpdate(currentProduct.applyCode, 'submitted');
+      // 3. 触发父组件提交回调 - 通知提交成功
+      if (onSubmit) {
+        console.log('🔄 通知父组件产品提交成功');
+        onSubmit(currentProduct);
       }
     
 
