@@ -606,6 +606,16 @@ const ProductDetail = ({
       // 如果LocalImageManager中有最新数据，使用最新数据；否则使用原始数据
       const productDataToUse = latestProductData || currentProduct;
 
+      // 同步更新currentProduct状态，确保数据一致性
+      if (latestProductData) {
+        console.log('🔄 [initializeImageData] 同步更新currentProduct状态:', {
+          从: '传入的productData',
+          到: 'LocalImageManager最新数据',
+          applyCode: latestProductData.applyCode
+        });
+        setCurrentProduct(latestProductData);
+      }
+
       console.log('ProductDetail 使用数据源:', {
         applyCode: currentProduct.applyCode,
         useLatestData: !!latestProductData,
@@ -923,6 +933,27 @@ const ProductDetail = ({
 
       console.log('🚀 开始提交审核:', currentProduct.applyCode);
 
+      // 获取登录信息
+      let userId = 0;
+      let userCode = null;
+      try {
+        const loginInfoRaw = localStorage.getItem('loginInfo');
+        if (loginInfoRaw) {
+          const loginInfo = JSON.parse(loginInfoRaw);
+          if (loginInfo?.success && loginInfo?.data) {
+            userId = loginInfo.data.UserId;
+            userCode = loginInfo.data.UserCode;
+            console.log('✅ 获取登录信息成功:', { userId, userCode });
+          }
+        }
+      } catch (error) {
+        console.error('❌ 解析登录信息失败:', error);
+      }
+
+      if (!userId || !userCode) {
+        throw new Error('无法获取用户登录信息，请重新登录');
+      }
+
       // 1. 获取当前产品需要上传的图片（SKU+场景）
       await localImageManager.initialize();
       const modifiedImages = localImageManager.getModifiedImages(currentProduct.applyCode);
@@ -954,8 +985,8 @@ const ProductDetail = ({
       // 4. 设置上传队列
       uploadManager.setQueue(modifiedImages, {
         applyCode: currentProduct.applyCode,
-        userId: currentProduct.userId || 0,
-        userCode: currentProduct.userCode || null
+        userId: userId,
+        userCode: userCode
       });
 
       // 5. 开始上传并处理进度和结果
