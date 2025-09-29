@@ -956,13 +956,9 @@ const TodoList = () => {
     try {
       console.log('产品详情页提交:', productData.applyCode)
 
-      // 更新本地产品列表状态
+      // 从产品列表中移除已审核的产品
       setData(prevData => {
-        return prevData.map(item =>
-          item.applyCode === productData.applyCode
-            ? { ...item, status: '审核完成' }
-            : item
-        )
+        return prevData.filter(item => item.applyCode !== productData.applyCode)
       })
 
       // 关闭产品详情页
@@ -970,7 +966,7 @@ const TodoList = () => {
       setCurrentProductData(null)
 
       // 显示成功消息
-      setSuccessMsg('产品提交成功')
+      setSuccessMsg('产品提交成功，已从待处理列表移除')
 
     } catch (error) {
       console.error('产品提交处理失败:', error)
