@@ -106,12 +106,10 @@
 
 /* 退出登录按钮 */
 .logout-btn {
-  position: absolute;
-  left: 0;
-  top: 100%;
-  margin-top: 4px;
-  padding: 6px 12px;
-  height: 28px;
+  position: relative;
+  margin-left: 12px;
+  padding: 4px 8px;
+  height: 24px;
   line-height: 16px;
   display: inline-flex;
   align-items: center;
@@ -119,18 +117,14 @@
   color: #fff;
   background-color: #dc3545;
   border: 1px solid #dc3545;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 10px;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
   transition: all 0.2s;
-  min-width: 60px;
+  min-width: 50px;
   flex-shrink: 0;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-10px);
-  z-index: 10;
 }
 
 /* hover时显示退出登录按钮 */

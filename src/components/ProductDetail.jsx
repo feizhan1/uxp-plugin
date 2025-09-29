@@ -1360,7 +1360,7 @@ const ProductDetail = ({
       console.log('📋 请求体详情 payload:', JSON.stringify(payload, null, 2));
       //console.log('📤 提交审核 payload:', payload);
 
-      return
+      // return
       
       console.log('📊 数据统计:', {
         originalImages: payload.originalImages.length,
@@ -3165,9 +3165,9 @@ const ProductDetail = ({
                   role="button"
                   tabIndex="0"
                   onDragOver={handleDragOver}
-                  onDragEnter={(e) => handleDragEnter(e, 0, 'sku', sku.skuIndex || skuIndex)}
+                  onDragEnter={(e) => handleDragEnter(e, sku.images.length, 'sku', sku.skuIndex || skuIndex)}
                   onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, 0, 'sku', sku.skuIndex || skuIndex)}
+                  onDrop={(e) => handleDrop(e, sku.images.length, 'sku', sku.skuIndex || skuIndex)}
                 >
                   + 添加图片
                 <div className="format-hint">(支持PNG、JPG格式)</div>
@@ -3257,9 +3257,9 @@ const ProductDetail = ({
                 role="button"
                 tabIndex="0"
                 onDragOver={handleDragOver}
-                onDragEnter={(e) => handleDragEnter(e, 0, 'scene')}
+                onDragEnter={(e) => handleDragEnter(e, productData.sceneImages.length, 'scene')}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, 0, 'scene')}
+                onDrop={(e) => handleDrop(e, productData.sceneImages.length, 'scene')}
               >
                 + 添加图片
                 <div className="format-hint">(支持PNG、JPG格式)</div>
