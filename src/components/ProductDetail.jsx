@@ -3257,9 +3257,9 @@ const ProductDetail = ({
                 role="button"
                 tabIndex="0"
                 onDragOver={handleDragOver}
-                onDragEnter={(e) => handleDragEnter(e, productData.sceneImages.length, 'scene')}
+                onDragEnter={(e) => handleDragEnter(e, (productData.senceImages || []).length, 'scene')}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, productData.sceneImages.length, 'scene')}
+                onDrop={(e) => handleDrop(e, (productData.senceImages || []).length, 'scene')}
               >
                 + 添加图片
                 <div className="format-hint">(支持PNG、JPG格式)</div>
