@@ -3113,7 +3113,7 @@ const ProductDetail = ({
           <div key={sku.skuIndex || skuIndex} className="sku-group">
               <div className="sku-header">
                 <h3>{sku.skuTitle} ({sku.images.length})</h3>
-                {skuIndex === 0 && (
+                {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
                   <div className="sku-batch-actions">
                     {!batchSyncMode ? (
                       <button className="batch-sync-btn" onClick={handleStartBatchSync}>
