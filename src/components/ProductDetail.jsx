@@ -2766,6 +2766,18 @@ const ProductDetail = ({
           </div>
         </div>
         <div className="header-right">
+          <button
+            className="submit-btn"
+            onClick={() => {
+              console.log('🔄 [刷新按钮] 触发页面刷新');
+              initializeImageData();
+            }}
+            title="刷新页面数据"
+            role="button"
+            tabIndex="0"
+          >
+            刷新
+          </button>
           <div className="layout-selector">
             <div
               className={`layout-btn ${imageLayout === 'small' ? 'active' : ''}`}

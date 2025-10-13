@@ -1,7 +1,7 @@
 {
   "id": "7d40622e",
   "name": "tvcmall help",
-  "version": "1.1.1",
+  "version": "1.3.0",
   "main": "index.html",
   "manifestVersion": 5,
   "host": [
@@ -21,6 +21,7 @@
         "file"
       ],
       "extensions": [
+        "",
         ".svg",
         ".png",
         ".jpg",
@@ -30,6 +31,7 @@
         ".txt",
         ".bat",
         ".cmd",
+        ".command",
         ".pdf"
       ]
     },

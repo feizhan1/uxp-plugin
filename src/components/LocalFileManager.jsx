@@ -129,30 +129,9 @@ const LocalFileManager = ({ onClose }) => {
         console.warn('文件夹验证失败:', fsError);
       }
 
-      // 🎯 核心功能：使用shell.openPath()直接打开文件夹
+      // 🎯 macOS/Windows：UXP限制导致无法自动打开文件夹
+      // 改为优化剪贴板复制体验，让用户可以快速访问
       let directOpenSuccess = false;
-      if (typeof require !== 'undefined') {
-        try {
-          const { shell } = require('uxp');
-
-          if (shell && shell.openPath) {
-            console.log('🔄 尝试使用shell.openPath()直接打开文件夹...');
-            await shell.openPath(actualPath);
-            directOpenSuccess = true;
-            console.log('🎉 成功！文件夹已直接在资源管理器中打开');
-
-            // 显示成功消息
-            setError('✅ 文件夹已在资源管理器中打开！');
-            setTimeout(() => setError(null), 3000);
-            return; // 成功直接返回
-          } else {
-            console.warn('⚠️ shell.openPath API不可用');
-          }
-        } catch (openError) {
-          console.warn('❌ shell.openPath()失败:', openError);
-          // 不要在这里返回，继续尝试其他方法
-        }
-      }
 
       // 🔄 备选方案1：尝试通过临时批处理文件打开（Windows）
       if (!directOpenSuccess && typeof require !== 'undefined') {
@@ -216,16 +195,27 @@ const LocalFileManager = ({ onClose }) => {
         message += `✅ 文件夹已确认存在\n\n`;
       }
 
+      // 根据操作系统提供不同的指引
+      const os = require('os');
+      const isMac = os.platform() === 'darwin';
+
       message += `🔧 手动打开步骤：\n`;
-      message += `1. 打开文件管理器 (Windows资源管理器)\n`;
-      message += `2. 点击地址栏或按 Ctrl+L\n`;
-      message += `3. 粘贴路径 (Ctrl+V)\n`;
-      message += `4. 按回车键访问\n\n`;
+      if (isMac) {
+        message += `1. 打开 Finder\n`;
+        message += `2. 按 Cmd+Shift+G（前往文件夹）\n`;
+        message += `3. 粘贴路径 (Cmd+V)\n`;
+        message += `4. 按回车键访问\n\n`;
+      } else {
+        message += `1. 打开文件管理器 (Windows资源管理器)\n`;
+        message += `2. 点击地址栏或按 Ctrl+L\n`;
+        message += `3. 粘贴路径 (Ctrl+V)\n`;
+        message += `4. 按回车键访问\n\n`;
+      }
 
       if (clipboardSuccess) {
         message += `💡 路径已自动复制到剪贴板，可直接粘贴！`;
       } else {
-        message += `💡 请手动复制上述路径`;
+        message += `💡 请点击下方"复制路径"按钮复制路径`;
       }
 
       showMessage(message);
@@ -382,18 +372,30 @@ const LocalFileManager = ({ onClose }) => {
                           }
 
                           if (copySuccess) {
-                            setError('✅ 路径已复制到剪贴板！可以粘贴到文件管理器了');
+                            // 根据操作系统提供不同的提示
+                            const os = require('os');
+                            const isMac = os.platform() === 'darwin';
+                            if (isMac) {
+                              setError('✅ 路径已复制！在Finder中按 Cmd+Shift+G 然后 Cmd+V 粘贴');
+                            } else {
+                              setError('✅ 路径已复制！在文件管理器地址栏按 Ctrl+V 粘贴');
+                            }
                           } else {
-                            setError('💡 请点击路径输入框全选文本，然后按 Ctrl+C 复制');
+                            // 获取操作系统信息
+                            const os = require('os');
+                            const isMac = os.platform() === 'darwin';
+                            const copyKey = isMac ? 'Cmd+C' : 'Ctrl+C';
+
+                            setError(`💡 请点击路径输入框全选文本，然后按 ${copyKey} 复制`);
                             // 自动选择输入框中的文本
                             const pathInput = document.querySelector('.path-input');
                             if (pathInput) {
                               pathInput.focus();
                               pathInput.select();
-                              console.log('📝 已自动选择路径文本，用户可以Ctrl+C复制');
+                              console.log('📝 已自动选择路径文本，用户可以复制');
                             }
                           }
-                          setTimeout(() => setError(null), 4000);
+                          setTimeout(() => setError(null), 5000);
                         }}
                       >
                         📋 复制路径
