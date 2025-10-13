@@ -2434,11 +2434,24 @@ const ProductDetail = ({
       for (const targetSku of otherSkus) {
         console.log(`🎯 [批量同步] 同步到SKU: ${targetSku.skuTitle} (索引: ${targetSku.skuIndex})`);
 
+        // 从LocalImageManager获取实际的目标SKU数据，确保使用最新长度
+        const product = localImageManager.findProductByApplyCode(productData.applyCode);
+        const actualTargetSku = product.publishSkus.find(s => s.skuIndex === targetSku.skuIndex);
+
+        if (!actualTargetSku) {
+          console.error(`❌ [批量同步] 未找到目标SKU: ${targetSku.skuIndex}`);
+          continue;
+        }
+
         for (const selectedImage of selectedImageData) {
           totalOperations++;
           try {
-            // 追加到目标SKU末尾
-            const targetIndex = targetSku.images.length;
+            // 每次插入前重新获取最新的SKU数据，确保targetIndex正确累加
+            const currentProduct = localImageManager.findProductByApplyCode(productData.applyCode);
+            const currentTargetSku = currentProduct.publishSkus.find(s => s.skuIndex === targetSku.skuIndex);
+            const targetIndex = (currentTargetSku.skuImages || []).length;
+
+            console.log(`📍 [批量同步] 插入位置: ${targetIndex}, 当前SKU图片数: ${targetIndex}`);
 
             await localImageManager.insertImageReferenceAt(
               productData.applyCode,
@@ -2451,7 +2464,7 @@ const ProductDetail = ({
             );
 
             successOperations++;
-            console.log(`✅ [批量同步] 成功同步图片 ${selectedImage.id} 到 SKU${targetSku.skuIndex}`);
+            console.log(`✅ [批量同步] 成功同步图片 ${selectedImage.id} 到 SKU${targetSku.skuIndex} 位置${targetIndex}`);
 
           } catch (error) {
             console.error(`❌ [批量同步] 同步图片 ${selectedImage.id} 到 SKU${targetSku.skuIndex} 失败:`, error);
