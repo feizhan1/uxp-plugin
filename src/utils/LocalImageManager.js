@@ -2704,8 +2704,9 @@ export class LocalImageManager {
       let imageFound = false;
       let targetImage = null;
       let targetLocalPath = null;
+      let updatedCount = 0;
 
-      // 第一遍：找到目标图片并更新状态
+      // 遍历所有产品，更新所有匹配的图片（支持引用图片）
       for (const product of this.indexData) {
         // 检查原始图片
         if (product.originalImages) {
@@ -2722,17 +2723,19 @@ export class LocalImageManager {
                 img.completedTimestamp = Date.now();
               }
 
-              targetImage = img;
-              targetLocalPath = img.localPath;
+              if (!targetImage) {
+                targetImage = img;
+                targetLocalPath = img.localPath;
+              }
               imageFound = true;
+              updatedCount++;
               console.log(`✅ [setImageStatus] 原始图片状态更新: ${imageId} (${oldStatus} → ${status})`);
-              break;
             }
           }
         }
 
-        // 检查SKU图片
-        if (!imageFound && product.publishSkus) {
+        // 检查SKU图片（移除 !imageFound 条件，确保所有引用都被更新）
+        if (product.publishSkus) {
           for (const sku of product.publishSkus) {
             if (sku.skuImages) {
               for (const img of sku.skuImages) {
@@ -2747,20 +2750,21 @@ export class LocalImageManager {
                     img.completedTimestamp = Date.now();
                   }
 
-                  targetImage = img;
-                  targetLocalPath = img.localPath;
+                  if (!targetImage) {
+                    targetImage = img;
+                    targetLocalPath = img.localPath;
+                  }
                   imageFound = true;
+                  updatedCount++;
                   console.log(`✅ [setImageStatus] SKU图片状态更新: ${imageId} (${oldStatus} → ${status})`);
-                  break;
                 }
               }
             }
-            if (imageFound) break;
           }
         }
 
-        // 检查场景图片
-        if (!imageFound && product.senceImages) {
+        // 检查场景图片（移除 !imageFound 条件，确保所有引用都被更新）
+        if (product.senceImages) {
           for (const img of product.senceImages) {
             if (img.imageUrl === imageId || img.localPath === imageId) {
               const oldStatus = img.status;
@@ -2773,17 +2777,19 @@ export class LocalImageManager {
                 img.completedTimestamp = Date.now();
               }
 
-              targetImage = img;
-              targetLocalPath = img.localPath;
+              if (!targetImage) {
+                targetImage = img;
+                targetLocalPath = img.localPath;
+              }
               imageFound = true;
+              updatedCount++;
               console.log(`✅ [setImageStatus] 场景图片状态更新: ${imageId} (${oldStatus} → ${status})`);
-              break;
             }
           }
         }
-
-        if (imageFound) break;
       }
+
+      console.log(`📊 [setImageStatus] 共更新了 ${updatedCount} 个图片实例的状态`);
 
       if (!imageFound) {
         console.warn(`⚠️ [setImageStatus] 未找到图片: ${imageId}`);

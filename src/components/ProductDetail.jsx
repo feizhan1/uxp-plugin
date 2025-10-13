@@ -2131,7 +2131,7 @@ const ProductDetail = ({
    */
   const updateImageStatusInState = useCallback((imageId, newStatus) => {
     updateImageGroupsLocally(groups => {
-      let imageFound = false;
+      let updatedCount = 0;
 
       // 在原始图片中查找并更新
       if (groups.original) {
@@ -2146,13 +2146,13 @@ const ProductDetail = ({
           } else {
             groups.original[imageIndex].isCompleted = false;
           }
-          imageFound = true;
+          updatedCount++;
           console.log(`✅ [updateImageStatusInState] 原始图片状态已更新: ${imageId} → ${newStatus}`);
         }
       }
 
-      // 在SKU图片中查找并更新
-      if (!imageFound && groups.skus) {
+      // 在SKU图片中查找并更新（移除 !imageFound 条件，确保所有引用都被更新）
+      if (groups.skus) {
         groups.skus.forEach(sku => {
           if (sku.images) {
             const imageIndex = sku.images.findIndex(img =>
@@ -2166,15 +2166,15 @@ const ProductDetail = ({
               } else {
                 sku.images[imageIndex].isCompleted = false;
               }
-              imageFound = true;
+              updatedCount++;
               console.log(`✅ [updateImageStatusInState] SKU图片状态已更新: ${imageId} → ${newStatus}`);
             }
           }
         });
       }
 
-      // 在场景图片中查找并更新
-      if (!imageFound && groups.scenes) {
+      // 在场景图片中查找并更新（移除 !imageFound 条件，确保所有引用都被更新）
+      if (groups.scenes) {
         const imageIndex = groups.scenes.findIndex(img =>
           img.imageUrl === imageId || img.id === imageId
         );
@@ -2186,12 +2186,14 @@ const ProductDetail = ({
           } else {
             groups.scenes[imageIndex].isCompleted = false;
           }
-          imageFound = true;
+          updatedCount++;
           console.log(`✅ [updateImageStatusInState] 场景图片状态已更新: ${imageId} → ${newStatus}`);
         }
       }
 
-      if (!imageFound) {
+      console.log(`📊 [updateImageStatusInState] 共更新了 ${updatedCount} 个图片实例的UI状态`);
+
+      if (updatedCount === 0) {
         console.error(`❌ [updateImageStatusInState] 找不到图片: ${imageId}`);
       }
     });
@@ -2645,16 +2647,25 @@ const ProductDetail = ({
 
       console.log('✅ [handleOpenImageInPS] 图片在PS中打开成功，文档ID:', documentId);
 
-      // 立即更新UI状态为"编辑中"
-      console.log('🔄 [handleOpenImageInPS] 更新UI状态为编辑中:', imageId);
+      // 立即更新状态为"编辑中"
+      console.log('🔄 [handleOpenImageInPS] 更新状态为编辑中:', imageId);
 
-      // 1. 更新编辑中状态集合
+      // 1. 更新本地索引数据（持久化）
+      try {
+        await localImageManager.setImageStatus(imageId, 'editing');
+        console.log('✅ [handleOpenImageInPS] 本地索引状态已更新为 editing');
+      } catch (statusError) {
+        console.error('❌ [handleOpenImageInPS] 更新本地索引状态失败:', statusError);
+        // 继续执行UI更新，即使索引更新失败
+      }
+
+      // 2. 更新编辑中状态集合
       setEditingImages(prev => new Set([...prev, imageId]));
 
-      // 2. 更新图片组状态，更新localStatus字段
+      // 3. 更新图片组状态，更新localStatus字段
       updateImageStatusInState(imageId, 'editing');
 
-      console.log('✅ [handleOpenImageInPS] UI状态已更新为编辑中');
+      console.log('✅ [handleOpenImageInPS] 状态已完整更新为编辑中');
 
     } catch (error) {
       console.error('❌ [handleOpenImageInPS] 在PS中打开图片失败:', error);
