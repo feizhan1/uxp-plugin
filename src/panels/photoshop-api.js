@@ -2142,3 +2142,80 @@ function normalizeImageInfo(imageInfo) {
 
   return imageInfo;
 }
+
+/**
+ * 检测PS中打开的文档并匹配当前产品的图片
+ * @param {string} applyCode - 产品代码
+ * @returns {Promise<Array>} 匹配到的图片ID列表
+ */
+export async function detectAndMatchOpenedImages(applyCode) {
+  // 检查是否在UXP环境中
+  if (!isUXPEnvironment()) {
+    console.warn('[detectAndMatchOpenedImages] 不在UXP环境中');
+    return [];
+  }
+
+  try {
+    console.log(`🔍 [detectAndMatchOpenedImages] 开始检测PS中打开的图片，产品: ${applyCode}`);
+
+    // 1. 获取所有打开的PS文档
+    const openDocs = await getOpenDocuments();
+    if (openDocs.length === 0) {
+      console.log(`ℹ️ [detectAndMatchOpenedImages] 没有打开的PS文档`);
+      return [];
+    }
+
+    console.log(`📋 [detectAndMatchOpenedImages] 找到 ${openDocs.length} 个打开的文档`);
+
+    // 2. 初始化本地图片管理器
+    await localImageManager.initialize();
+
+    // 3. 获取当前产品的所有图片
+    const productImages = await localImageManager.getAllImagesByProduct(applyCode);
+    if (!productImages || productImages.length === 0) {
+      console.log(`ℹ️ [detectAndMatchOpenedImages] 产品 ${applyCode} 没有图片`);
+      return [];
+    }
+
+    console.log(`📊 [detectAndMatchOpenedImages] 产品 ${applyCode} 有 ${productImages.length} 张图片`);
+
+    // 4. 匹配文档名称与图片
+    const matchedImageIds = [];
+
+    for (const doc of openDocs) {
+      const docName = doc.name;
+      console.log(`🔎 [detectAndMatchOpenedImages] 检查文档: ${docName}`);
+
+      // 遍历产品图片，通过文件名匹配
+      for (const image of productImages) {
+        if (image.localPath) {
+          // 从localPath提取文件名
+          const fileName = image.localPath.split('/').pop().split('\\').pop();
+
+          // 匹配文档名称（可能带或不带扩展名）
+          const docNameWithoutExt = docName.replace(/\.[^/.]+$/, ''); // 去掉扩展名
+          const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+
+          if (docName === fileName || docNameWithoutExt === fileNameWithoutExt) {
+            console.log(`✅ [detectAndMatchOpenedImages] 匹配成功: ${docName} <-> ${image.id || image.imageUrl}`);
+
+            const imageId = image.id || image.imageUrl;
+            matchedImageIds.push(imageId);
+
+            // 注册文档与图片的映射关系
+            registerDocumentImageMapping(doc.id, imageId, image.imageUrl);
+
+            break; // 找到匹配后跳出内层循环
+          }
+        }
+      }
+    }
+
+    console.log(`🎯 [detectAndMatchOpenedImages] 共匹配到 ${matchedImageIds.length} 张图片`);
+    return matchedImageIds;
+
+  } catch (error) {
+    console.error('[detectAndMatchOpenedImages] 检测匹配失败:', error);
+    return [];
+  }
+}

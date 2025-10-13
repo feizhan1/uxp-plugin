@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { localImageManager } from '../utils/LocalImageManager.js';
 import { ConcurrentUploadManager } from '../utils/ConcurrentUploadManager.js';
-import { placeImageInPS, registerPSEventListeners, unregisterPSEventListeners } from '../panels/photoshop-api.js';
+import { placeImageInPS, registerPSEventListeners, unregisterPSEventListeners, detectAndMatchOpenedImages } from '../panels/photoshop-api.js';
 import { post } from '../utils/http.js';
 import './ProductDetail.css';
 
@@ -654,6 +654,39 @@ const ProductDetail = ({
       // 处理图片分组 - 使用useMemo优化已在组件级别实现
       const groups = processImageGroups(productDataToUse);
       setImageGroups(groups);
+
+      // 检测PS中已打开的图片并更新状态
+      try {
+        console.log('🔍 [initializeImageData] 开始检测PS中已打开的图片');
+        const matchedImageIds = await detectAndMatchOpenedImages(currentProduct.applyCode);
+
+        if (matchedImageIds.length > 0) {
+          console.log(`✅ [initializeImageData] 检测到 ${matchedImageIds.length} 张已打开的图片`);
+
+          // 批量更新图片状态为"编辑中"
+          for (const imageId of matchedImageIds) {
+            try {
+              await localImageManager.setImageStatus(imageId, 'editing');
+              console.log(`🔄 [initializeImageData] 已将图片 ${imageId} 状态设为编辑中`);
+            } catch (statusError) {
+              console.error(`❌ [initializeImageData] 更新图片状态失败:`, statusError);
+            }
+          }
+
+          // 重新读取并更新图片组状态
+          const updatedProductData = localImageManager.findProductByApplyCode(currentProduct.applyCode);
+          if (updatedProductData) {
+            const updatedGroups = processImageGroups(updatedProductData);
+            setImageGroups(updatedGroups);
+            console.log(`🔄 [initializeImageData] 已刷新图片组状态`);
+          }
+        } else {
+          console.log(`ℹ️ [initializeImageData] 未检测到已打开的图片`);
+        }
+      } catch (detectError) {
+        console.error('❌ [initializeImageData] 检测PS打开图片失败:', detectError);
+        // 不影响主流程，继续执行
+      }
 
       console.log('ProductDetail 初始化完成:', {
         applyCode: currentProduct.applyCode,

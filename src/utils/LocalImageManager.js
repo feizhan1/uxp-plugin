@@ -855,6 +855,65 @@ export class LocalImageManager {
   }
 
   /**
+   * 获取指定产品的所有图片
+   * @param {string} applyCode 产品代码
+   * @returns {Array} 图片列表
+   */
+  getAllImagesByProduct(applyCode) {
+    const productImages = [];
+    const product = this.findProductByApplyCode(applyCode);
+
+    if (!product) {
+      console.log(`⚠️ [getAllImagesByProduct] 未找到产品: ${applyCode}`);
+      return productImages;
+    }
+
+    // 添加原始图片
+    if (product.originalImages) {
+      for (const img of product.originalImages) {
+        productImages.push({
+          id: img.imageUrl || img.localPath,
+          applyCode: product.applyCode,
+          imageType: 'original',
+          ...img
+        });
+      }
+    }
+
+    // 添加SKU图片
+    if (product.publishSkus) {
+      for (const sku of product.publishSkus) {
+        if (sku.skuImages) {
+          for (const img of sku.skuImages) {
+            productImages.push({
+              id: img.imageUrl || img.localPath,
+              applyCode: product.applyCode,
+              imageType: 'sku',
+              skuIndex: sku.skuIndex,
+              ...img
+            });
+          }
+        }
+      }
+    }
+
+    // 添加场景图片
+    if (product.senceImages) {
+      for (const img of product.senceImages) {
+        productImages.push({
+          id: img.imageUrl || img.localPath,
+          applyCode: product.applyCode,
+          imageType: 'scene',
+          ...img
+        });
+      }
+    }
+
+    console.log(`📊 [getAllImagesByProduct] 产品 ${applyCode} 共有 ${productImages.length} 张图片`);
+    return productImages;
+  }
+
+  /**
    * 获取或创建产品
    * @param {string} applyCode 申请码
    * @returns {Object} 产品信息
