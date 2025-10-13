@@ -1632,7 +1632,8 @@ const ProductDetail = ({
    */
   const handleDragEnd = useCallback((e) => {
     try {
-      console.log('🏁 [handleDragEnd] 拖拽结束，重置拖拽状态');
+      console.log('🏁 [handleDragEnd] 拖拽结束事件触发');
+      console.log('📊 [handleDragEnd] 当前 dragState.isDragging:', dragState.isDragging);
 
       // 无论拖拽是否成功，都重置状态
       setDragState({
@@ -1643,6 +1644,8 @@ const ProductDetail = ({
         hoveredDropTarget: null
       });
 
+      console.log('✅ [handleDragEnd] 拖拽状态已重置为 false');
+
       // 清理防抖定时器
       if (dragEnterTimeoutRef.current) {
         clearTimeout(dragEnterTimeoutRef.current);
@@ -1651,8 +1654,16 @@ const ProductDetail = ({
 
     } catch (error) {
       console.error('❌ [handleDragEnd] 拖拽结束处理失败:', error);
+      // 即使出错也要确保状态被重置
+      setDragState({
+        isDragging: false,
+        draggedImageId: null,
+        draggedImageType: null,
+        draggedSkuIndex: null,
+        hoveredDropTarget: null
+      });
     }
-  }, []);
+  }, [dragState.isDragging]);
 
   /**
    * 拖拽经过目标事件处理
@@ -1754,8 +1765,25 @@ const ProductDetail = ({
   const handleDrop = async (e, targetIndex, targetType, targetSkuIndex = null) => {
     e.preventDefault();
 
+    // 保存拖拽状态用于后续处理
+    const wasDragging = dragState.isDragging;
+
+    // ⚠️ 关键修复：立即重置拖拽状态，防止状态更新导致的事件丢失
+    // 必须在执行任何可能触发重渲染的操作之前重置
+    console.log('🔄 [handleDrop] 立即重置拖拽状态');
+    setDragState({
+      isDragging: false,
+      draggedImageId: null,
+      draggedImageType: null,
+      draggedSkuIndex: null,
+      hoveredDropTarget: null
+    });
+
     try {
-      if (!dragState.isDragging) return;
+      if (!wasDragging) {
+        console.warn('⚠️ [handleDrop] 拖拽状态已经是 false，忽略 drop 事件');
+        return;
+      }
 
       const dragDataStr = e.dataTransfer.getData('text/plain');
       if (!dragDataStr) {
@@ -1799,15 +1827,6 @@ const ProductDetail = ({
     } catch (error) {
       console.error('❌ [handleDrop] 拖拽放置失败:', error);
       setError(`拖拽排序失败: ${error.message}`);
-    } finally {
-      // 重置拖拽状态
-      setDragState({
-        isDragging: false,
-        draggedImageId: null,
-        draggedImageType: null,
-        draggedSkuIndex: null,
-        hoveredDropTarget: null
-      });
     }
   };
 
@@ -2649,14 +2668,28 @@ const ProductDetail = ({
    * 智能鼠标点击检测 - 左键预览，右键在PS中打开
    */
   const handleSmartMouseClick = useCallback((event, imageId, imageUrl) => {
+    console.log(`🖱️ [handleSmartMouseClick] 点击事件触发:`, {
+      eventType: event.type,
+      imageId: imageId.substring(0, 50) + '...',
+      isDragging: dragState.isDragging,
+      draggedImageId: dragState.draggedImageId ? dragState.draggedImageId.substring(0, 50) + '...' : null
+    });
+
     // 关键：检查是否正在拖拽，避免与拖拽排序冲突
     if (dragState.isDragging) {
-      console.log(`🚫 [handleSmartMouseClick] 正在拖拽中，忽略点击事件 (imageId: ${imageId})`);
+      console.warn(`🚫 [handleSmartMouseClick] 正在拖拽中，忽略点击事件`);
+      console.warn(`⚠️ [handleSmartMouseClick] 拖拽状态异常！dragState.isDragging 应该在拖拽结束后被重置为 false`);
+      console.warn(`💡 [handleSmartMouseClick] 提示：如果看到此消息，说明 handleDrop 或 handleDragEnd 没有正确重置状态`);
       return;
     }
 
     // 调试：检查事件对象
-    console.log(`🐛 [DEBUG] 事件类型: ${event.type}, button: ${event.button}, which: ${event.which}, buttons: ${event.buttons}`);
+    console.log(`🐛 [DEBUG] 事件详情:`, {
+      type: event.type,
+      button: event.button,
+      which: event.which,
+      buttons: event.buttons
+    });
 
     // 阻止默认行为
     event.preventDefault();
@@ -2665,12 +2698,12 @@ const ProductDetail = ({
     // 根据事件类型判断操作
     if (event.type === 'click') {
       // 左键点击 - 打开预览
-      console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId}`);
+      console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId.substring(0, 50)}...`);
       handleImageClick(imageId, imageUrl);
 
     } else if (event.type === 'contextmenu') {
       // 右键上下文菜单 - 在PS中打开
-      console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId}`);
+      console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId.substring(0, 50)}...`);
       handleOpenImageInPS(imageId, imageUrl);
 
     } else {
@@ -2678,7 +2711,7 @@ const ProductDetail = ({
       console.log(`🚫 [handleSmartMouseClick] 忽略事件类型: ${event.type}`);
       return;
     }
-  }, [dragState.isDragging, handleImageClick, handleOpenImageInPS]);
+  }, [dragState.isDragging, dragState.draggedImageId, handleImageClick, handleOpenImageInPS]);
 
   /**
    * 执行删除图片的核心逻辑 - 性能优化版本
@@ -3011,7 +3044,7 @@ const ProductDetail = ({
 
                 return (
                   <div
-                    key={`original-${image.id}-${index}`}
+                    key={`original-${image.id}`}
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'original')}
@@ -3117,7 +3150,7 @@ const ProductDetail = ({
 
                   return (
                     <div
-                      key={`sku-${sku.skuIndex || skuIndex}-${image.id}-${imgIndex}`}
+                      key={`sku-${sku.skuIndex || skuIndex}-${image.id}`}
                       className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, image.id, 'sku', sku.skuIndex || skuIndex)}
@@ -3220,7 +3253,7 @@ const ProductDetail = ({
 
                 return (
                   <div
-                    key={`scene-${image.id}-${index}`}
+                    key={`scene-${image.id}`}
                     className={`product-image-item ${image.isDragged ? 'dragging' : ''} ${dragOverClass} ${crossTypeDragClass}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, image.id, 'scene')}
