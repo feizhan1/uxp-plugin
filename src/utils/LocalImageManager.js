@@ -69,6 +69,7 @@ export class LocalImageManager {
     this.maxConcurrentDownloads = 3; // 最大并发下载数
     this.retryCount = 3; // 重试次数
     this.initialized = false; // 初始化状态
+    this.productFolderCache = new Map(); // 产品文件夹缓存 {applyCode: folderObject}
   }
 
   /**
@@ -181,6 +182,78 @@ export class LocalImageManager {
     } catch (error) {
       console.error('创建图片存储目录失败:', error);
       throw new Error(`无法创建图片存储目录: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取或创建产品文件夹
+   * @param {string} applyCode - 产品申请码
+   * @returns {Promise<Folder>} 产品文件夹对象
+   */
+  async getOrCreateProductFolder(applyCode) {
+    if (!applyCode) {
+      throw new Error('产品申请码不能为空');
+    }
+
+    // 检查缓存
+    if (this.productFolderCache.has(applyCode)) {
+      return this.productFolderCache.get(applyCode);
+    }
+
+    try {
+      let productFolder;
+      try {
+        // 尝试创建产品文件夹
+        productFolder = await this.imageFolder.createFolder(applyCode, { overwrite: false });
+        console.log(`✅ [getOrCreateProductFolder] 创建产品文件夹: ${applyCode}`);
+      } catch (error) {
+        if (error.message.includes('exists')) {
+          // 文件夹已存在，直接获取
+          productFolder = await this.imageFolder.getEntry(applyCode);
+          console.log(`📁 [getOrCreateProductFolder] 产品文件夹已存在: ${applyCode}`);
+        } else {
+          throw error;
+        }
+      }
+
+      // 缓存文件夹引用
+      this.productFolderCache.set(applyCode, productFolder);
+      return productFolder;
+    } catch (error) {
+      console.error(`❌ [getOrCreateProductFolder] 创建/获取产品文件夹失败: ${applyCode}`, error);
+      throw new Error(`无法创建产品文件夹 ${applyCode}: ${error.message}`);
+    }
+  }
+
+  /**
+   * 根据路径获取文件（支持产品子文件夹）
+   * @param {string} localPath - 本地路径（格式：applyCode/filename.jpg）
+   * @returns {Promise<File>} 文件对象
+   */
+  async getFileByPath(localPath) {
+    if (!localPath) {
+      throw new Error('文件路径不能为空');
+    }
+
+    try {
+      // 解析路径：applyCode/filename.jpg
+      const pathParts = localPath.split('/');
+
+      if (pathParts.length !== 2) {
+        throw new Error(`无效的文件路径格式: ${localPath}，期望格式：applyCode/filename.jpg`);
+      }
+
+      const [folderName, fileName] = pathParts;
+
+      // 获取产品文件夹
+      const productFolder = await this.getOrCreateProductFolder(folderName);
+
+      // 获取文件
+      const file = await productFolder.getEntry(fileName);
+      return file;
+    } catch (error) {
+      console.error(`❌ [getFileByPath] 获取文件失败: ${localPath}`, error);
+      throw error;
     }
   }
 
@@ -392,7 +465,7 @@ export class LocalImageManager {
     // 检查本地文件是否存在
     try {
       console.log(`🔍 [shouldDownloadImage] 检查本地文件是否存在: ${existingInfo.localPath}`);
-      const localFile = await this.imageFolder.getEntry(existingInfo.localPath);
+      const localFile = await this.getFileByPath(existingInfo.localPath);
       if (!localFile) {
         console.log(`✅ [shouldDownloadImage] 本地文件不存在，需要重新下载: ${existingInfo.localPath}`);
         return true; // 本地文件不存在，需要重新下载
@@ -458,8 +531,18 @@ export class LocalImageManager {
 
         const arrayBuffer = await response.arrayBuffer();
 
-        // 保存到本地
-        const localFile = await this.imageFolder.createFile(localFilename, { overwrite: true });
+        // 解析路径并保存到对应的产品文件夹
+        const pathParts = localFilename.split('/');
+        if (pathParts.length !== 2) {
+          throw new Error(`无效的文件路径格式: ${localFilename}`);
+        }
+        const [folderName, fileName] = pathParts;
+
+        // 获取或创建产品文件夹
+        const productFolder = await this.getOrCreateProductFolder(folderName);
+
+        // 在产品文件夹中创建文件
+        const localFile = await productFolder.createFile(fileName, { overwrite: true });
         await localFile.write(arrayBuffer, { format: formats.binary });
 
         // 更新产品数据中的图片信息
@@ -546,13 +629,13 @@ export class LocalImageManager {
 
 
   /**
-   * 生成本地文件名
-   * 统一使用简单的命名规则：{申请码}_{原始文件名}
+   * 生成本地文件路径（包含产品文件夹）
+   * 统一使用简单的命名规则：{申请码}/{原始文件名}
    * @param {Object} imageInfo 图片信息
    * @param {string} imageInfo.url 图片URL
    * @param {string} imageInfo.applyCode 申请码
    * @param {string} [imageInfo.imageType] 图片类型（可选，不影响命名）
-   * @returns {string} 本地文件名
+   * @returns {string} 本地文件路径（格式：applyCode/filename.jpg）
    */
   generateLocalFilename(imageInfo) {
     const { imageUrl, url, applyCode } = imageInfo;
@@ -571,19 +654,19 @@ export class LocalImageManager {
       // 获取文件名部分（路径的最后一段）
       const originalFilename = pathname.split('/').pop() || 'image.jpg';
 
-      // 生成统一格式：{申请码}_{原始文件名}
-      const localFilename = `${applyCode}_${originalFilename}`;
+      // 生成统一格式：{申请码}/{原始文件名}（包含产品文件夹）
+      const localFilePath = `${applyCode}/${originalFilename}`;
 
-      console.log(`✅ [generateLocalFilename] 生成本地文件名: ${actualUrl} -> ${localFilename}`);
-      return localFilename;
+      console.log(`✅ [generateLocalFilename] 生成本地文件路径: ${actualUrl} -> ${localFilePath}`);
+      return localFilePath;
 
     } catch (error) {
-      console.error('❌ [generateLocalFilename] 生成本地文件名失败:', error);
+      console.error('❌ [generateLocalFilename] 生成本地文件路径失败:', error);
 
       // 备用方案：使用时间戳避免冲突
-      const fallbackName = `${applyCode}_fallback_${Date.now()}.jpg`;
-      console.warn(`⚠️ [generateLocalFilename] 使用备用方案: ${fallbackName}`);
-      return fallbackName;
+      const fallbackPath = `${applyCode}/fallback_${Date.now()}.jpg`;
+      console.warn(`⚠️ [generateLocalFilename] 使用备用方案: ${fallbackPath}`);
+      return fallbackPath;
     }
   }
 
@@ -603,7 +686,7 @@ export class LocalImageManager {
     }
 
     try {
-      const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
+      const localFile = await this.getFileByPath(imageInfo.localPath);
       return localFile;
     } catch (error) {
       console.warn(`获取本地图片文件失败 ${imageId}:`, error);
@@ -694,7 +777,7 @@ export class LocalImageManager {
         for (const img of product.originalImages) {
           if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
             try {
-              const localFile = await this.imageFolder.getEntry(img.localPath);
+              const localFile = await this.getFileByPath(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
               const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -713,7 +796,7 @@ export class LocalImageManager {
             for (const img of sku.skuImages) {
               if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
                 try {
-                  const localFile = await this.imageFolder.getEntry(img.localPath);
+                  const localFile = await this.getFileByPath(img.localPath);
                   const arrayBuffer = await localFile.read({ format: formats.binary });
                   const mimeType = getMimeTypeFromExtension(img.localPath);
                   const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -732,7 +815,7 @@ export class LocalImageManager {
         for (const img of product.senceImages) {
           if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
             try {
-              const localFile = await this.imageFolder.getEntry(img.localPath);
+              const localFile = await this.getFileByPath(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
               const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -760,7 +843,7 @@ export class LocalImageManager {
         return null;
       }
 
-      const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
+      const localFile = await this.getFileByPath(imageInfo.localPath);
       const arrayBuffer = await localFile.read({ format: formats.binary });
       const mimeType = getMimeTypeFromExtension(imageInfo.localPath);
       const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -1009,27 +1092,32 @@ export class LocalImageManager {
         throw new Error(`不支持的图片格式: ${file.name}，仅支持PNG和JPG格式`);
       }
 
-      // 生成规范文件名
+      // 生成规范文件名（包含产品文件夹）
       const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
       const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
-      const standardFileName = `${applyCode}_${baseFileName}${originalExtension}`;
+      const standardFileName = `${baseFileName}${originalExtension}`;
 
       // 检查文件名是否已存在，如果存在则添加序号
       let finalFileName = standardFileName;
+      let finalFilePath = `${applyCode}/${finalFileName}`;
       let counter = 1;
-      while (await this.fileExists(finalFileName)) {
+      while (await this.fileExists(finalFilePath)) {
         const nameWithoutExt = standardFileName.substring(0, standardFileName.lastIndexOf('.'));
         finalFileName = `${nameWithoutExt}_${counter}${originalExtension}`;
+        finalFilePath = `${applyCode}/${finalFileName}`;
         counter++;
       }
 
-      console.log(`📝 [addLocalImage] 生成文件名: ${file.name} -> ${finalFileName}`);
+      console.log(`📝 [addLocalImage] 生成文件路径: ${file.name} -> ${finalFilePath}`);
 
       // 读取文件内容 - 使用UXP兼容的方式
       const arrayBuffer = await file.read({ format: formats.binary });
 
-      // 保存到本地文件系统
-      const localFile = await this.imageFolder.createFile(finalFileName, { overwrite: false });
+      // 获取或创建产品文件夹
+      const productFolder = await this.getOrCreateProductFolder(applyCode);
+
+      // 在产品文件夹中保存文件
+      const localFile = await productFolder.createFile(finalFileName, { overwrite: false });
       await localFile.write(arrayBuffer, { format: formats.binary });
 
       console.log(`💾 [addLocalImage] 文件已保存: ${finalFileName}`);
@@ -1039,8 +1127,8 @@ export class LocalImageManager {
 
       // 创建图片记录
       const imageRecord = {
-        imageUrl: `local://${finalFileName}`, // 使用特殊URL标记为本地添加的图片
-        localPath: finalFileName,
+        imageUrl: `local://${finalFilePath}`, // 使用特殊URL标记为本地添加的图片
+        localPath: finalFilePath,
         status: 'pending_edit',
         timestamp: Date.now(),
         fileSize: arrayBuffer.byteLength,
@@ -1125,35 +1213,40 @@ export class LocalImageManager {
             continue;
           }
 
-          // 生成规范文件名
+          // 生成规范文件名（包含产品文件夹）
           const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
           const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
-          const standardFileName = `${applyCode}_${baseFileName}${originalExtension}`;
+          const standardFileName = `${baseFileName}${originalExtension}`;
 
           // 检查文件名是否已存在，如果存在则添加序号
           let finalFileName = standardFileName;
+          let finalFilePath = `${applyCode}/${finalFileName}`;
           let counter = 1;
-          while (await this.fileExists(finalFileName)) {
+          while (await this.fileExists(finalFilePath)) {
             const nameWithoutExt = standardFileName.substring(0, standardFileName.lastIndexOf('.'));
             finalFileName = `${nameWithoutExt}_${counter}${originalExtension}`;
+            finalFilePath = `${applyCode}/${finalFileName}`;
             counter++;
           }
 
-          console.log(`📝 [addLocalImages] 生成文件名: ${file.name} -> ${finalFileName}`);
+          console.log(`📝 [addLocalImages] 生成文件路径: ${file.name} -> ${finalFilePath}`);
 
           // 读取文件内容 - 使用UXP兼容的方式
           const arrayBuffer = await file.read({ format: formats.binary });
 
-          // 保存到本地文件系统
-          const localFile = await this.imageFolder.createFile(finalFileName, { overwrite: false });
+          // 获取或创建产品文件夹
+          const productFolder = await this.getOrCreateProductFolder(applyCode);
+
+          // 在产品文件夹中保存文件
+          const localFile = await productFolder.createFile(finalFileName, { overwrite: false });
           await localFile.write(arrayBuffer, { format: formats.binary });
 
-          console.log(`💾 [addLocalImages] 文件已保存: ${finalFileName}`);
+          console.log(`💾 [addLocalImages] 文件已保存: ${finalFilePath}`);
 
           // 创建图片记录
           const imageRecord = {
-            imageUrl: `local://${finalFileName}`, // 使用特殊URL标记为本地添加的图片
-            localPath: finalFileName,
+            imageUrl: `local://${finalFilePath}`, // 使用特殊URL标记为本地添加的图片
+            localPath: finalFilePath,
             status: 'pending_edit',
             timestamp: Date.now(),
             fileSize: arrayBuffer.byteLength,
@@ -1484,11 +1577,21 @@ export class LocalImageManager {
             img.modifiedTimestamp = Date.now();
 
             if (modifiedFile) {
-              const modifiedFilename = `modified_${img.localPath}`;
-              const newFile = await this.imageFolder.createFile(modifiedFilename, { overwrite: true });
+              // 解析路径：applyCode/filename.jpg
+              const pathParts = img.localPath.split('/');
+              if (pathParts.length !== 2) {
+                throw new Error(`无效的文件路径格式: ${img.localPath}`);
+              }
+              const [folderName, fileName] = pathParts;
+              const modifiedFilename = `modified_${fileName}`;
+              const modifiedFilePath = `${folderName}/${modifiedFilename}`;
+
+              // 获取产品文件夹并保存修改后的文件
+              const productFolder = await this.getOrCreateProductFolder(folderName);
+              const newFile = await productFolder.createFile(modifiedFilename, { overwrite: true });
               const buffer = await modifiedFile.read({ format: formats.binary });
               await newFile.write(buffer, { format: formats.binary });
-              img.modifiedPath = modifiedFilename;
+              img.modifiedPath = modifiedFilePath;
             }
 
             imageFound = true;
@@ -1508,11 +1611,21 @@ export class LocalImageManager {
                 img.modifiedTimestamp = Date.now();
 
                 if (modifiedFile) {
-                  const modifiedFilename = `modified_${img.localPath}`;
-                  const newFile = await this.imageFolder.createFile(modifiedFilename, { overwrite: true });
+                  // 解析路径：applyCode/filename.jpg
+                  const pathParts = img.localPath.split('/');
+                  if (pathParts.length !== 2) {
+                    throw new Error(`无效的文件路径格式: ${img.localPath}`);
+                  }
+                  const [folderName, fileName] = pathParts;
+                  const modifiedFilename = `modified_${fileName}`;
+                  const modifiedFilePath = `${folderName}/${modifiedFilename}`;
+
+                  // 获取产品文件夹并保存修改后的文件
+                  const productFolder = await this.getOrCreateProductFolder(folderName);
+                  const newFile = await productFolder.createFile(modifiedFilename, { overwrite: true });
                   const buffer = await modifiedFile.read({ format: formats.binary });
                   await newFile.write(buffer, { format: formats.binary });
-                  img.modifiedPath = modifiedFilename;
+                  img.modifiedPath = modifiedFilePath;
                 }
 
                 imageFound = true;
@@ -2022,7 +2135,7 @@ export class LocalImageManager {
             if (age > maxAge && img.status === 'synced') {
               try {
                 // 删除本地文件
-                this.imageFolder.getEntry(img.localPath).then(localFile => {
+                this.getFileByPath(img.localPath).then(localFile => {
                   if (localFile) {
                     localFile.delete();
                   }
@@ -2057,7 +2170,7 @@ export class LocalImageManager {
                 if (age > maxAge && img.status === 'synced') {
                   try {
                     // 删除本地文件
-                    this.imageFolder.getEntry(img.localPath).then(localFile => {
+                    this.getFileByPath(img.localPath).then(localFile => {
                       if (localFile) {
                         localFile.delete();
                       }
@@ -2889,7 +3002,7 @@ export class LocalImageManager {
       // 获取文件的真实修改时间
       let currentFileTime = null;
       try {
-        const file = await this.imageFolder.getEntry(localPath);
+        const file = await this.getFileByPath(localPath);
         const metadata = await file.getMetadata();
         currentFileTime = metadata.dateModified.getTime();
         console.log(`📁 [syncFileTimeBaseline] 文件真实修改时间: ${new Date(currentFileTime).toLocaleString()}`);
