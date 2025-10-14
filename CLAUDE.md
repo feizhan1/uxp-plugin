@@ -156,3 +156,4 @@ The plugin requires compilation before use in Photoshop:
 - 每次完成一个任务，执行:
 git add .
 git commit -m "$具体完成的事项"
+- 使用 Toast 组件替代 UXP 不支持的 alert
