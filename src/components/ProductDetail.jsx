@@ -1626,11 +1626,26 @@ const ProductDetail = ({
 
       const fs = require('uxp').storage.localFileSystem;
 
-      // 显示文件选择对话框 - 限制PNG/JPG格式
-      const files = await fs.getFileForOpening({
+      // 获取当前产品的文件夹作为初始位置
+      let initialFolder = null;
+      try {
+        await localImageManager.initialize();
+        initialFolder = await localImageManager.getOrCreateProductFolder(currentProduct.applyCode);
+        console.log(`📁 [handleAddImage] 设置初始文件夹: ${currentProduct.applyCode}`);
+      } catch (error) {
+        console.warn(`⚠️ [handleAddImage] 获取产品文件夹失败，使用默认位置:`, error);
+      }
+
+      // 显示文件选择对话框 - 限制PNG/JPG格式，尝试定位到产品文件夹
+      const fileOptions = {
         allowMultiple: true,
         types: ['png', 'jpg', 'jpeg']
-      });
+      };
+      if (initialFolder) {
+        fileOptions.initialLocation = initialFolder;
+      }
+
+      const files = await fs.getFileForOpening(fileOptions);
 
       if (!files || files.length === 0) {
         console.log('用户取消了文件选择');
