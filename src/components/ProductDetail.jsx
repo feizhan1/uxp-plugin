@@ -3,15 +3,19 @@ import { localImageManager } from '../utils/LocalImageManager.js';
 import { ConcurrentUploadManager } from '../utils/ConcurrentUploadManager.js';
 import { placeImageInPS, registerPSEventListeners, unregisterPSEventListeners, detectAndMatchOpenedImages } from '../panels/photoshop-api.js';
 import { post } from '../utils/http.js';
+import Toast from './Toast.jsx';
 import './ProductDetail.css';
 
 /**
  * 本地图片组件 - 仅显示本地文件系统中的图片
  * 使用React.memo优化性能
  */
-const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefresh, onRefreshComplete, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus }) => {
+const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefresh, onRefreshComplete, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus, onImageInfoLoad }) => {
   const [displaySrc, setDisplaySrc] = useState(null);
   const [loading, setLoading] = useState(hasLocal);
+  const [hovered, setHovered] = useState(false);
+  const [imageInfo, setImageInfo] = useState(null);
+  const imgRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -63,6 +67,15 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
     }
   }, [needsRefresh, displaySrc, onRefreshComplete, imageUrl]);
 
+  // 格式化文件大小
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '未知';
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   if (!hasLocal) {
     return (
       <div className="local-image-placeholder">
@@ -94,12 +107,46 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
       onClick={onClick}
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <img
+        ref={imgRef}
         src={displaySrc}
         alt={alt}
         className={className}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        onLoad={() => {
+          if (imgRef.current && imgRef.current.complete) {
+            const loadImageInfo = async () => {
+              try {
+                const img = imgRef.current;
+                const width = img.naturalWidth;
+                const height = img.naturalHeight;
+
+                let fileSize = null;
+                try {
+                  const imageData = await localImageManager.getImageInfo(imageUrl);
+                  if (imageData && imageData.fileSize) {
+                    fileSize = imageData.fileSize;
+                  }
+                } catch (error) {
+                  console.warn('获取文件大小失败:', error);
+                }
+
+                const info = { width, height, fileSize };
+                setImageInfo(info);
+                // 如果有回调，通知父组件
+                if (onImageInfoLoad) {
+                  onImageInfoLoad(info);
+                }
+              } catch (error) {
+                console.warn('获取图片信息失败:', error);
+              }
+            };
+            loadImageInfo();
+          }
+        }}
       />
       {isOpening && (
         <div className="opening-overlay">
@@ -127,6 +174,19 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
       {hasLocal && !isOpening && !isSyncing && !isRecentlyUpdated && !isCompleted && imageStatus === 'editing' && (
         <div className="double-click-hint editing">
           ✏️ 编辑中 - 右键在PS中打开
+        </div>
+      )}
+      {imageInfo && (
+        <div className={`image-info-tooltip ${hovered ? 'visible' : ''}`}>
+          <div className="tooltip-item">
+            名称: {imageUrl.split('/').pop().split('?')[0]}
+          </div>
+          <div className="tooltip-item">
+            尺寸: {imageInfo.width} x {imageInfo.height}
+          </div>
+          <div className="tooltip-item">
+            大小: {formatFileSize(imageInfo.fileSize)}
+          </div>
         </div>
       )}
     </div>
@@ -173,6 +233,15 @@ const ProductDetail = ({
     return { userId: null, userCode: null };
   };
 
+  // 格式化文件大小
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '未知';
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   // 状态管理
   const [currentProduct, setCurrentProduct] = useState(productData || {});
   const [imageGroups, setImageGroups] = useState({
@@ -213,6 +282,20 @@ const ProductDetail = ({
     currentImageId: null,
     currentImageIndex: 0,
     imageList: []
+  });
+
+  // 预览图片的元数据
+  const [previewImageMeta, setPreviewImageMeta] = useState({
+    width: null,
+    height: null,
+    fileSize: null
+  });
+
+  // Toast 提示状态
+  const [toast, setToast] = useState({
+    open: false,
+    message: '',
+    type: 'info'
   });
 
   // 拖拽状态管理
@@ -2588,6 +2671,9 @@ const ProductDetail = ({
     const newImage = imageList[newIndex];
     console.log(`🔄 [handlePreviewNavigation] 切换到 ${direction} 图片:`, newImage.displayName);
 
+    // 清空图片元数据，等待新图片加载后更新
+    setPreviewImageMeta({ width: null, height: null, fileSize: null });
+
     setPreviewMode(prev => ({
       ...prev,
       currentImageId: newImage.id,
@@ -3385,6 +3471,23 @@ const ProductDetail = ({
                     {previewMode.currentImageIndex + 1} / {previewMode.imageList.length}
                   </span>
                 </div>
+                <div className="preview-image-info">
+                  <span className="preview-image-meta">
+                    {previewMode.imageList[previewMode.currentImageIndex]?.imageUrl && (
+                      <>名称: {previewMode.imageList[previewMode.currentImageIndex].imageUrl.split('/').pop().split('?')[0]}</>
+                    )}
+                  </span>
+                  <span className="preview-image-meta">
+                    {previewImageMeta.width && previewImageMeta.height && (
+                      <>尺寸: {previewImageMeta.width} x {previewImageMeta.height}</>
+                    )}
+                  </span>
+                  <span className="preview-image-meta">
+                    {previewImageMeta.fileSize && (
+                      <>大小: {formatFileSize(previewImageMeta.fileSize)}</>
+                    )}
+                  </span>
+                </div>
                 <button className="preview-close" onClick={handleClosePreview}>
                   ×
                 </button>
@@ -3407,6 +3510,7 @@ const ProductDetail = ({
                   isRecentlyUpdated={recentlyUpdatedImages.has(previewMode.currentImageId)}
                   isCompleted={previewMode.imageList[previewMode.currentImageIndex]?.isCompleted || completedImages.has(previewMode.currentImageId)}
                   imageStatus={previewMode.imageList[previewMode.currentImageIndex]?.localStatus}
+                  onImageInfoLoad={(info) => setPreviewImageMeta(info)}
                 />
 
                 {/* 导航按钮 */}
@@ -3433,7 +3537,7 @@ const ProductDetail = ({
                 </div>
                 <div className="preview-actions">
                   <button
-                    className={`top-complete-btn ${previewMode.imageList[previewMode.currentImageIndex]?.isCompleted || completedImages.has(previewMode.currentImageId) ? 'completed' : ''}`}
+                    className={`complete-btn ${previewMode.imageList[previewMode.currentImageIndex]?.isCompleted || completedImages.has(previewMode.currentImageId) ? 'completed' : ''}`}
                     onClick={() => handleToggleImageCompleted(previewMode.currentImageId)}
                     title={previewMode.imageList[previewMode.currentImageIndex]?.isCompleted || completedImages.has(previewMode.currentImageId) ? '点击取消完成' : '点击标记完成'}
                   >
@@ -3455,6 +3559,38 @@ const ProductDetail = ({
                       '在PS中打开'
                     )}
                   </button>
+                  <button
+                    className="copy-path-btn"
+                    onClick={async () => {
+                      const currentImage = previewMode.imageList[previewMode.currentImageIndex];
+                      try {
+                        const localPath = localImageManager.getLocalImagePath(currentImage.id);
+                        if (localPath) {
+                          await navigator.clipboard.writeText(localPath);
+                          setToast({
+                            open: true,
+                            message: `文件路径已复制: ${localPath}`,
+                            type: 'success'
+                          });
+                        } else {
+                          setToast({
+                            open: true,
+                            message: '未找到本地文件路径',
+                            type: 'warning'
+                          });
+                        }
+                      } catch (error) {
+                        console.error('复制文件路径失败:', error);
+                        setToast({
+                          open: true,
+                          message: '复制文件路径失败: ' + error.message,
+                          type: 'error'
+                        });
+                      }
+                    }}
+                  >
+                    复制文件路径
+                  </button>
                 </div>
               </div>
 
@@ -3468,6 +3604,15 @@ const ProductDetail = ({
           </div>
         </div>
       )}
+
+      {/* Toast 提示组件 */}
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        duration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+      />
 
     </div>
   );
