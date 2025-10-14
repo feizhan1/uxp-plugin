@@ -1857,7 +1857,7 @@ const ProductDetail = ({
         }
         return prev; // 无变化时返回原状态
       });
-    }, 50); // UXP环境下使用50ms防抖间隔
+    }, 20); // 优化：减少到20ms提升拖拽响应速度
   }, [dragState.isDragging, dragState.draggedImageType, dragState.draggedSkuIndex]);
 
   /**

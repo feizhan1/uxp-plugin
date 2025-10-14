@@ -1372,11 +1372,30 @@
 }
 
 /* 拖拽进行中时的全局状态 */
-.product-detail.dragging .add-image-btn,
 .product-detail.dragging .edit-btn,
 .product-detail.dragging .delete-btn {
   pointer-events: none;
   opacity: 0.5;
+}
+
+/* 拖拽时"添加图片"按钮保持可交互，引导用户拖放 */
+.product-detail.dragging .add-image-btn {
+  opacity: 1;
+  border-color: var(--theme-color, #ec6608);
+  background: rgba(236, 102, 8, 0.1);
+  cursor: copy; /* 显示复制光标，表示可以拖放 */
+  animation: dragDropHint 1.5s infinite;
+}
+
+@keyframes dragDropHint {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(236, 102, 8, 0);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 12px rgba(236, 102, 8, 0.3);
+  }
 }
 
 /* 防止在拖拽时选中文本 */
