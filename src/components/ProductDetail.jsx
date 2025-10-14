@@ -3216,15 +3216,6 @@ const ProductDetail = ({
                       </div>
                       <div className="image-actions-top">
                         <div
-                          className={`top-complete-btn ${image.isCompleted || completedImages.has(image.id) ? 'completed' : ''}`}
-                          onClick={() => handleToggleImageCompleted(image.id)}
-                          title={image.isCompleted || completedImages.has(image.id) ? '点击取消完成' : '点击标记完成'}
-                          role="button"
-                          tabIndex="0"
-                        >
-                          {image.isCompleted || completedImages.has(image.id) ? '完成' : '√'}
-                        </div>
-                        <div
                           className="top-delete-btn"
                           onClick={() => handleConfirmDelete(image)}
                           title="删除图片"
@@ -3333,15 +3324,6 @@ const ProductDetail = ({
                             </div>
                           )}
                           <div
-                            className={`top-complete-btn ${image.isCompleted || completedImages.has(image.id) ? 'completed' : ''}`}
-                            onClick={() => handleToggleImageCompleted(image.id)}
-                            title={image.isCompleted || completedImages.has(image.id) ? '点击取消完成' : '点击标记完成'}
-                            role="button"
-                            tabIndex="0"
-                          >
-                            {image.isCompleted || completedImages.has(image.id) ? '完成' : '√'}
-                          </div>
-                          <div
                             className={`top-delete-btn ${batchSyncMode && skuIndex === 0 ? 'disabled' : ''}`}
                             onClick={batchSyncMode && skuIndex === 0 ? undefined : () => handleConfirmDelete(image)}
                             title={batchSyncMode && skuIndex === 0 ? "批量同步模式下不可删除" : "删除图片"}
@@ -3424,15 +3406,6 @@ const ProductDetail = ({
                         {getStatusText(image.localStatus)}
                       </div>
                       <div className="image-actions-top">
-                        <div
-                          className={`top-complete-btn ${image.isCompleted || completedImages.has(image.id) ? 'completed' : ''}`}
-                          onClick={() => handleToggleImageCompleted(image.id)}
-                          title={image.isCompleted || completedImages.has(image.id) ? '点击取消完成' : '点击标记完成'}
-                          role="button"
-                          tabIndex="0"
-                        >
-                          {image.isCompleted || completedImages.has(image.id) ? '完成' : '√'}
-                        </div>
                         <div
                           className="top-delete-btn"
                           onClick={() => handleConfirmDelete(image)}
