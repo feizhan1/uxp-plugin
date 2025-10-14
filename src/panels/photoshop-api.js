@@ -2038,6 +2038,20 @@ async function getImageFileEntry(imageInfo) {
     }
   }
 
+  // 策略1.5: 处理 local:// 协议的本地文件
+  if (url && url.startsWith('local://')) {
+    try {
+      console.log('[智能获取文件] 策略1.5: 处理 local:// 协议');
+      const localPath = url.replace('local://', '');
+      await localImageManager.initialize();
+      const localFile = await localImageManager.getFileByPath(localPath);
+      console.log(`✅ [智能获取文件] 策略1.5成功: 使用本地文件 ${localPath}`);
+      return localFile;
+    } catch (error) {
+      console.warn('[智能获取文件] 策略1.5失败:', error.message);
+    }
+  }
+
   // 策略2: 根据指定类型处理
   if (type === 'local' && path) {
     try {
