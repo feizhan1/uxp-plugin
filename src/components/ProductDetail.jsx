@@ -477,6 +477,9 @@ const ProductDetail = ({
               return next;
             });
 
+            // 更新图片localStatus字段为completed（关键修复）
+            updateImageStatusInState(syncResult.imageId, 'completed');
+
             // 刷新图片显示
             await handleImageFileUpdated(syncResult.imageId);
 
@@ -749,6 +752,13 @@ const ProductDetail = ({
           // 批量更新图片状态为"编辑中"
           for (const imageId of matchedImageIds) {
             try {
+              // 关键修复：检查当前状态，如果已经是completed，不要改回editing
+              const currentImageInfo = localImageManager.getImageInfo(imageId);
+              if (currentImageInfo && currentImageInfo.status === 'completed') {
+                console.log(`⏩ [initializeImageData] 跳过已完成的图片: ${imageId}`);
+                continue;
+              }
+
               await localImageManager.setImageStatus(imageId, 'editing');
               console.log(`🔄 [initializeImageData] 已将图片 ${imageId} 状态设为编辑中`);
             } catch (statusError) {
