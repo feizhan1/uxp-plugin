@@ -1,5 +1,165 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## 🎨 同步按钮改为状态显示 + 简化状态文字 (2025-01-28)
+
+### ✅ 已完成：将同步按钮改为纯状态显示，简化状态文字
+- **问题1**：同步按钮可以点击，但自动同步时按钮状态没有同步
+- **问题2**：状态文字过于冗长，如"正在同步 12/3232 张图片..."
+- **用户期望**：按钮改为纯状态显示（不可点击），状态文字简化为"同步中 12/3232"
+- **解决方案**：
+  1. 移除按钮 onClick 事件，设置为永久 disabled
+  2. 修改空闲时显示文字为"就绪"
+  3. 简化所有同步状态文字格式
+- **技术实现**：
+  ```jsx
+  // 修改前：可点击的按钮，详细状态
+  <button
+    onClick={handleManualSync}
+    disabled={isSyncing}
+  >
+    {isSyncing ? (syncStatus || '同步中') : '同步'}
+  </button>
+
+  // executeSync 中的状态设置：
+  setSyncStatus(`正在收集图片信息 ${current}/${total}...`)
+  setSyncStatus(`正在同步 ${current}/${total} 张图片...`)
+
+  // 修改后：纯状态显示，简化文字
+  <button disabled={true}>
+    {isSyncing ? (syncStatus || '同步中') : '就绪'}
+  </button>
+
+  // executeSync 中的状态设置：
+  setSyncStatus(`收集中 ${current}/${total}`)
+  setSyncStatus(`同步中 ${current}/${total}`)
+  ```
+- **核心改动**：
+  - ✅ 移除按钮 onClick 事件处理器
+  - ✅ 设置按钮为永久 disabled（`disabled={true}`）
+  - ✅ 修改空闲状态显示："同步" → "就绪"
+  - ✅ 简化收集状态："正在收集图片信息 1/10..." → "收集中 1/10"
+  - ✅ 简化下载状态："正在同步 12/3232 张图片..." → "同步中 12/3232"
+- **用户体验改进**：
+  - ✅ 按钮作为纯状态指示器，不再响应点击
+  - ✅ 自动同步时按钮状态正确同步
+  - ✅ 状态文字更简洁，节省空间
+  - ✅ 实时显示精确的进度数字
+- **修改文件**：`src/panels/TodoList.jsx`
+- **构建结果**：✅ 构建成功，无错误
+
+## 📊 图片收集阶段进度显示 (2025-01-28)
+
+### ✅ 已完成：添加图片收集阶段的进度显示
+- **问题**：同步时"正在收集图片信息"只显示文字，没有显示进度
+- **用户期望**：显示如"正在收集图片信息 1/3..."的进度信息
+- **解决方案**：为 collectProductImages 函数添加可选的 onProgress 回调参数
+- **技术实现**：
+  ```javascript
+  // 修改前：collectProductImages 没有进度回调
+  const collectProductImages = useCallback(async (productList) => {
+    for (const product of productsToSync) {
+      // 处理产品...
+    }
+  }, [loginInfo, parseProductImages])
+
+  // 修改后：添加进度回调参数
+  const collectProductImages = useCallback(async (productList, onProgress) => {
+    for (let i = 0; i < productsToSync.length; i++) {
+      const product = productsToSync[i]
+      // 报告进度
+      if (onProgress) {
+        onProgress(i + 1, productsToSync.length, product.applyCode)
+      }
+      // 处理产品...
+    }
+  }, [loginInfo, parseProductImages])
+
+  // executeSync 中调用时传入进度回调
+  const allImages = await collectProductImages(productList, (current, total, applyCode) => {
+    setSyncStatus(`正在收集图片信息 ${current}/${total}...`)
+  }) || []
+  ```
+- **核心改动**：
+  - ✅ 修改 collectProductImages 函数签名，添加可选的 onProgress 参数
+  - ✅ 在处理每个产品时调用进度回调，报告当前进度
+  - ✅ executeSync 中传入进度回调，实时更新按钮状态
+  - ✅ 同步按钮实时显示："正在收集图片信息 1/10..." → "正在收集图片信息 2/10..."
+- **用户体验改进**：
+  - ✅ 用户可以实时看到图片收集的进度
+  - ✅ 进度显示准确（当前/总数）
+  - ✅ 不影响现有功能，完全向后兼容
+- **修改文件**：`src/panels/TodoList.jsx` (collectProductImages 函数, executeSync 函数)
+- **构建结果**：✅ 构建成功，无错误
+
+## 🎨 同步状态显示优化：直接显示在按钮中 (2025-01-28)
+
+### ✅ 已完成：移除同步状态浮层，将状态信息直接显示在按钮中
+- **问题**：同步过程中会显示浮层（包括居中弹窗和顶部状态栏），影响用户操作
+- **用户期望**：不要任何浮层，将状态信息直接显示在"同步"按钮中
+- **解决方案**：完全移除 sync-status 浮层元素，将 syncStatus 直接显示为按钮文字
+- **技术实现**：
+  ```jsx
+  // 修改前：显示浮层 + 按钮固定文字
+  {isSyncing && (
+    <div className="sync-status">
+      <div className="sync-text">{syncStatus}</div>
+    </div>
+  )}
+  <button>{isSyncing ? '同步中' : '同步'}</button>
+
+  // 修改后：按钮动态显示状态
+  <button>
+    {isSyncing ? (syncStatus || '同步中') : '同步'}
+  </button>
+  ```
+- **核心改动**：
+  - ✅ 删除 sync-status 浮层元素（TodoList.jsx）
+  - ✅ 删除 sync-status 相关CSS样式（TodoList.css）
+  - ✅ 修改按钮文字逻辑，直接显示 syncStatus
+  - ✅ 调整按钮样式，增加 max-width 和文字省略号支持
+- **用户体验改进**：
+  - ✅ 完全没有任何浮层或弹窗
+  - ✅ 按钮直接显示："正在获取产品列表..." / "正在同步 5/10 张图片..."
+  - ✅ 状态信息简洁直观，不影响界面布局
+  - ✅ 用户可以随时看到同步进度
+- **修改文件**：
+  - `src/panels/TodoList.jsx` (删除浮层，修改按钮文字)
+  - `src/panels/TodoList.css` (删除样式，调整按钮样式)
+- **构建结果**：✅ 构建成功，无错误
+
+## 🎨 同步功能优化：改为后台静默同步 (2025-01-28)
+
+### ✅ 已完成：移除同步弹窗，改为后台静默下载
+- **问题**：点击"同步"按钮会弹出"产品图片下载"对话框，影响用户操作
+- **用户期望**：点击同步后在后台静默下载，不要弹窗阻碍操作
+- **解决方案**：修改executeSync函数，直接调用下载API，不显示ImageDownloader组件
+- **技术实现**：
+  ```javascript
+  // 修改前：显示弹窗下载
+  setShowImageDownloader(true)
+  setIsManualSync(syncType === 'manual')
+
+  // 修改后：后台静默下载
+  const results = await localImageManager.downloadProductImages(
+    allImages,
+    onProgressCallback,  // 更新同步状态
+    onErrorCallback      // 收集错误
+  )
+  setSuccessMsg(`同步完成: 成功${results.success}张...`)
+  ```
+- **核心改动**：
+  - ✅ 移除`setShowImageDownloader(true)`，不显示弹窗
+  - ✅ 直接调用`localImageManager.downloadProductImages`后台下载
+  - ✅ 使用进度回调更新同步状态（按钮显示"同步中"）
+  - ✅ 下载完成后用Toast显示结果
+- **用户体验改进**：
+  - ✅ 点击同步后不会弹出模态对话框
+  - ✅ 按钮显示"同步中"状态，提供清晰反馈
+  - ✅ 用户可以继续操作其他功能（查看产品、搜索等）
+  - ✅ 同步完成后顶部Toast提示结果
+- **修改文件**：`src/panels/TodoList.jsx` (executeSync函数)
+- **构建结果**：✅ 构建成功，无错误
+
 ## 🚀 同步按钮增量优化 (2025-01-28)
 
 ### ✅ 已完成：实现真正的增量同步

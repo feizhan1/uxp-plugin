@@ -38,7 +38,11 @@
   align-items: center;
   justify-content: center;
   min-width: 50px;
+  max-width: 200px;
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions .action-btn.secondary {
@@ -139,45 +143,7 @@
   border-color: #c82333;
 }
 
-/* 同步状态显示 */
-.sync-status {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  min-width: 200px;
-}
-
-.sync-icon {
-  font-size: 12px;
-  animation: sync-rotate 2s linear infinite;
-}
-
-.sync-text {
-  font-size: 11px;
-  color: #666;
-  text-align: center;
-  line-height: 1.4;
-}
-
-@keyframes sync-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* 同步状态样式已移除，状态信息直接显示在按钮中 */
 
 .list {
   /* 居中内容容器 */

@@ -731,7 +731,7 @@ const TodoList = () => {
   }
 
   // 收集产品的图片信息（增量同步）
-  const collectProductImages = useCallback(async (productList) => {
+  const collectProductImages = useCallback(async (productList, onProgress) => {
     if (!productList || productList.length === 0) {
       return []
     }
@@ -769,7 +769,14 @@ const TodoList = () => {
 
     const allImages = []
 
-    for (const product of productsToSync) {
+    for (let i = 0; i < productsToSync.length; i++) {
+      const product = productsToSync[i]
+
+      // 报告进度
+      if (onProgress) {
+        onProgress(i + 1, productsToSync.length, product.applyCode)
+      }
+
       try {
         const params = {
           applyCode: product.applyCode,
@@ -868,8 +875,11 @@ const TodoList = () => {
 
       setSyncStatus('正在收集图片信息...')
 
-      // 🎯 使用增量同步：调用现有的collectProductImages函数
-      const allImages = await collectProductImages(productList) || []
+      // 🎯 使用增量同步：调用现有的collectProductImages函数，带进度回调
+      const allImages = await collectProductImages(productList, (current, total, applyCode) => {
+        setSyncStatus(`收集中 ${current}/${total}`)
+        console.log(`图片收集进度: ${current}/${total}, 当前产品: ${applyCode}`)
+      }) || []
 
       console.log(`=== 图片收集汇总 ===`)
       console.log(`总共收集到 ${allImages.length} 张图片`)
@@ -892,23 +902,58 @@ const TodoList = () => {
         return
       }
 
-      // 显示下载对话框并开始同步
-      console.log(`=== 启动ImageDownloader ===`)
-      setSyncStatus(`准备同步 ${allImages.length} 张图片...`)
-      setIsManualSync(syncType === 'manual')
-      console.log(`设置同步状态: isManualSync=${syncType === 'manual'}, 图片数量=${allImages.length}`)
-      setShowImageDownloader(true)
-      console.log(`已显示ImageDownloader组件`)
+      // 🔥 后台静默下载，不显示弹窗
+      console.log(`=== 开始后台下载 ${allImages.length} 张图片 ===`)
+      setSyncStatus(`同步中 0/${allImages.length}`)
+
+      // 进度回调
+      const onProgressCallback = (current, total, currentImage) => {
+        console.log(`同步进度: ${current}/${total}, 当前图片:`, currentImage?.id)
+        setSyncStatus(`同步中 ${current}/${total}`)
+      }
+
+      // 错误回调
+      const downloadErrors = []
+      const onErrorCallback = (error, imageInfo) => {
+        downloadErrors.push({ error: error.message, imageInfo })
+        console.error('下载图片失败:', imageInfo?.id, error.message)
+      }
+
+      // 执行后台批量下载
+      const results = await localImageManager.downloadProductImages(
+        allImages,
+        onProgressCallback,
+        onErrorCallback
+      )
+
+      console.log('后台下载完成，结果:', results)
+
+      // 如果有失败的图片，自动跳过它们
+      if (results.failed > 0 && downloadErrors.length > 0) {
+        console.log(`自动跳过 ${downloadErrors.length} 张失败的图片`)
+        try {
+          const skippedCount = await localImageManager.skipFailedImages(downloadErrors)
+          console.log(`✅ 已自动跳过 ${skippedCount} 张失败的图片`)
+          results.skipped = (results.skipped || 0) + skippedCount
+          results.failed = 0
+        } catch (error) {
+          console.error('自动跳过失败的图片时出错:', error)
+        }
+      }
+
+      // 显示同步结果
+      const message = `同步完成: 成功${results.success}张, 跳过${results.skipped}张${results.failed > 0 ? `, 失败${results.failed}张` : ''}`
+      setSuccessMsg(message)
+      console.log('✅ 后台同步完成')
 
     } catch (error) {
       console.error(`${syncType === 'auto' ? '自动' : '手动'}同步失败:`, error)
       setError(`同步失败: ${error.message}`)
-      setIsManualSync(false)
     } finally {
       setIsSyncing(false)
       setSyncStatus('')
     }
-  }, [loginInfo])
+  }, [loginInfo, collectProductImages])
 
   // 手动同步所有图片到本地
   const handleManualSync = async () => {
@@ -1082,15 +1127,14 @@ const TodoList = () => {
 
           {/* 右侧操作按钮 */}
           <div className="header-right">
-            {/* 只在非搜索模式下显示同步按钮 */}
+            {/* 只在非搜索模式下显示同步状态按钮 */}
             {!searchMode && (
               <button
                 className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                title={isSyncing ? syncStatus : "同步所有图片到本地"}
+                disabled={true}
+                title={isSyncing ? syncStatus : "同步状态"}
               >
-                {isSyncing ? '同步中' : '同步'}
+                {isSyncing ? (syncStatus || '同步中') : '就绪'}
               </button>
             )}
             <button
@@ -1125,13 +1169,6 @@ const TodoList = () => {
       {loading && <div className="loading">加载中...</div>}
       {/* 打开中 */}
       {openLoading && <div className="loading">打开中...</div>}
-      {/* 同步状态 */}
-      {isSyncing && !showImageDownloader && (
-        <div className="sync-status">
-          <div className="sync-icon">🔄</div>
-          <div className="sync-text">{syncStatus}</div>
-        </div>
-      )}
       {/* 错误提示（可自定义时长的弹窗） */}
       <Toast 
         open={!!error}
