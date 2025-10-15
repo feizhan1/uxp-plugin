@@ -72,9 +72,9 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
   const formatFileSize = (bytes) => {
     if (!bytes) return '未知';
     if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${Math.round(bytes / 1024)} KB`;
     }
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.round(bytes / (1024 * 1024))} MB`;
   };
 
   if (!hasLocal) {
@@ -238,9 +238,9 @@ const ProductDetail = ({
   const formatFileSize = (bytes) => {
     if (!bytes) return '未知';
     if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${Math.round(bytes / 1024)} KB`;
     }
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.round(bytes / (1024 * 1024))} MB`;
   };
 
   // 状态管理
@@ -293,6 +293,9 @@ const ProductDetail = ({
     height: null,
     fileSize: null
   });
+
+  // 所有图片的元数据映射 {imageId: {width, height, fileSize}}
+  const [imageMetaMap, setImageMetaMap] = useState({});
 
   // 图片翻译和对比模式状态
   const [translatedImage, setTranslatedImage] = useState(null); // 翻译后的图片URL
@@ -920,6 +923,17 @@ const ProductDetail = ({
       next.delete(imageId);
       return next;
     });
+  }, []);
+
+  /**
+   * 处理图片信息加载完成事件
+   */
+  const handleImageInfoLoad = useCallback((imageId, imageInfo) => {
+    console.log(`📊 [图片信息] 加载完成: ${imageId}`, imageInfo);
+    setImageMetaMap(prev => ({
+      ...prev,
+      [imageId]: imageInfo
+    }));
   }, []);
 
   /**
@@ -3855,8 +3869,21 @@ const ProductDetail = ({
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
                         isCompleted={image.isCompleted || completedImages.has(image.id)}
                         imageStatus={image.localStatus}
+                        onImageInfoLoad={(info) => handleImageInfoLoad(image.id, info)}
                       />
                     </div>
+                    {/* 图片信息显示 */}
+                    {imageMetaMap[image.id] && (
+                      <div className="image-info-display">
+                        <span className="image-dimension">
+                          {imageMetaMap[image.id].width}×{imageMetaMap[image.id].height}
+                        </span>
+                        /
+                        <span className="image-size">
+                          {formatFileSize(imageMetaMap[image.id].fileSize)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -3986,8 +4013,21 @@ const ProductDetail = ({
                           isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
                           isCompleted={image.isCompleted || completedImages.has(image.id)}
                           imageStatus={image.localStatus}
+                          onImageInfoLoad={(info) => handleImageInfoLoad(image.id, info)}
                         />
                       </div>
+                      {/* 图片信息显示 */}
+                      {imageMetaMap[image.id] && (
+                        <div className="image-info-display">
+                          <span className="image-dimension">
+                            {imageMetaMap[image.id].width}×{imageMetaMap[image.id].height}
+                          </span>
+                          /
+                          <span className="image-size">
+                            {formatFileSize(imageMetaMap[image.id].fileSize)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -4088,8 +4128,21 @@ const ProductDetail = ({
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
                         isCompleted={image.isCompleted || completedImages.has(image.id)}
                         imageStatus={image.localStatus}
+                        onImageInfoLoad={(info) => handleImageInfoLoad(image.id, info)}
                       />
                     </div>
+                    {/* 图片信息显示 */}
+                    {imageMetaMap[image.id] && (
+                      <div className="image-info-display">
+                        <span className="image-dimension">
+                          {imageMetaMap[image.id].width}×{imageMetaMap[image.id].height}
+                        </span>
+                        /
+                        <span className="image-size">
+                          {formatFileSize(imageMetaMap[image.id].fileSize)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

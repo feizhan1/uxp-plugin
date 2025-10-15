@@ -569,6 +569,7 @@
   display: flex;
   gap: 4px;
   align-items: center;
+  justify-content: flex-end;
   flex-shrink: 0;
 }
 
@@ -2534,6 +2535,7 @@
   background: white;
   color: #dc3545;
   border-color: #fbb6ce;
+  margin-left: 10px;
 }
 
 .delete-all-btn:hover {
@@ -2622,4 +2624,29 @@
 
 .tooltip-item:last-child {
   margin-bottom: 0;
+}
+
+/* 图片信息显示区域 */
+.image-info-display {
+  padding: 3px 6px;
+  background: #f8f9fa;
+  border-top: 1px solid #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.image-dimension {
+  font-size: 10px;
+  font-weight: 500;
+  color: #333;
+}
+
+.image-size {
+  font-size: 10px;
+  font-weight: 500;
+  color: #666;
 }
