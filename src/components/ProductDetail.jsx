@@ -276,6 +276,7 @@ const ProductDetail = ({
 
   const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(false); // 全局控制是否跳过删除确认
   const [dontAskAgain, setDontAskAgain] = useState(false); // 当前对话框中"不再询问"复选框状态
+  const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息 {type: 'sku'|'scene', skuIndex: number, count: number, title: string}
 
   // 图片预览模式状态管理
   const [previewMode, setPreviewMode] = useState({
@@ -1639,6 +1640,141 @@ const ProductDetail = ({
    */
   const handleCancelDelete = () => {
     setDeletingImage(null);
+  };
+
+  /**
+   * 确认一键删除整个组
+   */
+  const handleConfirmDeleteGroup = (type, skuIndex = null) => {
+    // 获取要删除的图片列表
+    let images = [];
+    let groupTitle = '';
+
+    if (type === 'sku' && skuIndex !== null) {
+      const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+      if (sku) {
+        images = sku.images;
+        groupTitle = sku.skuTitle;
+      }
+    } else if (type === 'scene') {
+      images = virtualizedImageGroups.scenes;
+      groupTitle = '场景图片';
+    }
+
+    if (images.length === 0) {
+      console.log('ℹ️ [handleConfirmDeleteGroup] 没有图片需要删除');
+      return;
+    }
+
+    console.log(`🗑️ [handleConfirmDeleteGroup] 准备删除组: ${groupTitle}, 共 ${images.length} 张图片`);
+
+    // 如果用户选择跳过确认，直接执行删除
+    if (skipDeleteConfirmation) {
+      console.log('ℹ️ [handleConfirmDeleteGroup] 跳过删除确认，直接执行批量删除');
+      executeBatchDelete(type, skuIndex, images);
+    } else {
+      // 显示批量删除确认对话框
+      setDeletingGroup({
+        type,
+        skuIndex,
+        count: images.length,
+        title: groupTitle,
+        images
+      });
+      setDontAskAgain(false); // 重置复选框状态
+    }
+  };
+
+  /**
+   * 取消批量删除
+   */
+  const handleCancelDeleteGroup = () => {
+    setDeletingGroup(null);
+  };
+
+  /**
+   * 执行批量删除
+   */
+  const executeBatchDelete = async (type, skuIndex, images) => {
+    try {
+      setError(null);
+      console.log(`🗑️ [executeBatchDelete] 开始批量删除 ${images.length} 张图片, type: ${type}, skuIndex: ${skuIndex}`);
+
+      // 逐个删除图片
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+        try {
+          // 从本地状态中移除图片
+          removeImageFromState(image);
+
+          // 同步到LocalImageManager（使用索引0，因为每次删除后数组会变短）
+          const success = await localImageManager.deleteImageByIndex(
+            currentProduct.applyCode,
+            type,
+            0, // 总是删除第一张，因为数组会动态缩短
+            skuIndex
+          );
+
+          if (success) {
+            successCount++;
+            console.log(`✅ [executeBatchDelete] 成功删除第 ${i + 1}/${images.length} 张图片`);
+          } else {
+            failCount++;
+            console.error(`❌ [executeBatchDelete] 删除第 ${i + 1}/${images.length} 张图片失败`);
+          }
+        } catch (error) {
+          failCount++;
+          console.error(`❌ [executeBatchDelete] 删除第 ${i + 1}/${images.length} 张图片时出错:`, error);
+        }
+      }
+
+      console.log(`📊 [executeBatchDelete] 批量删除完成: 成功 ${successCount}/${images.length}, 失败 ${failCount}/${images.length}`);
+
+      if (successCount > 0) {
+        // 通知父组件数据已更新
+        onUpdate?.(currentProduct);
+      }
+
+      if (failCount > 0) {
+        setError(`部分图片删除失败: ${failCount}/${images.length} 张失败`);
+        // 重新加载数据以保持一致性
+        await initializeImageData();
+      }
+
+    } catch (error) {
+      console.error('❌ [executeBatchDelete] 批量删除失败:', error);
+      setError(`批量删除失败: ${error.message}`);
+      // 重新加载数据以保持一致性
+      await initializeImageData();
+    }
+  };
+
+  /**
+   * 处理批量删除确认对话框的删除操作
+   */
+  const handleExecuteDeleteGroup = async () => {
+    if (!deletingGroup) return;
+
+    try {
+      // 如果用户勾选了"不再询问"，保存设置
+      if (dontAskAgain) {
+        console.log('💾 [handleExecuteDeleteGroup] 用户选择不再询问，保存设置');
+        setSkipDeleteConfirmation(true);
+        await saveDeleteSettings(true);
+      }
+
+      // 执行批量删除
+      await executeBatchDelete(deletingGroup.type, deletingGroup.skuIndex, deletingGroup.images);
+
+    } catch (error) {
+      console.error('❌ [handleExecuteDeleteGroup] 批量删除操作失败:', error);
+      setError(`批量删除操作失败: ${error.message}`);
+    } finally {
+      setDeletingGroup(null);
+    }
   };
 
   /**
@@ -3437,6 +3573,74 @@ const ProductDetail = ({
         </div>
       )}
 
+      {/* 批量删除确认对话框 */}
+      {deletingGroup && (
+        <div className="error-banner" style={{ background: '#fff3cd', borderColor: '#ffeaa7', color: '#856404' }}>
+          <div style={{ flex: 1 }}>
+            <div className="error-text" style={{ marginBottom: '6px' }}>
+              确定要删除 <strong>{deletingGroup.title}</strong> 的全部 <strong>{deletingGroup.count}</strong> 张图片吗？
+            </div>
+            <div className="error-text" style={{ fontSize: '10px', marginBottom: '6px', color: '#856404' }}>
+              （仅从列表中移除，本地文件保留）
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+              <input
+                type="checkbox"
+                id="dontAskAgainBatch"
+                checked={dontAskAgain}
+                onChange={(e) => setDontAskAgain(e.target.checked)}
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  cursor: 'pointer'
+                }}
+              />
+              <label
+                htmlFor="dontAskAgainBatch"
+                style={{
+                  fontSize: '10px',
+                  color: '#856404',
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
+              >
+                不再询问，直接删除
+              </label>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <button
+              style={{
+                padding: '2px 8px',
+                fontSize: '10px',
+                border: '1px solid #856404',
+                borderRadius: '3px',
+                background: '#dc3545',
+                color: 'white',
+                cursor: 'pointer'
+              }}
+              onClick={handleExecuteDeleteGroup}
+            >
+              确定删除
+            </button>
+            <button
+              style={{
+                padding: '2px 8px',
+                fontSize: '10px',
+                border: '1px solid #856404',
+                borderRadius: '3px',
+                background: '#6c757d',
+                color: 'white',
+                cursor: 'pointer'
+              }}
+              onClick={handleCancelDeleteGroup}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 批量上传进度条 */}
       {uploadProgress && (
         <div className="upload-progress-container">
@@ -3545,28 +3749,39 @@ const ProductDetail = ({
           <div key={sku.skuIndex || skuIndex} className="sku-group">
               <div className="sku-header">
                 <h3>{sku.skuTitle} ({sku.images.length})</h3>
-                {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
-                  <div className="sku-batch-actions">
-                    {!batchSyncMode ? (
-                      <button className="batch-sync-btn" onClick={handleStartBatchSync}>
-                        批量同步
-                      </button>
-                    ) : (
-                      <div className="batch-sync-controls">
-                        <button
-                          className="sync-btn"
-                          disabled={selectedImages.size === 0 || syncingBatch}
-                          onClick={handleExecuteSync}
-                        >
-                          同步 ({selectedImages.size})
+                <div className="sku-actions">
+                  {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
+                    <div className="sku-batch-actions">
+                      {!batchSyncMode ? (
+                        <button className="batch-sync-btn" onClick={handleStartBatchSync}>
+                          批量同步
                         </button>
-                        <button className="cancel-btn" onClick={handleCancelBatchSync}>
-                          取消
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      ) : (
+                        <div className="batch-sync-controls">
+                          <button
+                            className="sync-btn"
+                            disabled={selectedImages.size === 0 || syncingBatch}
+                            onClick={handleExecuteSync}
+                          >
+                            同步 ({selectedImages.size})
+                          </button>
+                          <button className="cancel-btn" onClick={handleCancelBatchSync}>
+                            取消
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {sku.images.length > 0 && (
+                    <button
+                      className="delete-all-btn"
+                      onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+                      title={`一键删除${sku.skuTitle}的所有图片`}
+                    >
+                      一键删除
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="image-grid">
                 {sku.images.map((image, imgIndex) => {
@@ -3661,6 +3876,15 @@ const ProductDetail = ({
         <div className="scene-images">
             <div className="section-header">
               <h3>场景图片 ({virtualizedImageGroups.scenes.length})</h3>
+              {virtualizedImageGroups.scenes.length > 0 && (
+                <button
+                  className="delete-all-btn"
+                  onClick={() => handleConfirmDeleteGroup('scene')}
+                  title="一键删除所有场景图片"
+                >
+                  一键删除
+                </button>
+              )}
             </div>
             <div className="image-grid">
               {virtualizedImageGroups.scenes.map((image, index) => {

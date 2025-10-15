@@ -1,5 +1,168 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ SKU图和场景图新增"一键删除"功能 (2025-01-30)
+
+### 完成情况：为SKU图片和场景图片添加了一键删除整组图片的功能
+
+**需求描述**：
+- 在每个SKU的header中添加"一键删除"按钮，可以删除该SKU的所有图片
+- 在场景图片的section-header中添加"一键删除"按钮，可以删除所有场景图片
+- 点击一键删除按钮后，显示确认对话框，提示将要删除的图片数量
+- 支持"不再询问"选项，记住用户的选择
+- 删除操作仅从列表中移除图片，本地文件保留
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+
+- **添加状态管理** (第279行)：
+  ```javascript
+  const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息
+  ```
+
+- **添加批量删除核心函数** (第1645-1778行)：
+  - `handleConfirmDeleteGroup(type, skuIndex)` - 确认一键删除整个组
+  - `handleCancelDeleteGroup()` - 取消批量删除
+  - `executeBatchDelete(type, skuIndex, images)` - 执行批量删除
+  - `handleExecuteDeleteGroup()` - 处理批量删除确认对话框的删除操作
+
+- **在SKU header中添加"一键删除"按钮** (第3684-3716行)：
+  ```jsx
+  <div className="sku-actions">
+    {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
+      <div className="sku-batch-actions">
+        {/* 批量同步按钮 */}
+      </div>
+    )}
+    {sku.images.length > 0 && (
+      <button
+        className="delete-all-btn"
+        onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+        title={`一键删除${sku.skuTitle}的所有图片`}
+      >
+        一键删除
+      </button>
+    )}
+  </div>
+  ```
+
+- **在场景图片header中添加"一键删除"按钮** (第3809-3820行)：
+  ```jsx
+  <div className="section-header">
+    <h3>场景图片 ({virtualizedImageGroups.scenes.length})</h3>
+    {virtualizedImageGroups.scenes.length > 0 && (
+      <button
+        className="delete-all-btn"
+        onClick={() => handleConfirmDeleteGroup('scene')}
+        title="一键删除所有场景图片"
+      >
+        一键删除
+      </button>
+    )}
+  </div>
+  ```
+
+- **添加批量删除确认对话框** (第3576-3642行)：
+  ```jsx
+  {deletingGroup && (
+    <div className="error-banner" style={{ background: '#fff3cd', borderColor: '#ffeaa7', color: '#856404' }}>
+      <div style={{ flex: 1 }}>
+        <div className="error-text" style={{ marginBottom: '6px' }}>
+          确定要删除 <strong>{deletingGroup.title}</strong> 的全部 <strong>{deletingGroup.count}</strong> 张图片吗？
+        </div>
+        <div className="error-text" style={{ fontSize: '10px', marginBottom: '6px', color: '#856404' }}>
+          （仅从列表中移除，本地文件保留）
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+          <input
+            type="checkbox"
+            id="dontAskAgainBatch"
+            checked={dontAskAgain}
+            onChange={(e) => setDontAskAgain(e.target.checked)}
+            style={{ width: '12px', height: '12px', cursor: 'pointer' }}
+          />
+          <label htmlFor="dontAskAgainBatch" style={{ fontSize: '10px', color: '#856404', cursor: 'pointer', userSelect: 'none' }}>
+            不再询问，直接删除
+          </label>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <button onClick={handleExecuteDeleteGroup}>确定删除</button>
+        <button onClick={handleCancelDeleteGroup}>取消</button>
+      </div>
+    </div>
+  )}
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+
+- **更新 .sku-actions 样式** (第567-573行)：
+  ```css
+  .section-actions,
+  .sku-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  ```
+
+- **添加 .delete-all-btn 样式** (第2478-2509行)：
+  ```css
+  .delete-all-btn {
+    padding: 6px 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    min-width: 70px;
+    justify-content: center;
+    flex-shrink: 0;
+    background: white;
+    color: #dc3545;
+    border-color: #fbb6ce;
+  }
+
+  .delete-all-btn:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: white;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .delete-all-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(220, 53, 69, 0.2);
+  }
+  ```
+
+**功能特点**：
+- 每个SKU独立显示"一键删除"按钮，只有当SKU有图片时才显示
+- 场景图片区域独立显示"一键删除"按钮，只有当有场景图片时才显示
+- 批量删除使用逐个删除策略，确保数据一致性
+- 删除过程中使用索引0删除策略，因为数组会动态缩短
+- 复用现有的删除确认设置，支持"不再询问"功能
+- 删除失败时会重新加载数据，保持UI和数据层的一致性
+- 使用红色作为按钮主题色，强调危险操作的警示性
+- 按钮样式与现有按钮风格保持一致，紧凑设计
+
+**测试要点**：
+- [ ] 测试删除单个SKU的所有图片
+- [ ] 测试删除所有场景图片
+- [ ] 测试删除确认对话框的显示和取消
+- [ ] 测试"不再询问"选项的保存和应用
+- [ ] 测试删除后的数据同步和UI更新
+- [ ] 测试没有图片时按钮的隐藏
+- [ ] 测试批量删除部分失败的错误处理
+
+---
+
 ## ✅ 为产品编号添加复制功能 (2025-01-29)
 
 ### 完成情况：在产品详情页和待处理产品列表页中为产品编号添加了复制功能
