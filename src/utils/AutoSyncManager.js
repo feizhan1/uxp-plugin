@@ -1,6 +1,6 @@
 /**
  * 自动同步管理器
- * 负责在工作日中午1点自动执行图片同步
+ * 负责每2小时自动执行一次图片同步（上次同步完成后）
  */
 export class AutoSyncManager {
   constructor() {
@@ -8,6 +8,7 @@ export class AutoSyncManager {
     this.onSyncCallback = null;
     this.isEnabled = false;
     this.lastSyncDate = null;
+    this.isSyncInProgress = false; // 同步进行中标志，防止并发同步
 
     // 存储键名
     this.STORAGE_KEY = 'autoSyncLastDate';
@@ -83,6 +84,7 @@ export class AutoSyncManager {
 
   /**
    * 判断今天是否已经同步过
+   * @deprecated 改用2小时间隔后不再使用此方法
    */
   isSyncedToday(date = new Date()) {
     if (!this.lastSyncDate) {
@@ -96,29 +98,52 @@ export class AutoSyncManager {
   }
 
   /**
+   * 判断距离上次同步是否已过2小时
+   */
+  hasElapsed2Hours(date = new Date()) {
+    if (!this.lastSyncDate) {
+      return true; // 从未同步过，应该同步
+    }
+
+    const twoHoursInMs = 2 * 60 * 60 * 1000; // 2小时 = 7200000毫秒
+    const elapsed = date.getTime() - this.lastSyncDate.getTime();
+
+    console.log('AutoSyncManager: 检查2小时间隔', {
+      lastSyncDate: this.lastSyncDate.toLocaleString(),
+      currentDate: date.toLocaleString(),
+      elapsedMs: elapsed,
+      elapsedMinutes: Math.floor(elapsed / 60000),
+      twoHoursInMs,
+      hasElapsed: elapsed >= twoHoursInMs
+    });
+
+    return elapsed >= twoHoursInMs;
+  }
+
+  /**
    * 检查是否应该执行自动同步
+   * 新逻辑：每2小时执行一次（上次同步完成后）
    */
   shouldSync(date = new Date()) {
     // 检查是否启用
     if (!this.isEnabled) {
+      console.log('AutoSyncManager: shouldSync=false (未启用)');
       return false;
     }
 
-    // 检查是否为工作日
-    if (!this.isWorkday(date)) {
+    // 检查是否有同步正在进行
+    if (this.isSyncInProgress) {
+      console.log('AutoSyncManager: shouldSync=false (同步进行中)');
       return false;
     }
 
-    // 检查是否为中午1点
-    if (!this.isLunchTime(date)) {
+    // 检查距离上次同步是否已过2小时
+    if (!this.hasElapsed2Hours(date)) {
+      console.log('AutoSyncManager: shouldSync=false (未满2小时)');
       return false;
     }
 
-    // 检查今天是否已经同步过
-    if (this.isSyncedToday(date)) {
-      return false;
-    }
-
+    console.log('AutoSyncManager: shouldSync=true (满足所有条件)');
     return true;
   }
 
@@ -130,19 +155,29 @@ export class AutoSyncManager {
       const now = new Date();
 
       if (this.shouldSync(now)) {
-        console.log('触发自动同步:', now.toLocaleString());
+        console.log('AutoSyncManager: 触发自动同步:', now.toLocaleString());
 
-        // 执行同步回调
-        if (this.onSyncCallback && typeof this.onSyncCallback === 'function') {
-          await this.onSyncCallback('auto');
+        // 设置同步进行中标志
+        this.isSyncInProgress = true;
 
-          // 记录同步时间
-          await this.saveLastSyncDate(now);
-          console.log('自动同步完成:', now.toLocaleString());
+        try {
+          // 执行同步回调
+          if (this.onSyncCallback && typeof this.onSyncCallback === 'function') {
+            await this.onSyncCallback('auto');
+
+            // 记录同步时间
+            await this.saveLastSyncDate(now);
+            console.log('AutoSyncManager: 自动同步完成:', now.toLocaleString());
+          }
+        } finally {
+          // 确保清除同步进行中标志
+          this.isSyncInProgress = false;
         }
       }
     } catch (error) {
-      console.error('自动同步检查失败:', error);
+      console.error('AutoSyncManager: 自动同步检查失败:', error);
+      // 发生错误时也要清除标志
+      this.isSyncInProgress = false;
     }
   };
 
@@ -196,23 +231,30 @@ export class AutoSyncManager {
    */
   getNextSyncInfo() {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
 
-    // 如果今天已经过了中午1点，计算明天的同步时间
-    let nextSync = today;
-    if (now.getTime() > today.getTime()) {
-      nextSync = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    // 如果从未同步，返回"立即"
+    if (!this.lastSyncDate) {
+      return {
+        nextSyncDate: now,
+        nextSyncText: '下次自动同步: 立即',
+        isSyncInProgress: this.isSyncInProgress,
+        lastSyncDate: null
+      };
     }
 
-    // 找到下一个工作日
-    while (!this.isWorkday(nextSync)) {
-      nextSync = new Date(nextSync.getTime() + 24 * 60 * 60 * 1000);
-    }
+    // 计算下次同步时间：上次同步时间 + 2小时
+    const twoHoursInMs = 2 * 60 * 60 * 1000;
+    const nextSync = new Date(this.lastSyncDate.getTime() + twoHoursInMs);
+
+    // 如果下次同步时间已经过了，说明现在就该同步
+    const nextSyncText = now.getTime() >= nextSync.getTime()
+      ? '下次自动同步: 立即'
+      : `下次自动同步: ${nextSync.toLocaleString()}`;
 
     return {
       nextSyncDate: nextSync,
-      nextSyncText: `下次自动同步: ${nextSync.toLocaleDateString()} 12:00`,
-      isSyncedToday: this.isSyncedToday(now),
+      nextSyncText,
+      isSyncInProgress: this.isSyncInProgress,
       lastSyncDate: this.lastSyncDate
     };
   }
