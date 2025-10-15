@@ -1599,6 +1599,27 @@ const ProductDetail = ({
   };
 
   /**
+   * 复制产品编号到剪贴板
+   */
+  const handleCopyProductCode = async () => {
+    try {
+      await navigator.clipboard.writeText(currentProduct.applyCode);
+      setToast({
+        open: true,
+        message: '产品编号已复制',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('复制产品编号失败:', error);
+      setToast({
+        open: true,
+        message: '复制失败: ' + error.message,
+        type: 'error'
+      });
+    }
+  };
+
+  /**
    * 确认删除图片
    */
   const handleConfirmDelete = async (image) => {
@@ -3223,7 +3244,12 @@ const ProductDetail = ({
           </button>
           <div className="product-info">
             <h1 className="product-title">{currentProduct.productName}</h1>
-            <div className="product-code">编号: {currentProduct.applyCode}</div>
+            <div className="product-code">
+              <span>编号: {currentProduct.applyCode}</span>
+              <button className="copy-code-btn" onClick={handleCopyProductCode}>
+                复制
+              </button>
+            </div>
           </div>
         </div>
         <div className="header-right">

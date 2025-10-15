@@ -1,5 +1,199 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 为产品编号添加复制功能 (2025-01-29)
+
+### 完成情况：在产品详情页和待处理产品列表页中为产品编号添加了复制功能
+
+**需求描述**：
+- 在产品详情页（ProductDetail.jsx）的产品编号后面添加"复制"按钮
+- 在待处理产品列表页（TodoList.jsx）的产品卡片编号后面添加"复制"按钮
+- 点击复制按钮后，将产品编号（applyCode）复制到剪贴板
+- 复制成功/失败后显示 Toast 提示
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+- **添加复制处理函数** (第1601-1620行)：
+  ```javascript
+  const handleCopyProductCode = async () => {
+    try {
+      await navigator.clipboard.writeText(currentProduct.applyCode);
+      setToast({
+        open: true,
+        message: '产品编号已复制',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('复制产品编号失败:', error);
+      setToast({
+        open: true,
+        message: '复制失败: ' + error.message,
+        type: 'error'
+      });
+    }
+  };
+  ```
+
+- **修改产品编号显示区域** (第3247-3252行)：
+  ```jsx
+  <div className="product-code">
+    <span>编号: {currentProduct.applyCode}</span>
+    <button className="copy-code-btn" onClick={handleCopyProductCode}>
+      复制
+    </button>
+  </div>
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+- **修改 .product-code 样式** (第103-110行)：
+  ```css
+  .product-code {
+    font-size: 10px;
+    color: #999;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  ```
+
+- **添加 .copy-code-btn 样式** (第112-136行)：
+  ```css
+  .copy-code-btn {
+    padding: 2px 6px;
+    height: 16px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+    color: #666;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    flex-shrink: 0;
+  }
+
+  .copy-code-btn:hover {
+    background: #f5f5f5;
+    border-color: #999;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+  ```
+
+#### 3. TodoList.jsx 修改 (src/panels/TodoList.jsx)
+- **添加 Toast 状态管理** (第47-49行)：
+  ```javascript
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('info')
+  ```
+
+- **添加复制处理函数** (第1081-1092行)：
+  ```javascript
+  const handleCopyProductCode = async (applyCode) => {
+    try {
+      await navigator.clipboard.writeText(applyCode);
+      setToastMessage('产品编号已复制');
+      setToastType('success');
+    } catch (error) {
+      console.error('复制产品编号失败:', error);
+      setToastMessage('复制失败: ' + error.message);
+      setToastType('error');
+    }
+  }
+  ```
+
+- **修改产品卡片编号显示区域** (第1277-1286行)：
+  ```jsx
+  <div className='product-id'>
+    <span className='id-label'>编号</span>
+    <span className='id-value'>{item.applyCode}</span>
+    <button
+      className='copy-product-code-btn'
+      onClick={() => handleCopyProductCode(item.applyCode)}
+    >
+      复制
+    </button>
+  </div>
+  ```
+
+- **添加 Toast 组件** (第1206-1214行)：
+  ```jsx
+  <Toast
+    open={!!toastMessage}
+    type={toastType}
+    message={toastMessage}
+    duration={2000}
+    onClose={() => setToastMessage('')}
+    position="top"
+  />
+  ```
+
+#### 4. TodoList.css 修改 (src/panels/TodoList.css)
+- **修改 .product-id 样式** (第340-344行)：
+  ```css
+  .product-id {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  ```
+
+- **添加 .copy-product-code-btn 样式** (第359-383行)：
+  ```css
+  .copy-product-code-btn {
+    padding: 2px 6px;
+    height: 16px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+    color: #666;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    flex-shrink: 0;
+  }
+
+  .copy-product-code-btn:hover {
+    background: #f5f5f5;
+    border-color: #999;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+  ```
+
+**核心特性**：
+- ✅ 使用 `navigator.clipboard.writeText()` API 实现复制
+- ✅ 复制成功显示绿色 Toast 提示："产品编号已复制"
+- ✅ 复制失败显示红色 Toast 提示，包含错误信息
+- ✅ 按钮样式与项目整体风格保持一致（10px字体，紧凑布局）
+- ✅ hover 效果提供良好的视觉反馈
+- ✅ 按钮紧跟在产品编号后面，flex 布局确保对齐
+
+**用户体验优化**：
+- 按钮文字清晰："复制"
+- Toast 提示时长 2 秒（ProductDetail 使用默认值）
+- 按钮尺寸紧凑（16px高度），不占用过多空间
+- hover 时有明显的视觉变化（背景色、边框色、阴影、位移）
+
+**测试场景**：
+1. ✅ ProductDetail页面：点击产品编号后的"复制"按钮
+2. ✅ TodoList页面：点击产品卡片中编号后的"复制"按钮
+3. ✅ 复制成功后检查剪贴板内容
+4. ✅ Toast 提示正常显示并自动关闭
+
+
 ## ⏰ 实现每2小时自动同步功能 (2025-01-28)
 
 ### ✅ 已完成：将自动同步改为每2小时执行一次

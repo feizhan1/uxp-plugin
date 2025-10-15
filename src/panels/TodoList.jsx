@@ -43,6 +43,10 @@ const TodoList = () => {
   const [searchQuery, setSearchQuery] = useState('') // 搜索关键字
   const [searchResults, setSearchResults] = useState([]) // 搜索结果
   const searchInputRef = useRef(null) // sp-textfield的ref
+
+  // Toast 提示状态
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('info')
 // loginInfo
 //   {
 //     "success": true,
@@ -1074,6 +1078,18 @@ const TodoList = () => {
     setSearchResults([])
   }, [])
 
+  // 复制产品编号到剪贴板
+  const handleCopyProductCode = async (applyCode) => {
+    try {
+      await navigator.clipboard.writeText(applyCode)
+      setToastMessage('产品编号已复制')
+      setToastType('success')
+    } catch (error) {
+      console.error('复制产品编号失败:', error)
+      setToastMessage('复制失败: ' + error.message)
+      setToastType('error')
+    }
+  }
 
   // 未登录时，显示登录组件
   if (!loginInfo?.success) {
@@ -1187,6 +1203,15 @@ const TodoList = () => {
         onClose={() => setSuccessMsg('')}
         position="top"
       />
+      {/* 复制提示 */}
+      <Toast
+        open={!!toastMessage}
+        type={toastType}
+        message={toastMessage}
+        duration={2000}
+        onClose={() => setToastMessage('')}
+        position="top"
+      />
       {/* 退出登录确认 */}
       <Confirm
         open={showLogoutConfirm}
@@ -1261,6 +1286,12 @@ const TodoList = () => {
                 <div className='product-id'>
                   <span className='id-label'>编号</span>
                   <span className='id-value'>{item.applyCode}</span>
+                  <button
+                    className='copy-product-code-btn'
+                    onClick={() => handleCopyProductCode(item.applyCode)}
+                  >
+                    复制
+                  </button>
                 </div>
                 <div className='product-status'>
                   <span className={`status-badge ${getProductStatus(item)}`}>
