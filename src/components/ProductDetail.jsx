@@ -11,7 +11,7 @@ import './ProductDetail.css';
  * 本地图片组件 - 仅显示本地文件系统中的图片
  * 使用React.memo优化性能
  */
-const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefresh, onRefreshComplete, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus, onImageInfoLoad }) => {
+const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefresh, onRefreshComplete, onDoubleClick, onClick, onMouseDown, onContextMenu, isOpening, isSyncing, isRecentlyUpdated, isCompleted, imageStatus, onImageInfoLoad, isCompareMode }) => {
   const [displaySrc, setDisplaySrc] = useState(null);
   const [loading, setLoading] = useState(hasLocal);
   const [hovered, setHovered] = useState(false);
@@ -21,13 +21,40 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
   useEffect(() => {
     let isMounted = true;
 
-    const loadLocalImage = async () => {
-      if (!hasLocal || !imageUrl) {
+    const loadImage = async () => {
+      console.log(`🔍 [LocalImage] loadImage调用 - imageUrl类型: ${typeof imageUrl}, 值（完整）: ${imageUrl}, hasLocal: ${hasLocal}`);
+
+      if (!imageUrl) {
+        console.log(`❌ [LocalImage] imageUrl为空`);
         setDisplaySrc(null);
         setLoading(false);
         return;
       }
 
+      // 检查imageUrl是否是字符串
+      const imageUrlStr = String(imageUrl);
+      console.log(`🔍 [LocalImage] imageUrl转字符串（完整）: ${imageUrlStr}, 长度: ${imageUrlStr.length}, 是否https开头: ${imageUrlStr.startsWith('https://')}, hasLocal: ${hasLocal}`);
+
+      // 如果是https://或http://远程URL且hasLocal为false，直接使用远程URL
+      if (!hasLocal && (imageUrlStr.startsWith('https://') || imageUrlStr.startsWith('http://'))) {
+        console.log(`✅ [LocalImage] 使用远程URL（完整）: ${imageUrlStr}`);
+        if (isMounted) {
+          setDisplaySrc(imageUrlStr);
+          setLoading(false);
+          console.log(`✅ [LocalImage] displaySrc已设置为（完整）: ${imageUrlStr}`);
+        }
+        return;
+      }
+
+      // 如果hasLocal为false且不是https://，不显示
+      if (!hasLocal) {
+        console.log(`❌ [LocalImage] hasLocal=false但不是https URL: ${imageUrl.substring(0, 50)}`);
+        setDisplaySrc(null);
+        setLoading(false);
+        return;
+      }
+
+      // 加载本地图片
       try {
         setLoading(true);
         const localDisplayUrl = await localImageManager.getLocalImageDisplayUrlByUrl(imageUrl);
@@ -53,7 +80,7 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
       }
     };
 
-    loadLocalImage();
+    loadImage();
 
     return () => {
       isMounted = false;
@@ -77,14 +104,6 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
     return `${Math.round(bytes / (1024 * 1024))} MB`;
   };
 
-  if (!hasLocal) {
-    return (
-      <div className="local-image-placeholder">
-        <div className="placeholder-text">本地图片不可用</div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="local-image-loading">
@@ -94,12 +113,24 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
   }
 
   if (!displaySrc) {
+    // 如果没有displaySrc，检查是否是远程URL
+    if (!hasLocal && imageUrl && imageUrl.startsWith('https://')) {
+      // 远程URL的情况已经在useEffect中处理了，这里不应该到达
+      return (
+        <div className="local-image-loading">
+          <div className="loading-text">加载中...</div>
+        </div>
+      );
+    }
+
     return (
       <div className="local-image-error">
-        <div className="error-text">图片加载失败</div>
+        <div className="error-text">{hasLocal ? '图片加载失败' : '本地图片不可用'}</div>
       </div>
     );
   }
+
+  console.log(`🖼️ [LocalImage] 渲染 - displaySrc（完整）: ${displaySrc}, 长度: ${displaySrc?.length}, hasLocal: ${hasLocal}`);
 
   return (
     <div
@@ -116,7 +147,26 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
         src={displaySrc}
         alt={alt}
         className={className}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        style={isCompareMode ?
+          { width: '100%', height: '100%', display: 'block' } :
+          { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+        }
+        onError={(e) => {
+          console.error(`❌ [LocalImage] 图片加载失败 - src（完整）: ${displaySrc}, 长度: ${displaySrc?.length}, isCompareMode: ${isCompareMode}`);
+          console.error(`❌ [LocalImage] 错误详情:`, e);
+          console.error(`❌ [LocalImage] 错误类型: ${e?.type}, target: ${e?.target?.tagName}, currentSrc: ${e?.target?.currentSrc}`);
+
+          // 尝试直接用fetch测试URL是否可访问
+          if (displaySrc && !hasLocal) {
+            fetch(displaySrc, { method: 'HEAD' })
+              .then(response => {
+                console.log(`🔍 [LocalImage] fetch测试结果 - status: ${response.status}, ok: ${response.ok}, headers:`, response.headers);
+              })
+              .catch(err => {
+                console.error(`❌ [LocalImage] fetch测试失败:`, err);
+              });
+          }
+        }}
         onLoad={() => {
           if (imgRef.current && imgRef.current.complete) {
             const loadImageInfo = async () => {
@@ -303,6 +353,8 @@ const ProductDetail = ({
   const [comparePosition, setComparePosition] = useState(50); // 滑块位置百分比
   const [isTranslating, setIsTranslating] = useState(false); // 是否正在翻译
   const [isApplyingTranslation, setIsApplyingTranslation] = useState(false); // 是否正在应用翻译
+  const [compareContainerWidth, setCompareContainerWidth] = useState(0); // 对比容器宽度
+  const compareContainerRef = useRef(null); // 对比容器引用
 
   // Toast 提示状态
   const [toast, setToast] = useState({
@@ -452,6 +504,27 @@ const ProductDetail = ({
       }
     };
   }, []);
+
+  // 监听对比模式，获取容器宽度
+  useEffect(() => {
+    if (compareMode && compareContainerRef.current) {
+      const updateWidth = () => {
+        const width = compareContainerRef.current?.offsetWidth || 0;
+        console.log('🔍 [对比模式] 容器宽度:', width);
+        setCompareContainerWidth(width);
+      };
+
+      // 初始获取
+      updateWidth();
+
+      // 监听窗口大小变化
+      window.addEventListener('resize', updateWidth);
+
+      return () => {
+        window.removeEventListener('resize', updateWidth);
+      };
+    }
+  }, [compareMode]);
 
   // PS事件监听器注册和清理
   useEffect(() => {
@@ -3072,15 +3145,17 @@ const ProductDetail = ({
 
       // 调用翻译API
       const translatedImageUrl = await translateImage(imageSource, {
-        sourceLang: 'ENG',  // 源语言：英文
-        targetLang: 'CHS',  // 目标语言：中文
+        sourceLang: 'CHS',  // 源语言：中文
+        targetLang: 'ENG',  // 目标语言：英文
         filename: currentImage.id ? `${currentImage.id}.png` : 'image.png',
         mimeType: 'image/png'
       });
 
-      console.log('✅ [handleTranslateImage] 翻译成功:', translatedImageUrl);
+      console.log('✅ [handleTranslateImage] 翻译成功（完整URL）:', translatedImageUrl);
+      console.log('✅ [handleTranslateImage] URL长度:', translatedImageUrl.length);
 
       setTranslatedImage(translatedImageUrl);
+      console.log('✅ [handleTranslateImage] setTranslatedImage已调用，传入值:', translatedImageUrl);
       setCompareMode(true);
 
       setToast({
@@ -3135,60 +3210,95 @@ const ProductDetail = ({
       const arrayBuffer = await response.arrayBuffer();
       console.log('✅ [handleApplyTranslation] 图片下载成功, 大小:', arrayBuffer.byteLength);
 
-      // 2. 解析当前图片的ID信息
-      const parsedId = localImageManager.parseImageId(currentImage.id);
-      console.log('📝 [handleApplyTranslation] 图片ID信息:', parsedId);
-
-      // 3. 保存图片到本地（覆盖原文件）
-      const productFolder = await localImageManager.getOrCreateProductFolder(parsedId.applyCode);
-
-      // 获取原始文件名（从localPath或生成新的）
-      let fileName;
-      if (currentImage.localPath) {
-        const pathParts = currentImage.localPath.split('/');
-        fileName = pathParts[pathParts.length - 1];
-      } else {
-        // 生成文件名
-        fileName = localImageManager.generateLocalFilename({
-          applyCode: parsedId.applyCode,
-          imageType: parsedId.imageType,
-          skuIndex: parsedId.skuIndex,
-          sourceIndex: parsedId.sourceIndex
-        }).split('/')[1];
+      // 2. 获取当前图片的信息
+      const imageInfo = localImageManager.getImageInfo(currentImage.id);
+      if (!imageInfo) {
+        throw new Error('未找到图片信息');
       }
+      console.log('📝 [handleApplyTranslation] 图片信息:', imageInfo);
 
-      console.log('💾 [handleApplyTranslation] 保存文件:', fileName);
+      // 3. 保存图片到本地（使用翻译后的URL生成文件名）
+      const productFolder = await localImageManager.getOrCreateProductFolder(imageInfo.applyCode);
+
+      // 从翻译后的URL生成文件名（包含-f后缀）
+      const localFilePath = localImageManager.generateLocalFilename({
+        imageUrl: translatedImage, // 使用翻译后的URL
+        applyCode: imageInfo.applyCode
+      });
+      const fileName = localFilePath.split('/')[1];
+
+      console.log('💾 [handleApplyTranslation] 从翻译URL生成文件名:', fileName);
+      console.log('💾 [handleApplyTranslation] 完整localPath:', `${imageInfo.applyCode}/${fileName}`);
+
       const fs = require('uxp').storage.localFileSystem;
       const formats = require('uxp').storage.formats;
       const localFile = await productFolder.createFile(fileName, { overwrite: true });
+      console.log('📁 [handleApplyTranslation] 文件已创建:', localFile.name);
+
       await localFile.write(arrayBuffer, { format: formats.binary });
+      console.log('✅ [handleApplyTranslation] 文件已写入, 大小:', arrayBuffer.byteLength, '字节');
+      console.log('📂 [handleApplyTranslation] 文件保存路径:', localFile.nativePath);
 
       // 4. 更新索引中的图片URL
       console.log('📝 [handleApplyTranslation] 更新索引数据...');
-      const product = localImageManager.getOrCreateProduct(parsedId.applyCode);
+      console.log('📝 [handleApplyTranslation] imageInfo:', JSON.stringify(imageInfo, null, 2));
+      console.log('📝 [handleApplyTranslation] currentImage:', JSON.stringify(currentImage, null, 2));
 
-      let imageInfo = null;
-      if (parsedId.imageType === 'scene') {
+      const product = localImageManager.getOrCreateProduct(imageInfo.applyCode);
+      console.log('📝 [handleApplyTranslation] product结构:', {
+        originalImagesCount: product.originalImages?.length || 0,
+        senceImagesCount: product.senceImages?.length || 0,
+        publishSkusCount: product.publishSkus?.length || 0
+      });
+
+      // 根据imageInfo找到对应的图片记录并更新
+      let targetImageInfo = null;
+      if (imageInfo.imageType === 'scene') {
         // 场景图片
-        imageInfo = product.senceImages.find(img => img.imageUrl === currentImage.imageUrl);
-      } else if (parsedId.skuIndex !== undefined) {
+        console.log('🔍 [handleApplyTranslation] 在场景图片中查找...');
+        targetImageInfo = product.senceImages?.find(img => {
+          console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
+          return img.imageUrl === currentImage.imageUrl;
+        });
+      } else if (imageInfo.skuIndex !== undefined) {
         // SKU图片
-        const sku = product.publishSkus.find(s => s.skuIndex === parsedId.skuIndex);
+        console.log('🔍 [handleApplyTranslation] 在SKU图片中查找, skuIndex:', imageInfo.skuIndex);
+        const sku = product.publishSkus?.find(s => s.skuIndex === imageInfo.skuIndex);
         if (sku) {
-          imageInfo = sku.skuImages.find(img => img.imageUrl === currentImage.imageUrl);
+          targetImageInfo = sku.skuImages?.find(img => {
+            console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
+            return img.imageUrl === currentImage.imageUrl;
+          });
+        } else {
+          console.warn('⚠️ [handleApplyTranslation] 未找到对应的SKU');
         }
       } else {
         // 原始图片
-        imageInfo = product.originalImages.find(img => img.imageUrl === currentImage.imageUrl);
+        console.log('🔍 [handleApplyTranslation] 在原始图片中查找...');
+        targetImageInfo = product.originalImages?.find(img => {
+          console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
+          return img.imageUrl === currentImage.imageUrl;
+        });
       }
 
-      if (imageInfo) {
-        // 更新图片URL和状态
-        imageInfo.imageUrl = translatedImage;
-        imageInfo.status = 'modified';
-        imageInfo.timestamp = Date.now();
-        imageInfo.fileSize = arrayBuffer.byteLength;
-        console.log('✅ [handleApplyTranslation] 索引数据已更新');
+      console.log('🔍 [handleApplyTranslation] 查找结果 targetImageInfo:', targetImageInfo ? '找到' : '未找到');
+
+      if (targetImageInfo) {
+        // 更新图片信息：保存本地路径并更新状态
+        const localPath = `${imageInfo.applyCode}/${fileName}`;
+        targetImageInfo.imageUrl = translatedImage; // 远程URL（翻译后的）
+        targetImageInfo.localPath = localPath; // 本地路径（包含-f后缀）
+        targetImageInfo.hasLocal = true; // 标记已有本地文件
+        targetImageInfo.status = 'pending_edit'; // 翻译后待编辑
+        targetImageInfo.timestamp = Date.now();
+        targetImageInfo.fileSize = arrayBuffer.byteLength;
+        console.log('✅ [handleApplyTranslation] 索引数据已更新:', {
+          imageUrl: targetImageInfo.imageUrl,
+          localPath: targetImageInfo.localPath,
+          hasLocal: targetImageInfo.hasLocal,
+          status: targetImageInfo.status,
+          fileSize: targetImageInfo.fileSize
+        });
       } else {
         console.warn('⚠️ [handleApplyTranslation] 未在索引中找到对应的图片记录');
       }
@@ -3197,33 +3307,24 @@ const ProductDetail = ({
       await localImageManager.saveIndexData();
       console.log('💾 [handleApplyTranslation] 索引数据已保存');
 
-      // 6. 更新UI中的图片信息
-      // 更新previewMode中的当前图片
-      const updatedImageList = [...previewMode.imageList];
-      updatedImageList[previewMode.currentImageIndex] = {
-        ...updatedImageList[previewMode.currentImageIndex],
-        imageUrl: translatedImage,
-        hasLocal: true
-      };
-
-      setPreviewMode(prev => ({
-        ...prev,
-        imageList: updatedImageList
-      }));
-
-      // 关闭对比模式
+      // 6. 关闭对比模式
       setCompareMode(false);
       setTranslatedImage(null);
       setComparePosition(50);
 
-      // 触发刷新标记，让图片重新加载
-      setRefreshingImages(prev => new Set([...prev, currentImage.id]));
+      // 7. 关闭预览弹窗
+      setPreviewMode({ active: false, imageList: [], currentImageIndex: 0 });
 
+      // 8. 显示成功提示
       setToast({
         open: true,
         message: '翻译应用成功，图片已更新',
         type: 'success'
       });
+
+      // 9. 刷新页面数据 - 重新从索引文件加载
+      console.log('🔄 [handleApplyTranslation] 刷新页面数据...');
+      await initializeImageData();
 
     } catch (error) {
       console.error('❌ [handleApplyTranslation] 应用翻译失败:', error);
@@ -4224,48 +4325,42 @@ const ProductDetail = ({
                   />
                 ) : (
                   /* 对比模式：显示前后对比 */
-                  <div className="image-compare-container">
-                    {/* 顶部操作按钮 */}
-                    <div className="compare-actions">
-                      <button
-                        className="compare-action-btn apply-btn"
-                        onClick={handleApplyTranslation}
-                        disabled={isApplyingTranslation}
-                      >
-                        {isApplyingTranslation ? '应用中...' : '同意'}
-                      </button>
-                      <button
-                        className="compare-action-btn cancel-btn"
-                        onClick={handleExitCompare}
-                        disabled={isApplyingTranslation}
-                      >
-                        取消
-                      </button>
-                    </div>
-
-                    {/* 底层：原图 */}
-                    <div className="compare-image-before">
-                      <LocalImage
-                        imageUrl={previewMode.imageList[previewMode.currentImageIndex]?.imageUrl}
-                        alt="原图"
-                        hasLocal={previewMode.imageList[previewMode.currentImageIndex]?.hasLocal}
-                        onImageInfoLoad={(info) => setPreviewImageMeta(info)}
-                      />
+                  <div className="image-compare-container" ref={compareContainerRef}>
+                    {/* 左侧：原图 */}
+                    <div
+                      className="compare-image-before"
+                      style={{
+                        width: `${comparePosition}%`
+                      }}
+                    >
+                      <div style={{ width: compareContainerWidth || '100%', height: '100%', position: 'absolute', left: 0, top: 0 }}>
+                        <LocalImage
+                          imageUrl={previewMode.imageList[previewMode.currentImageIndex]?.imageUrl}
+                          alt="原图"
+                          hasLocal={previewMode.imageList[previewMode.currentImageIndex]?.hasLocal}
+                          onImageInfoLoad={(info) => setPreviewImageMeta(info)}
+                          isCompareMode={true}
+                        />
+                      </div>
                       <div className="compare-label compare-label-before">原图</div>
                     </div>
 
-                    {/* 顶层：翻译后的图片，使用clip-path裁剪 */}
+                    {/* 右侧：翻译后的图片 */}
                     <div
                       className="compare-image-after"
                       style={{
-                        clipPath: `inset(0 ${100 - comparePosition}% 0 0)`
+                        width: `${100 - comparePosition}%`
                       }}
                     >
-                      <LocalImage
-                        imageUrl={translatedImage}
-                        alt="翻译后"
-                        hasLocal={false}
-                      />
+                      {console.log('🔍 [对比模式] 渲染翻译图片，translatedImage（完整）:', translatedImage, '容器宽度:', compareContainerWidth)}
+                      <div style={{ width: compareContainerWidth || '100%', height: '100%', position: 'absolute', right: 0, top: 0 }}>
+                        <LocalImage
+                          imageUrl={translatedImage}
+                          alt="翻译后"
+                          hasLocal={false}
+                          isCompareMode={true}
+                        />
+                      </div>
                       <div className="compare-label compare-label-after">翻译后</div>
                     </div>
 
@@ -4362,7 +4457,7 @@ const ProductDetail = ({
                     复制文件路径
                   </button>
 
-                  {/* 翻译按钮 */}
+                  {/* 翻译和对比模式按钮 */}
                   {!compareMode ? (
                     <button
                       className="translate-btn"
@@ -4372,12 +4467,22 @@ const ProductDetail = ({
                       {isTranslating ? '翻译中...' : '翻译'}
                     </button>
                   ) : (
-                    <button
-                      className="exit-compare-btn"
-                      onClick={handleExitCompare}
-                    >
-                      退出对比
-                    </button>
+                    <>
+                      <button
+                        className="compare-action-btn apply-btn"
+                        onClick={handleApplyTranslation}
+                        disabled={isApplyingTranslation}
+                      >
+                        {isApplyingTranslation ? '应用中...' : '同意'}
+                      </button>
+                      <button
+                        className="compare-action-btn cancel-btn"
+                        onClick={handleExitCompare}
+                        disabled={isApplyingTranslation}
+                      >
+                        取消
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

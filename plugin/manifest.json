@@ -66,7 +66,9 @@
         "https://sts.sjlpj.cn",
         "https://api.tosoiot.com",
         "https://api2.tosoiot.com",
-        "https://*.xiangjifanyi.com"
+        "https://*.xiangjifanyi.com",
+        "http://i.tosoiot.com",
+        "https://i.tosoiot.com"
       ]
     },
     "network": {
@@ -99,7 +101,9 @@
         "https://sts.sjlpj.cn",
         "https://api.tosoiot.com",
         "https://api2.tosoiot.com",
-        "https://*.xiangjifanyi.com"
+        "https://*.xiangjifanyi.com",
+        "http://i.tosoiot.com",
+        "https://i.tosoiot.com"
       ]
     }
   },

@@ -12,6 +12,7 @@ const API_CONFIG = {
   URL_TRANSLATE_URL: 'https://api.tosoiot.com/',
   FILE_TRANSLATE_URL: 'https://api2.tosoiot.com/',
   IMG_TRANS_KEY: '7073216605',  // 固定的翻译密钥
+  USER_KEY: '2860042962',  // 固定的用户密钥
   PHONE: '13534271656',
   PASSWD: 'TVC2024'
 };
@@ -83,16 +84,12 @@ export async function translateImageByUrl(imageUrl, options = {}) {
   try {
     console.log('🌐 [translateImageByUrl] 开始URL翻译:', imageUrl);
 
-    // 获取token作为UserKey
-    const userKey = await getToken();
-    console.log('🔑 [translateImageByUrl] 获取UserKey(token):', userKey);
-
     // 构建请求参数（注意：CommitTime必须是秒级时间戳，10位）
     const commitTime = Math.floor(Date.now() / 1000).toString();
     const params = {
       Action: 'GetImageTranslate',
-      SourceLanguage: options.sourceLang || 'ENG', // 默认英文
-      TargetLanguage: options.targetLang || 'CHS', // 默认中文
+      SourceLanguage: options.sourceLang || 'CHS', // 默认中文
+      TargetLanguage: options.targetLang || 'ENG', // 默认英文
       Url: imageUrl,  // 签名时使用原始URL
       ImgTransKey: API_CONFIG.IMG_TRANS_KEY,  // 使用固定密钥
       CommitTime: commitTime,
@@ -103,7 +100,9 @@ export async function translateImageByUrl(imageUrl, options = {}) {
     };
 
     // 生成签名：md5(CommitTime + '_' + UserKey + '_' + ImgTransKey)
-    params.Sign = generateSign(commitTime, userKey, API_CONFIG.IMG_TRANS_KEY);
+    params.Sign = generateSign(commitTime, API_CONFIG.USER_KEY, API_CONFIG.IMG_TRANS_KEY);
+    console.log('🔐 [translateImageByUrl] 签名参数: CommitTime=%s, UserKey=%s, ImgTransKey=%s',
+      commitTime, API_CONFIG.USER_KEY, API_CONFIG.IMG_TRANS_KEY);
 
     // 构建查询字符串（URL参数需要编码）
     const queryString = Object.entries(params)
@@ -124,15 +123,33 @@ export async function translateImageByUrl(imageUrl, options = {}) {
     // 发送请求
     const response = await post(requestUrl, {});
 
-    console.log('📥 [translateImageByUrl] 响应:', response);
+    console.log('📥 [translateImageByUrl] 响应原始:', response);
+    console.log('📊 [translateImageByUrl] 响应类型:', typeof response);
+    console.log('📊 [translateImageByUrl] 响应Keys:', response ? Object.keys(response) : 'null');
+    console.log('📊 [translateImageByUrl] JSON序列化:', JSON.stringify(response));
 
-    // 解析响应
-    if (response && response.Code === 0 && response.Data) {
-      const translatedUrl = response.Data.SslUrl || response.Data.Url;
+    // 尝试解析JSON字符串（如果response是字符串）
+    let parsedResponse = response;
+    if (typeof response === 'string') {
+      try {
+        parsedResponse = JSON.parse(response);
+        console.log('✅ [translateImageByUrl] 成功解析JSON字符串');
+      } catch (e) {
+        console.error('❌ [translateImageByUrl] JSON解析失败:', e);
+      }
+    }
+
+    console.log('📊 [translateImageByUrl] 解析后Code:', parsedResponse?.Code);
+    console.log('📊 [translateImageByUrl] 解析后Data:', parsedResponse?.Data);
+
+    // 解析响应（成功状态码是200，兼容数字和字符串类型）
+    if (parsedResponse && (parsedResponse.Code === 200 || parsedResponse.Code === '200') && parsedResponse.Data) {
+      const translatedUrl = parsedResponse.Data.SslUrl || parsedResponse.Data.Url;
       console.log('✅ [translateImageByUrl] 翻译成功:', translatedUrl);
       return translatedUrl;
     } else {
-      throw new Error(response?.Message || '翻译失败');
+      console.error('❌ [translateImageByUrl] 响应判断失败，Code:', parsedResponse?.Code, 'Data:', parsedResponse?.Data);
+      throw new Error(parsedResponse?.Message || '翻译失败');
     }
   } catch (error) {
     console.error('❌ [translateImageByUrl] URL翻译失败:', error);
@@ -150,16 +167,12 @@ export async function translateImageByFile(fileBuffer, options = {}) {
   try {
     console.log('📁 [translateImageByFile] 开始文件翻译');
 
-    // 获取token作为UserKey
-    const userKey = await getToken();
-    console.log('🔑 [translateImageByFile] 获取UserKey(token):', userKey);
-
     // 构建请求参数（注意：CommitTime必须是秒级时间戳，10位）
     const commitTime = Math.floor(Date.now() / 1000).toString();
     const params = {
       Action: 'GetImageTranslate',
-      SourceLanguage: options.sourceLang || 'ENG',
-      TargetLanguage: options.targetLang || 'CHS',
+      SourceLanguage: options.sourceLang || 'CHS',
+      TargetLanguage: options.targetLang || 'ENG',
       Url: 'local',
       ImgTransKey: API_CONFIG.IMG_TRANS_KEY,  // 使用固定密钥
       CommitTime: commitTime,
@@ -170,7 +183,9 @@ export async function translateImageByFile(fileBuffer, options = {}) {
     };
 
     // 生成签名：md5(CommitTime + '_' + UserKey + '_' + ImgTransKey)
-    params.Sign = generateSign(commitTime, userKey, API_CONFIG.IMG_TRANS_KEY);
+    params.Sign = generateSign(commitTime, API_CONFIG.USER_KEY, API_CONFIG.IMG_TRANS_KEY);
+    console.log('🔐 [translateImageByFile] 签名参数: CommitTime=%s, UserKey=%s, ImgTransKey=%s',
+      commitTime, API_CONFIG.USER_KEY, API_CONFIG.IMG_TRANS_KEY);
 
     // 构建查询字符串
     const queryString = Object.entries(params)
@@ -192,15 +207,32 @@ export async function translateImageByFile(fileBuffer, options = {}) {
     // 发送请求（使用http.js的post方法，传入FormData）
     const response = await post(requestUrl, formData);
 
-    console.log('📥 [translateImageByFile] 响应:', response);
+    console.log('📥 [translateImageByFile] 响应原始:', response);
+    console.log('📊 [translateImageByFile] 响应类型:', typeof response);
+    console.log('📊 [translateImageByFile] 响应Keys:', response ? Object.keys(response) : 'null');
 
-    // 解析响应
-    if (response && response.Code === 0 && response.Data) {
-      const translatedUrl = response.Data.SslUrl || response.Data.Url;
+    // 尝试解析JSON字符串（如果response是字符串）
+    let parsedResponse = response;
+    if (typeof response === 'string') {
+      try {
+        parsedResponse = JSON.parse(response);
+        console.log('✅ [translateImageByFile] 成功解析JSON字符串');
+      } catch (e) {
+        console.error('❌ [translateImageByFile] JSON解析失败:', e);
+      }
+    }
+
+    console.log('📊 [translateImageByFile] 解析后Code:', parsedResponse?.Code);
+    console.log('📊 [translateImageByFile] 解析后Data:', parsedResponse?.Data);
+
+    // 解析响应（成功状态码是200，兼容数字和字符串类型）
+    if (parsedResponse && (parsedResponse.Code === 200 || parsedResponse.Code === '200') && parsedResponse.Data) {
+      const translatedUrl = parsedResponse.Data.SslUrl || parsedResponse.Data.Url;
       console.log('✅ [translateImageByFile] 翻译成功:', translatedUrl);
       return translatedUrl;
     } else {
-      throw new Error(response?.Message || '翻译失败');
+      console.error('❌ [translateImageByFile] 响应判断失败，Code:', parsedResponse?.Code, 'Data:', parsedResponse?.Data);
+      throw new Error(parsedResponse?.Message || '翻译失败');
     }
   } catch (error) {
     console.error('❌ [translateImageByFile] 文件翻译失败:', error);
