@@ -356,6 +356,10 @@ const ProductDetail = ({
   const [compareContainerWidth, setCompareContainerWidth] = useState(0); // 对比容器宽度
   const compareContainerRef = useRef(null); // 对比容器引用
 
+  // 批量翻译状态
+  const [translatingGroup, setTranslatingGroup] = useState(null); // 正在翻译的组 {type: 'sku'|'scene', skuIndex}
+  const [translateProgress, setTranslateProgress] = useState(null); // 翻译进度 {completed, total, running, failed}
+
   // Toast 提示状态
   const [toast, setToast] = useState({
     open: false,
@@ -1986,6 +1990,275 @@ const ProductDetail = ({
       setError(`批量同步失败: ${error.message}`);
     } finally {
       setSyncingGroupToPS(null);
+    }
+  };
+
+  /**
+   * 批量翻译组图片
+   */
+  const handleBatchTranslateGroup = async (type, skuIndex = null) => {
+    try {
+      // 获取要翻译的图片列表
+      let images = [];
+      let groupTitle = '';
+
+      if (type === 'sku' && skuIndex !== null) {
+        const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+        if (sku) {
+          images = sku.images;
+          groupTitle = sku.skuTitle;
+        }
+      } else if (type === 'scene') {
+        images = virtualizedImageGroups.scenes;
+        groupTitle = '场景图片';
+      }
+
+      if (images.length === 0) {
+        console.log('ℹ️ [handleBatchTranslateGroup] 没有图片需要翻译');
+        return;
+      }
+
+      console.log(`🚀 [handleBatchTranslateGroup] 准备批量翻译: ${groupTitle}, 共 ${images.length} 张图片`);
+
+      // 设置翻译状态
+      setTranslatingGroup({ type, skuIndex });
+      setTranslateProgress({ completed: 0, total: images.length, running: 0, failed: 0 });
+      setError(null);
+
+      // 批量处理配置（翻译API较慢，减少并发数）
+      const BATCH_SIZE = 2;
+      const results = { success: 0, failed: 0, errors: [] };
+
+      // 存储翻译结果，稍后统一更新索引
+      const translationResults = [];
+
+      // 分批处理图片
+      for (let i = 0; i < images.length; i += BATCH_SIZE) {
+        const batch = images.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(images.length / BATCH_SIZE);
+
+        console.log(`📦 [批量翻译] 处理第 ${batchNumber}/${totalBatches} 批，包含 ${batch.length} 张图片`);
+
+        // 并发处理当前批次
+        const batchPromises = batch.map(async (image) => {
+          try {
+            // 更新进度：增加运行中计数
+            setTranslateProgress(prev => prev ? { ...prev, running: prev.running + 1 } : null);
+
+            console.log(`🖼️ [批量翻译] 正在翻译图片: ${image.imageUrl}`);
+
+            // 1. 获取图片源（优先使用HTTPS URL）
+            let imageSource = null;
+            if (image.imageUrl && image.imageUrl.startsWith('https://')) {
+              imageSource = image.imageUrl;
+              console.log('✅ [批量翻译] 使用图片URL:', imageSource);
+            } else if (image.hasLocal) {
+              try {
+                const localFile = await localImageManager.getLocalImageFile(image.id);
+                if (localFile) {
+                  const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
+                  imageSource = arrayBuffer;
+                  console.log('✅ [批量翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
+                }
+              } catch (error) {
+                console.warn('⚠️ [批量翻译] 读取本地文件失败:', error);
+              }
+            }
+
+            if (!imageSource) {
+              throw new Error('无法获取图片源');
+            }
+
+            // 2. 调用翻译API
+            const translatedImageUrl = await translateImage(imageSource, {
+              sourceLang: 'CHS',
+              targetLang: 'ENG',
+              filename: image.id ? `${image.id}.png` : 'image.png',
+              mimeType: 'image/png'
+            });
+
+            console.log(`✅ [批量翻译] 翻译成功: ${translatedImageUrl}`);
+
+            // 3. 下载翻译后的图片
+            const response = await fetch(translatedImageUrl);
+            if (!response.ok) {
+              throw new Error(`下载失败 (${response.status}): ${response.statusText}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            console.log('✅ [批量翻译] 图片下载成功, 大小:', arrayBuffer.byteLength);
+
+            // 4. 获取图片信息
+            const imageInfo = localImageManager.getImageInfo(image.id);
+            if (!imageInfo) {
+              throw new Error('未找到图片信息');
+            }
+
+            // 5. 保存图片到本地（使用翻译后的URL生成文件名）
+            const productFolder = await localImageManager.getOrCreateProductFolder(imageInfo.applyCode);
+            const localFilePath = localImageManager.generateLocalFilename({
+              imageUrl: translatedImageUrl, // 使用翻译后的URL（包含-f后缀）
+              applyCode: imageInfo.applyCode
+            });
+            const fileName = localFilePath.split('/')[1];
+
+            const fs = require('uxp').storage.localFileSystem;
+            const formats = require('uxp').storage.formats;
+            const localFile = await productFolder.createFile(fileName, { overwrite: true });
+            await localFile.write(arrayBuffer, { format: formats.binary });
+            console.log('✅ [批量翻译] 文件已保存:', fileName);
+
+            // 6. 存储翻译结果，稍后统一更新索引
+            translationResults.push({
+              originalImageUrl: image.imageUrl,  // 保存原始URL用于查找
+              translatedImageUrl: translatedImageUrl,
+              localPath: `${imageInfo.applyCode}/${fileName}`,
+              fileSize: arrayBuffer.byteLength,
+              imageInfo: imageInfo
+            });
+
+            console.log('✅ [批量翻译] 翻译结果已记录:', image.imageUrl);
+
+            // 更新进度：完成数+1，运行中-1
+            setTranslateProgress(prev => prev ? {
+              ...prev,
+              completed: prev.completed + 1,
+              running: prev.running - 1
+            } : null);
+
+            results.success++;
+            return { success: true, imageId: image.id };
+          } catch (error) {
+            console.error(`❌ [批量翻译] 翻译失败: ${image.imageUrl}`, error);
+
+            // 更新进度：完成数+1（失败也算完成），运行中-1，失败数+1
+            setTranslateProgress(prev => prev ? {
+              ...prev,
+              completed: prev.completed + 1,
+              running: prev.running - 1,
+              failed: prev.failed + 1
+            } : null);
+
+            results.failed++;
+            results.errors.push({
+              imageId: image.id,
+              imageUrl: image.imageUrl,
+              error: error.message
+            });
+            return { success: false, imageId: image.id, error: error.message };
+          }
+        });
+
+        // 等待当前批次完成
+        await Promise.allSettled(batchPromises);
+
+        // 批次间短暂延迟，避免API过载
+        if (i + BATCH_SIZE < images.length) {
+          console.log(`⏳ [批量翻译] 批次间延迟...`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      // 7. 统一更新索引（在所有翻译完成后）
+      console.log(`📝 [批量翻译] 开始统一更新索引，共 ${translationResults.length} 条记录`);
+      console.log(`📝 [批量翻译] 翻译结果预览:`, translationResults.map(r => `${r.originalImageUrl} -> ${r.translatedImageUrl}`));
+
+      if (translationResults.length > 0) {
+        // 获取第一个图片的applyCode来获取product对象
+        const firstImageInfo = translationResults[0].imageInfo;
+        const product = localImageManager.getOrCreateProduct(firstImageInfo.applyCode);
+
+        console.log(`📝 [批量翻译] Product信息:`, {
+          applyCode: firstImageInfo.applyCode,
+          originalImages: product.originalImages?.length || 0,
+          senceImages: product.senceImages?.length || 0,
+          publishSkus: product.publishSkus?.length || 0
+        });
+
+        // 遍历所有翻译结果，更新索引
+        let successCount = 0;
+        for (let i = 0; i < translationResults.length; i++) {
+          const result = translationResults[i];
+          const { originalImageUrl, translatedImageUrl, localPath, fileSize, imageInfo } = result;
+          let targetImageInfo = null;
+
+          console.log(`\n🔍 [批量翻译] [${i + 1}/${translationResults.length}] 处理图片:`);
+          console.log(`   原始URL: ${originalImageUrl}`);
+          console.log(`   翻译URL: ${translatedImageUrl}`);
+          console.log(`   图片类型: ${imageInfo.imageType}`);
+          console.log(`   SKU索引: ${imageInfo.skuIndex}`);
+
+          if (imageInfo.imageType === 'scene') {
+            console.log(`   → 在场景图片中查找 (共${product.senceImages?.length || 0}张)`);
+            targetImageInfo = product.senceImages?.find(img => img.imageUrl === originalImageUrl);
+          } else if (imageInfo.skuIndex !== undefined) {
+            console.log(`   → 在SKU图片中查找 (SKU索引: ${imageInfo.skuIndex})`);
+            const sku = product.publishSkus?.find(s => s.skuIndex === imageInfo.skuIndex);
+            if (sku) {
+              console.log(`   → 找到SKU，包含${sku.skuImages?.length || 0}张图片`);
+              if (sku.skuImages && sku.skuImages.length > 0) {
+                console.log(`   → SKU图片URLs:`, sku.skuImages.map(img => img.imageUrl).join(', '));
+              }
+              targetImageInfo = sku.skuImages?.find(img => img.imageUrl === originalImageUrl);
+            } else {
+              console.error(`   ❌ 未找到SKU (索引: ${imageInfo.skuIndex})`);
+            }
+          } else {
+            console.log(`   → 在原始图片中查找 (共${product.originalImages?.length || 0}张)`);
+            targetImageInfo = product.originalImages?.find(img => img.imageUrl === originalImageUrl);
+          }
+
+          if (targetImageInfo) {
+            targetImageInfo.imageUrl = translatedImageUrl;
+            targetImageInfo.localPath = localPath;
+            targetImageInfo.hasLocal = true;
+            targetImageInfo.status = 'pending_edit';
+            targetImageInfo.timestamp = Date.now();
+            targetImageInfo.fileSize = fileSize;
+            successCount++;
+            console.log(`   ✅ 索引已更新`);
+          } else {
+            console.error(`   ❌ 未找到图片记录！无法更新索引`);
+          }
+        }
+
+        console.log(`\n📝 [批量翻译] 索引更新完成: 成功${successCount}/${translationResults.length}条`);
+      }
+
+      // 7. 保存索引数据
+      await localImageManager.saveIndexData();
+      console.log('💾 [批量翻译] 索引数据已保存');
+
+      // 8. 刷新页面数据
+      console.log('🔄 [批量翻译] 刷新页面数据...');
+      await initializeImageData();
+
+      // 9. 显示结果
+      if (results.success > 0 && results.failed === 0) {
+        console.log(`🎉 [批量翻译] 完全成功: 已成功翻译 ${results.success} 张图片`);
+        setToast({
+          open: true,
+          message: `批量翻译成功：${results.success}张图片已翻译并更新`,
+          type: 'success'
+        });
+      } else if (results.success > 0 && results.failed > 0) {
+        console.warn(`⚠️ [批量翻译] 部分成功: ${results.success}张成功, ${results.failed}张失败`);
+        setToast({
+          open: true,
+          message: `部分翻译成功: ${results.success}张成功, ${results.failed}张失败`,
+          type: 'warning'
+        });
+      } else {
+        console.error(`💥 [批量翻译] 完全失败`);
+        setError('批量翻译失败，请检查网络连接和翻译服务');
+      }
+
+    } catch (error) {
+      console.error('❌ [handleBatchTranslateGroup] 批量翻译过程发生异常:', error);
+      setError(`批量翻译失败: ${error.message}`);
+    } finally {
+      setTranslatingGroup(null);
+      setTranslateProgress(null);
     }
   };
 
@@ -3905,6 +4178,30 @@ const ProductDetail = ({
         </div>
       )}
 
+      {/* 批量翻译进度条 */}
+      {translateProgress && (
+        <div className="upload-progress-container">
+          <div className="upload-progress-header">
+            <span className="upload-progress-text">
+              {translateProgress.completed >= translateProgress.total ? '翻译完成' : '翻译中'} {translateProgress.completed || 0}/{translateProgress.total || 0}
+              {translateProgress.running > 0 && ` (${translateProgress.running}个进行中)`}
+              {translateProgress.failed > 0 && ` | ❌${translateProgress.failed}`}
+            </span>
+            <div className="upload-progress-percent">
+              {translateProgress.total > 0 ? Math.round(((translateProgress.completed || 0) / translateProgress.total) * 100) : 0}%
+            </div>
+          </div>
+          <div className="upload-progress-bar">
+            <div
+              className="upload-progress-fill"
+              style={{
+                width: translateProgress.total > 0 ? `${((translateProgress.completed || 0) / translateProgress.total) * 100}%` : '0%'
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* 内容区域 - 合并所有图片类型 */}
       <div className="tab-content" ref={contentRef}>
         {/* 原始图片 */}
@@ -4038,6 +4335,16 @@ const ProductDetail = ({
                           : '批量同步到PS'}
                       </button>
                       <button
+                        className="batch-translate-btn"
+                        onClick={() => handleBatchTranslateGroup('sku', sku.skuIndex || skuIndex)}
+                        disabled={translatingGroup?.type === 'sku' && translatingGroup?.skuIndex === (sku.skuIndex || skuIndex)}
+                        title={`一键翻译${sku.skuTitle}的所有图片`}
+                      >
+                        {translatingGroup?.type === 'sku' && translatingGroup?.skuIndex === (sku.skuIndex || skuIndex)
+                          ? '翻译中...'
+                          : '一键翻译'}
+                      </button>
+                      <button
                         className="delete-all-btn"
                         onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
                         title={`一键删除${sku.skuTitle}的所有图片`}
@@ -4163,6 +4470,14 @@ const ProductDetail = ({
                     title="批量同步所有场景图片到PS"
                   >
                     {syncingGroupToPS?.type === 'scene' ? '同步中...' : '批量同步到PS'}
+                  </button>
+                  <button
+                    className="batch-translate-btn"
+                    onClick={() => handleBatchTranslateGroup('scene')}
+                    disabled={translatingGroup?.type === 'scene'}
+                    title="一键翻译所有场景图片"
+                  >
+                    {translatingGroup?.type === 'scene' ? '翻译中...' : '一键翻译'}
                   </button>
                   <button
                     className="delete-all-btn"

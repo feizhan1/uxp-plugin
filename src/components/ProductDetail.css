@@ -2533,6 +2533,47 @@
   opacity: 0.7;
 }
 
+/* 一键翻译按钮样式 */
+.batch-translate-btn {
+  padding: 6px 12px;
+  height: 24px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  min-width: 80px;
+  justify-content: center;
+  flex-shrink: 0;
+  background: white;
+  color: #9c27b0;
+  border-color: #e1bee7;
+}
+
+.batch-translate-btn:hover:not(:disabled) {
+  background: #9c27b0;
+  border-color: #9c27b0;
+  color: white;
+  box-shadow: 0 2px 4px rgba(156, 39, 176, 0.3);
+  transform: translateY(-1px);
+}
+
+.batch-translate-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(156, 39, 176, 0.2);
+}
+
+.batch-translate-btn:disabled {
+  background: #f3e5f5;
+  border-color: #e1bee7;
+  color: #ce93d8;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 /* 一键删除按钮样式 */
 .delete-all-btn {
   padding: 6px 12px;
