@@ -7,8 +7,10 @@ import ImageDownloader from '../components/ImageDownloader'
 import ImageUploader from '../components/ImageUploader'
 import LocalFileManager from '../components/LocalFileManager'
 import ProductDetail from '../components/ProductDetail'
+import StorageSetupDialog from '../components/StorageSetupDialog'
 import { autoSyncManager } from '../utils/AutoSyncManager'
 import { localImageManager } from '../utils/LocalImageManager'
+import { storageLocationManager } from '../utils/StorageLocationManager'
 import { get } from '../utils/http'
 import { post } from '../utils/http'
 import './TodoList.css'
@@ -37,6 +39,7 @@ const TodoList = () => {
   const [showLocalFileManager, setShowLocalFileManager] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
+  const [showStorageSetupDialog, setShowStorageSetupDialog] = useState(false)
 
   // 搜索功能相关状态
   const [searchMode, setSearchMode] = useState(false) // 是否处于搜索模式
@@ -149,6 +152,29 @@ const TodoList = () => {
   useEffect(() => {
     if (!loginInfo?.success) return
     let cancelled = false
+
+    // 检查存储位置配置
+    async function checkStorageLocation() {
+      console.log('🔍 [checkStorageLocation] 检查存储位置配置...')
+
+      // 检查是否已配置存储位置
+      if (!storageLocationManager.hasConfigured()) {
+        console.log('⚠️ [checkStorageLocation] 未配置存储位置，显示配置对话框')
+        setShowStorageSetupDialog(true)
+        return false
+      }
+
+      // 验证已保存的位置是否有效
+      const isValid = await storageLocationManager.validateSavedLocation()
+      if (!isValid) {
+        console.log('⚠️ [checkStorageLocation] 存储位置失效，显示配置对话框')
+        setShowStorageSetupDialog(true)
+        return false
+      }
+
+      console.log('✅ [checkStorageLocation] 存储位置配置有效')
+      return true
+    }
 
     async function fetchListAndImages() {
       console.log('🚀 [fetchListAndImages] 开始获取产品列表...')
@@ -487,13 +513,26 @@ const TodoList = () => {
       setProductImages(allImages)
     }
 
-    fetchListAndImages()
+    // 异步初始化流程
+    async function initialize() {
+      // 先检查存储位置
+      const storageValid = await checkStorageLocation()
+      if (!storageValid) {
+        console.log('⚠️ 存储位置未配置或失效，等待用户配置')
+        return
+      }
 
-    // 启动自动同步管理器
-    if (loginInfo?.success) {
-      console.log('启动自动同步管理器')
-      autoSyncManager.start(executeSync)
+      // 存储位置配置有效，继续获取数据
+      fetchListAndImages()
+
+      // 启动自动同步管理器
+      if (loginInfo?.success) {
+        console.log('启动自动同步管理器')
+        autoSyncManager.start(executeSync)
+      }
     }
+
+    initialize()
 
     return () => {
       cancelled = true
@@ -633,6 +672,27 @@ const TodoList = () => {
   // 登录成功回调
   const handleLoginSuccess = (info) => {
     setLoginInfo(info)
+  }
+
+  // 存储位置配置完成回调
+  const handleStorageSetupComplete = async (folder) => {
+    console.log('✅ [handleStorageSetupComplete] 存储位置配置完成:', folder?.nativePath)
+    setShowStorageSetupDialog(false)
+    setSuccessMsg('存储位置配置成功！正在同步产品数据...')
+
+    // 配置完成后，立即执行同步
+    try {
+      await executeSync('manual')
+    } catch (error) {
+      console.error('配置完成后同步失败:', error)
+      setError('同步失败: ' + error.message)
+    }
+  }
+
+  // 存储位置配置取消回调
+  const handleStorageSetupCancel = () => {
+    console.log('⚠️ [handleStorageSetupCancel] 用户取消了存储位置配置')
+    setError('必须选择存储位置才能继续使用插件')
   }
 
   // 图片下载完成回调
@@ -1147,8 +1207,9 @@ const TodoList = () => {
             {!searchMode && (
               <button
                 className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
-                disabled={true}
-                title={isSyncing ? syncStatus : "同步状态"}
+                disabled={isSyncing}
+                onClick={handleManualSync}
+                title={isSyncing ? syncStatus : "点击执行同步"}
               >
                 {isSyncing ? (syncStatus || '同步中') : '就绪'}
               </button>
@@ -1368,6 +1429,14 @@ const TodoList = () => {
           onClose={handleProductDetailClose}
           onSubmit={handleProductDetailSubmit}
           onUpdate={handleProductDetailUpdate}
+        />
+      )}
+      {/* 存储位置配置对话框 */}
+      {showStorageSetupDialog && (
+        <StorageSetupDialog
+          onComplete={handleStorageSetupComplete}
+          onCancel={handleStorageSetupCancel}
+          isRetry={storageLocationManager.hasConfigured()}
         />
       )}
     </div>

@@ -2,6 +2,7 @@
 // 负责产品图片的本地存储、下载、索引和同步管理
 
 import { get } from './http.js';
+import { storageLocationManager } from './StorageLocationManager.js';
 
 // 检测是否在UXP环境中
 const isUXPEnvironment = () => {
@@ -150,16 +151,18 @@ export class LocalImageManager {
    */
   async createImageDirectory() {
     try {
-      // 获取用户文档目录
-      const dataFolder = await fs.getDataFolder();
+      // 使用存储位置管理器获取用户选择的本地文件夹
+      console.log('🚀 [LocalImageManager] 获取存储位置...');
+      const baseFolder = await storageLocationManager.getStorageFolder();
+      console.log('✅ [LocalImageManager] 基础文件夹:', baseFolder.nativePath);
 
-      // 创建或获取插件专用目录
+      // 在用户选择的文件夹下创建插件专用目录
       let pluginFolder;
       try {
-        pluginFolder = await dataFolder.createFolder('tvcmall-plugin', { overwrite: false });
+        pluginFolder = await baseFolder.createFolder('tvcmall-plugin', { overwrite: false });
       } catch (error) {
         if (error.message.includes('exists')) {
-          pluginFolder = await dataFolder.getEntry('tvcmall-plugin');
+          pluginFolder = await baseFolder.getEntry('tvcmall-plugin');
           console.log('插件目录已存在，直接使用');
         } else {
           throw error;
@@ -178,9 +181,9 @@ export class LocalImageManager {
         }
       }
 
-      console.log('图片存储目录:', this.imageFolder.nativePath);
+      console.log('✅ [LocalImageManager] 图片存储目录:', this.imageFolder.nativePath);
     } catch (error) {
-      console.error('创建图片存储目录失败:', error);
+      console.error('❌ [LocalImageManager] 创建图片存储目录失败:', error);
       throw new Error(`无法创建图片存储目录: ${error.message}`);
     }
   }
