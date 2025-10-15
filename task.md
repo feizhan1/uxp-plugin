@@ -163,6 +163,185 @@
 
 ---
 
+## ✅ SKU图和场景图新增"批量同步到PS"功能 (2025-01-30)
+
+### 完成情况：为SKU图片和场景图片添加了批量同步到Photoshop的功能
+
+**需求描述**：
+- 在每个SKU的header中添加"批量同步到PS"按钮，可以将该SKU的所有图片批量打开到PS
+- 在场景图片的section-header中添加"批量同步到PS"按钮，可以将所有场景图片批量打开到PS
+- 点击批量同步按钮后，自动分批将图片打开到PS（每批3张）
+- 同步过程中显示"同步中..."状态，禁用按钮防止重复点击
+- 自动将已完成状态的图片重置为编辑中状态
+- 批量同步完成后显示成功/失败结果
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+
+- **添加状态管理** (第280行)：
+  ```javascript
+  const [syncingGroupToPS, setSyncingGroupToPS] = useState(null); // 正在批量同步到PS的组信息
+  ```
+
+- **添加批量同步核心函数** (第1781-1903行)：
+  ```javascript
+  const handleBatchSyncGroupToPS = async (type, skuIndex = null) => {
+    // 获取要同步的图片列表
+    let images = [];
+    let groupTitle = '';
+
+    if (type === 'sku' && skuIndex !== null) {
+      const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+      if (sku) {
+        images = sku.images;
+        groupTitle = sku.skuTitle;
+      }
+    } else if (type === 'scene') {
+      images = virtualizedImageGroups.scenes;
+      groupTitle = '场景图片';
+    }
+
+    // 分批处理（每批3张）
+    const BATCH_SIZE = 3;
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < images.length; i += BATCH_SIZE) {
+      const batch = images.slice(i, i + BATCH_SIZE);
+
+      // 并发处理当前批次
+      const batchPromises = batch.map(async (image) => {
+        // 检查并重置已完成状态的图片
+        const imageInfo = localImageManager.getImageInfo(image.id) || localImageManager.getImageInfo(image.imageUrl);
+        if (imageInfo && imageInfo.status === 'completed') {
+          await localImageManager.resetImageToEditing(image.id);
+        }
+
+        // 使用placeImageInPS打开图片
+        const psImageInfo = { imageId: image.id, url: image.imageUrl, type: 'smart' };
+        const documentId = await placeImageInPS(psImageInfo, { directOpen: true });
+
+        // 更新图片状态为编辑中
+        await localImageManager.setImageStatus(image.id, 'editing');
+        setEditingImages(prev => new Set([...prev, image.id]));
+        updateImageStatusInState(image.id, 'editing');
+      });
+
+      await Promise.allSettled(batchPromises);
+
+      // 批次间延迟500ms
+      if (i + BATCH_SIZE < images.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // 刷新数据并显示结果
+    await initializeImageData();
+  };
+  ```
+
+- **在SKU header中添加"批量同步到PS"按钮** (第3900-3920行)：
+  ```jsx
+  {sku.images.length > 0 && (
+    <>
+      <button
+        className="batch-sync-to-ps-btn"
+        onClick={() => handleBatchSyncGroupToPS('sku', sku.skuIndex || skuIndex)}
+        disabled={syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)}
+        title={`批量同步${sku.skuTitle}的所有图片到PS`}
+      >
+        {syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)
+          ? '同步中...'
+          : '批量同步到PS'}
+      </button>
+      <button className="delete-all-btn" onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}>
+        一键删除
+      </button>
+    </>
+  )}
+  ```
+
+- **在场景图片header中添加"批量同步到PS"按钮** (第4016-4034行)：
+  ```jsx
+  {virtualizedImageGroups.scenes.length > 0 && (
+    <div className="section-actions">
+      <button
+        className="batch-sync-to-ps-btn"
+        onClick={() => handleBatchSyncGroupToPS('scene')}
+        disabled={syncingGroupToPS?.type === 'scene'}
+        title="批量同步所有场景图片到PS"
+      >
+        {syncingGroupToPS?.type === 'scene' ? '同步中...' : '批量同步到PS'}
+      </button>
+      <button className="delete-all-btn" onClick={() => handleConfirmDeleteGroup('scene')}>
+        一键删除
+      </button>
+    </div>
+  )}
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+
+- **添加 .batch-sync-to-ps-btn 样式** (第2478-2517行)：
+  ```css
+  .batch-sync-to-ps-btn {
+    padding: 6px 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    min-width: 100px;
+    justify-content: center;
+    flex-shrink: 0;
+    background: white;
+    color: #2196f3;
+    border-color: #bbdefb;
+  }
+
+  .batch-sync-to-ps-btn:hover:not(:disabled) {
+    background: #2196f3;
+    border-color: #2196f3;
+    color: white;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .batch-sync-to-ps-btn:disabled {
+    background: #e3f2fd;
+    border-color: #bbdefb;
+    color: #90caf9;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  ```
+
+**功能特点**：
+- 每个SKU和场景图片组都有独立的"批量同步到PS"按钮
+- 使用分批处理策略（每批3张），避免PS过载
+- 批次间延迟500ms，给PS缓冲时间
+- 自动检测并重置已完成状态的图片为编辑中
+- 同步过程中显示"同步中..."文本并禁用按钮
+- 按钮使用蓝色主题，与同步操作的语义一致
+- 完整的错误处理和结果反馈
+- 同步完成后自动刷新数据显示最新状态
+
+**测试要点**：
+- [ ] 测试批量同步单个SKU的所有图片
+- [ ] 测试批量同步所有场景图片
+- [ ] 测试同步过程中的状态反馈
+- [ ] 测试已完成图片的状态重置
+- [ ] 测试大量图片的分批处理
+- [ ] 测试同步过程中的错误处理
+- [ ] 测试按钮的禁用和启用状态
+- [ ] 测试同步完成后的数据刷新
+
+---
+
 ## ✅ 为产品编号添加复制功能 (2025-01-29)
 
 ### 完成情况：在产品详情页和待处理产品列表页中为产品编号添加了复制功能

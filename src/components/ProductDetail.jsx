@@ -277,6 +277,7 @@ const ProductDetail = ({
   const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(false); // 全局控制是否跳过删除确认
   const [dontAskAgain, setDontAskAgain] = useState(false); // 当前对话框中"不再询问"复选框状态
   const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息 {type: 'sku'|'scene', skuIndex: number, count: number, title: string}
+  const [syncingGroupToPS, setSyncingGroupToPS] = useState(null); // 正在批量同步到PS的组信息 {type: 'sku'|'scene', skuIndex: number}
 
   // 图片预览模式状态管理
   const [previewMode, setPreviewMode] = useState({
@@ -1774,6 +1775,130 @@ const ProductDetail = ({
       setError(`批量删除操作失败: ${error.message}`);
     } finally {
       setDeletingGroup(null);
+    }
+  };
+
+  /**
+   * 批量同步组到PS
+   */
+  const handleBatchSyncGroupToPS = async (type, skuIndex = null) => {
+    try {
+      // 获取要同步的图片列表
+      let images = [];
+      let groupTitle = '';
+
+      if (type === 'sku' && skuIndex !== null) {
+        const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+        if (sku) {
+          images = sku.images;
+          groupTitle = sku.skuTitle;
+        }
+      } else if (type === 'scene') {
+        images = virtualizedImageGroups.scenes;
+        groupTitle = '场景图片';
+      }
+
+      if (images.length === 0) {
+        console.log('ℹ️ [handleBatchSyncGroupToPS] 没有图片需要同步');
+        return;
+      }
+
+      console.log(`🚀 [handleBatchSyncGroupToPS] 准备批量同步: ${groupTitle}, 共 ${images.length} 张图片`);
+
+      // 设置同步状态
+      setSyncingGroupToPS({ type, skuIndex });
+      setError(null);
+
+      // 批量处理配置
+      const BATCH_SIZE = 3; // 避免同时打开太多PS文档
+      const results = { success: 0, failed: 0, errors: [] };
+
+      // 分批处理图片
+      for (let i = 0; i < images.length; i += BATCH_SIZE) {
+        const batch = images.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(images.length / BATCH_SIZE);
+
+        console.log(`📦 [批量同步组] 处理第 ${batchNumber}/${totalBatches} 批，包含 ${batch.length} 张图片`);
+
+        // 并发处理当前批次
+        const batchPromises = batch.map(async (image) => {
+          try {
+            console.log(`🖼️ [批量同步组] 正在打开图片: ${image.imageUrl}`);
+
+            // 检查图片当前状态，如果是已完成状态，重置为编辑中
+            const imageInfo = localImageManager.getImageInfo(image.id) || localImageManager.getImageInfo(image.imageUrl);
+            if (imageInfo && imageInfo.status === 'completed') {
+              console.log('🔄 [批量同步组] 图片为已完成状态，重置为编辑中');
+              await localImageManager.resetImageToEditing(image.id);
+            }
+
+            // 使用现有的单个图片打开逻辑
+            const psImageInfo = {
+              imageId: image.id,
+              url: image.imageUrl,
+              type: 'smart'
+            };
+
+            const documentId = await placeImageInPS(psImageInfo, { directOpen: true });
+
+            console.log(`✅ [批量同步组] 成功打开: ${image.imageUrl} (文档ID: ${documentId})`);
+
+            // 更新图片状态为编辑中
+            try {
+              await localImageManager.setImageStatus(image.id, 'editing');
+              setEditingImages(prev => new Set([...prev, image.id]));
+              updateImageStatusInState(image.id, 'editing');
+            } catch (statusError) {
+              console.error('❌ [批量同步组] 更新图片状态失败:', statusError);
+            }
+
+            results.success++;
+            return { success: true, imageId: image.id, documentId };
+          } catch (error) {
+            console.error(`❌ [批量同步组] 打开失败: ${image.imageUrl}`, error);
+            results.failed++;
+            results.errors.push({
+              imageId: image.id,
+              imageUrl: image.imageUrl,
+              error: error.message
+            });
+            return { success: false, imageId: image.id, error: error.message };
+          }
+        });
+
+        // 等待当前批次完成
+        await Promise.allSettled(batchPromises);
+
+        // 批次间短暂延迟，避免PS过载
+        if (i + BATCH_SIZE < images.length) {
+          console.log(`⏳ [批量同步组] 批次间延迟，给PS缓冲时间...`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      // 刷新图片数据显示最新状态
+      console.log(`🔄 [批量同步组] 刷新图片数据以显示最新状态...`);
+      await initializeImageData();
+
+      // 显示结果
+      if (results.success > 0 && results.failed === 0) {
+        console.log(`🎉 [批量同步组] 完全成功: 已成功打开 ${results.success} 张图片到PS中`);
+        setError(null);
+      } else if (results.success > 0 && results.failed > 0) {
+        const errorDetails = results.errors.map(err => `${err.imageUrl}: ${err.error}`).join(', ');
+        console.warn(`⚠️ [批量同步组] 部分成功: ${results.success}张成功, ${results.failed}张失败`);
+        setError(`部分同步成功: ${results.success}张成功, ${results.failed}张失败`);
+      } else {
+        console.error(`💥 [批量同步组] 完全失败`);
+        setError('批量同步失败，请检查PS是否正常运行');
+      }
+
+    } catch (error) {
+      console.error('❌ [handleBatchSyncGroupToPS] 批量同步过程发生异常:', error);
+      setError(`批量同步失败: ${error.message}`);
+    } finally {
+      setSyncingGroupToPS(null);
     }
   };
 
@@ -3773,13 +3898,25 @@ const ProductDetail = ({
                     </div>
                   )}
                   {sku.images.length > 0 && (
-                    <button
-                      className="delete-all-btn"
-                      onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
-                      title={`一键删除${sku.skuTitle}的所有图片`}
-                    >
-                      一键删除
-                    </button>
+                    <>
+                      <button
+                        className="batch-sync-to-ps-btn"
+                        onClick={() => handleBatchSyncGroupToPS('sku', sku.skuIndex || skuIndex)}
+                        disabled={syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)}
+                        title={`批量同步${sku.skuTitle}的所有图片到PS`}
+                      >
+                        {syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)
+                          ? '同步中...'
+                          : '批量同步到PS'}
+                      </button>
+                      <button
+                        className="delete-all-btn"
+                        onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+                        title={`一键删除${sku.skuTitle}的所有图片`}
+                      >
+                        一键删除
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -3877,13 +4014,23 @@ const ProductDetail = ({
             <div className="section-header">
               <h3>场景图片 ({virtualizedImageGroups.scenes.length})</h3>
               {virtualizedImageGroups.scenes.length > 0 && (
-                <button
-                  className="delete-all-btn"
-                  onClick={() => handleConfirmDeleteGroup('scene')}
-                  title="一键删除所有场景图片"
-                >
-                  一键删除
-                </button>
+                <div className="section-actions">
+                  <button
+                    className="batch-sync-to-ps-btn"
+                    onClick={() => handleBatchSyncGroupToPS('scene')}
+                    disabled={syncingGroupToPS?.type === 'scene'}
+                    title="批量同步所有场景图片到PS"
+                  >
+                    {syncingGroupToPS?.type === 'scene' ? '同步中...' : '批量同步到PS'}
+                  </button>
+                  <button
+                    className="delete-all-btn"
+                    onClick={() => handleConfirmDeleteGroup('scene')}
+                    title="一键删除所有场景图片"
+                  >
+                    一键删除
+                  </button>
+                </div>
               )}
             </div>
             <div className="image-grid">
