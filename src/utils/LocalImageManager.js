@@ -358,6 +358,105 @@ export class LocalImageManager {
   }
 
   /**
+   * 跳过失败的图片（标记为失败状态，不再重试下载）
+   * @param {Array} failedErrors 失败的错误列表 [{imageInfo, error}]
+   * @returns {number} 跳过的图片数量
+   */
+  async skipFailedImages(failedErrors) {
+    console.log(`=== skipFailedImages 被调用，跳过 ${failedErrors.length} 张失败的图片 ===`);
+
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!Array.isArray(failedErrors) || failedErrors.length === 0) {
+      console.log('没有需要跳过的图片');
+      return 0;
+    }
+
+    let skippedCount = 0;
+
+    for (const { imageInfo, error } of failedErrors) {
+      try {
+        const { imageUrl, applyCode, sourceIndex, skuIndex, imageType } = imageInfo;
+        const url = imageUrl || imageInfo.url;
+
+        if (!url || !applyCode) {
+          console.warn(`跳过图片失败: 缺少必要信息`, imageInfo);
+          continue;
+        }
+
+        console.log(`⏭️ 跳过图片: ${url}`);
+
+        // 获取或创建产品
+        const product = this.getOrCreateProduct(applyCode);
+
+        // 创建失败状态的图片记录（imageUrl存在，localPath为空）
+        const failedImageData = {
+          imageUrl: url,
+          localPath: '', // 空的localPath表示未下载
+          status: 'download_failed', // 标记为下载失败
+          timestamp: Date.now(),
+          error: error || '下载失败',
+          fileSize: 0
+        };
+
+        // 根据imageType和skuIndex判断图片类型，添加到相应位置
+        if (imageType === 'scene') {
+          // 处理场景图片
+          let sceneImage = product.senceImages.find(img => img.imageUrl === url);
+          if (!sceneImage) {
+            sceneImage = { ...failedImageData, index: sourceIndex };
+            product.senceImages.push(sceneImage);
+          } else {
+            Object.assign(sceneImage, failedImageData, { index: sourceIndex });
+          }
+        } else if (skuIndex !== undefined && skuIndex !== null) {
+          // 处理SKU图片
+          let sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
+          if (!sku) {
+            sku = {
+              skuIndex: skuIndex,
+              attrClasses: [],
+              skuImages: []
+            };
+            product.publishSkus.push(sku);
+          }
+
+          let skuImage = sku.skuImages.find(img => img.imageUrl === url);
+          if (!skuImage) {
+            skuImage = { ...failedImageData, index: sourceIndex };
+            sku.skuImages.push(skuImage);
+          } else {
+            Object.assign(skuImage, failedImageData, { index: sourceIndex });
+          }
+        } else {
+          // 处理原始图片
+          let originalImage = product.originalImages.find(img => img.imageUrl === url);
+          if (!originalImage) {
+            originalImage = { ...failedImageData };
+            product.originalImages.push(originalImage);
+          } else {
+            Object.assign(originalImage, failedImageData);
+          }
+        }
+
+        skippedCount++;
+        console.log(`✅ 已标记图片为失败状态: ${url}`);
+      } catch (err) {
+        console.error(`标记失败图片时出错:`, err);
+      }
+    }
+
+    // 保存索引数据
+    console.log('=== 保存索引数据到本地存储 ===');
+    await this.saveIndexData();
+
+    console.log(`=== 跳过完成: 共标记 ${skippedCount} 张图片为失败状态 ===`);
+    return skippedCount;
+  }
+
+  /**
    * 检查是否需要下载图片
    * @param {Object} imageInfo 图片信息
    * @returns {boolean} 是否需要下载
@@ -387,6 +486,12 @@ export class LocalImageManager {
     if (!existingInfo) {
       console.log(`✅ [shouldDownloadImage] 图片 ${id} 是新图片，需要下载`);
       return true; // 新图片需要下载
+    }
+
+    // 检查是否已标记为下载失败（用户已跳过）
+    if (existingInfo.status === 'download_failed') {
+      console.log(`⏭️ [shouldDownloadImage] 图片 ${id} 已标记为下载失败，跳过下载`);
+      return false; // 已跳过的图片不再下载
     }
 
     // 检查本地文件是否存在

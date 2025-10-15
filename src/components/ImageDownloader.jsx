@@ -122,22 +122,28 @@ const ImageDownloader = ({
 
       console.log('localImageManager.downloadProductImages 完成，结果:', results);
 
+      // 如果有失败的图片，自动跳过它们
+      if (results.failed > 0 && errors.length > 0) {
+        console.log(`自动跳过 ${errors.length} 张失败的图片`);
+        try {
+          const skippedCount = await localImageManager.skipFailedImages(errors);
+          console.log(`✅ 已自动跳过 ${skippedCount} 张失败的图片`);
+
+          // 更新结果，将失败的图片计入跳过数
+          results.skipped = (results.skipped || 0) + skippedCount;
+          results.failed = 0;
+        } catch (error) {
+          console.error('自动跳过失败的图片时出错:', error);
+          // 即使跳过失败，也继续执行，不影响用户体验
+        }
+      }
+
       setDownloadResults(results);
+      setDownloadStatus('completed');
+      console.log('✅ 图片下载完成');
 
-      if (results.failed === 0) {
-        setDownloadStatus('completed');
-        console.log('✅ 所有图片下载完成');
-
-        if (onComplete) {
-          onComplete(results);
-        }
-      } else {
-        setDownloadStatus('error');
-        console.warn(`⚠️ 下载完成但有 ${results.failed} 张图片失败`);
-
-        if (onError) {
-          onError(new Error(`${results.failed} 张图片下载失败`), results);
-        }
+      if (onComplete) {
+        onComplete(results);
       }
 
     } catch (error) {

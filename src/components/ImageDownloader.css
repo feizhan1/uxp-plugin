@@ -286,6 +286,15 @@
   background-color: #616161;
 }
 
+.btn-warning {
+  background-color: #f57c00;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #e65100;
+}
+
 .btn-default {
   background-color: #e0e0e0;
   color: #333;
