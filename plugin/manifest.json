@@ -63,7 +63,10 @@
         "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",
-        "https://sts.sjlpj.cn"
+        "https://sts.sjlpj.cn",
+        "https://api.tosoiot.com",
+        "https://api2.tosoiot.com",
+        "https://*.xiangjifanyi.com"
       ]
     },
     "network": {
@@ -93,7 +96,10 @@
         "https://openapi-prod.sjlpj.cn:6002",
         "https://www.tvcmall.com",
         "https://tvc-site.s3.amazonaws.com",
-        "https://sts.sjlpj.cn"
+        "https://sts.sjlpj.cn",
+        "https://api.tosoiot.com",
+        "https://api2.tosoiot.com",
+        "https://*.xiangjifanyi.com"
       ]
     }
   },

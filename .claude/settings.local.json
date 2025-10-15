@@ -5,7 +5,8 @@
       "Read(//c/Users/macdown/AppData/Roaming/Adobe/UXP/PluginsStorage/PHSP/26/Developer/7d40622e/PluginData/tvcmall-plugin/product-images/**)",
       "Bash(dir:*)",
       "Bash(git add:*)",
-      "WebFetch(domain:forums.creativeclouddeveloper.com)"
+      "WebFetch(domain:forums.creativeclouddeveloper.com)",
+      "WebFetch(domain:openapi-doc.xiangjifanyi.com)"
     ],
     "deny": [],
     "ask": []

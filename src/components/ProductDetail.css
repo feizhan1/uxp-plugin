@@ -1925,6 +1925,229 @@
   right: 16px;
 }
 
+/* 图片对比模式样式 */
+.image-compare-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 对比模式顶部操作按钮 */
+.compare-actions {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(5px);
+}
+
+.compare-action-btn {
+  padding: 6px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.compare-action-btn.apply-btn {
+  background: #4caf50;
+  color: white;
+}
+
+.compare-action-btn.apply-btn:hover:not(:disabled) {
+  background: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+}
+
+.compare-action-btn.apply-btn:disabled {
+  background: #999;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.compare-action-btn.cancel-btn {
+  background: #fff;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.compare-action-btn.cancel-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: #999;
+  color: #333;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.compare-action-btn.cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.compare-image-before,
+.compare-image-after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compare-image-after {
+  z-index: 2;
+}
+
+.compare-image-before .local-image-container,
+.compare-image-after .local-image-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* 对比标签 */
+.compare-label {
+  position: absolute;
+  top: 12px;
+  padding: 4px 12px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.compare-label-before {
+  left: 12px;
+}
+
+.compare-label-after {
+  right: 12px;
+}
+
+/* 可拖动滑块 */
+.compare-slider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--theme-color, #ec6608);
+  cursor: ew-resize;
+  z-index: 3;
+  transform: translateX(-50%);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.compare-slider:hover {
+  background: #ff7722;
+  box-shadow: 0 0 15px rgba(236, 102, 8, 0.6);
+}
+
+/* 滑块手柄 */
+.compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  background: var(--theme-color, #ec6608);
+  border: 3px solid white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.compare-slider:hover .compare-handle {
+  background: #ff7722;
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 4px 15px rgba(236, 102, 8, 0.5);
+}
+
+.compare-handle span {
+  font-size: 12px;
+  color: white;
+  font-weight: bold;
+  margin: 0 -2px;
+}
+
+/* 翻译和退出对比按钮样式 */
+.preview-actions .translate-btn,
+.preview-actions .exit-compare-btn {
+  padding: 5px 10px;
+  height: 26px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.preview-actions .translate-btn {
+  background: #2196f3;
+  color: white;
+  border-color: #2196f3;
+}
+
+.preview-actions .translate-btn:hover:not(:disabled) {
+  background: #1976d2;
+  border-color: #1976d2;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+  transform: translateY(-1px);
+}
+
+.preview-actions .translate-btn:disabled {
+  background: #999;
+  border-color: #999;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.preview-actions .exit-compare-btn {
+  background: #fff;
+  color: #666;
+  border-color: #ddd;
+}
+
+.preview-actions .exit-compare-btn:hover {
+  background: #f5f5f5;
+  border-color: #999;
+  color: #333;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
 /* 预览底部操作区 */
 .preview-footer {
   display: flex;
