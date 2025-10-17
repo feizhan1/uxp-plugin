@@ -95,9 +95,7 @@
   font-weight: 600;
   color: #333;
   margin: 0 0 2px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .product-code {
@@ -107,6 +105,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.product-code span {
+  font-size: 10px;
 }
 
 .copy-code-btn {
@@ -133,6 +135,48 @@
   color: #333;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
+}
+
+.product-chinese-name {
+  font-size: 10px;
+  color: #666;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chinese-name-label {
+  font-size: 10px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.chinese-name-value {
+  font-size: 10px;
+  color: #333;
+  font-weight: 500;
+}
+
+.product-package-info {
+  font-size: 10px;
+  color: #666;
+  margin-top: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.package-label {
+  font-size: 10px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.package-value {
+  font-size: 10px;
+  color: #666;
+  line-height: 1.4;
 }
 
 .header-right {
