@@ -4410,3 +4410,104 @@ const handleSubmitSuccess = async (successMessage) => {
 **后续说明**:
 如需恢复自动清理功能，取消注释 `localImageManager.removeProduct()` 调用即可。
 
+
+
+---
+
+## 2025-10-17 产品详情页新增驳回功能
+
+**需求**: 在产品详情页中，当图片状态status为3（待处理）时，顶部新增"驳回"按钮，点击调用驳回API，成功后关闭详情页并刷新产品列表
+
+**实现细节**:
+
+1. **添加状态管理** (`src/components/ProductDetail.jsx:307`)
+   ```javascript
+   const [isRejecting, setIsRejecting] = useState(false); // 驳回操作进行中
+   ```
+
+2. **添加驳回处理函数** (`src/components/ProductDetail.jsx:1697-1765`)
+   - 调用API: `POST /api/publish/reject_product_image`
+   - 参数: `{ userId, userCode, applyCode }`
+   - 成功时显示Toast提示，1.5秒后关闭详情页并触发父组件刷新
+   - 失败时显示Toast错误提示
+   ```javascript
+   const handleRejectProduct = async () => {
+     // 获取登录信息并调用驳回API
+     // 成功: 显示成功Toast，延迟关闭详情页，触发父组件刷新
+     // 失败: 显示错误Toast
+   }
+   ```
+
+3. **在header区域添加驳回按钮** (`src/components/ProductDetail.jsx:4037-4045`)
+   ```jsx
+   {currentProduct.status === 3 && (
+     <button
+       className={`reject-btn ${isRejecting ? 'rejecting' : ''}`}
+       onClick={handleRejectProduct}
+       disabled={isRejecting}
+     >
+       {isRejecting ? '驳回中...' : '驳回'}
+     </button>
+   )}
+   ```
+   - 仅当产品状态为3（待处理）时显示
+   - 位于批量同步按钮和提交审核按钮之间
+
+4. **修改TodoList刷新逻辑** (`src/panels/TodoList.jsx:1152-1189`)
+   - 修改 `handleProductDetailSubmit` 函数
+   - 驳回成功后重新调用 `get_product_list` API 刷新列表
+   - 显示成功消息"操作成功"
+   ```javascript
+   const handleProductDetailSubmit = async (productData) => {
+     // 关闭详情页
+     // 重新获取产品列表数据
+     const listRes = await get('/api/publish/get_product_list', {...})
+     setData(listDataClass?.publishProductInfos || [])
+   }
+   ```
+
+**实现效果**:
+- ✅ 状态为3时显示驳回按钮，其他状态不显示
+- ✅ 点击驳回按钮调用驳回API
+- ✅ 驳回中按钮显示"驳回中..."并禁用
+- ✅ 成功时显示Toast提示，1.5秒后关闭详情页
+- ✅ 成功后触发父组件重新获取产品列表数据
+- ✅ 失败时显示Toast错误提示（不使用alert）
+- ✅ 驳回成功后列表自动刷新
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 添加驳回状态、处理函数和按钮
+- `src/panels/TodoList.jsx` - 修改提交回调支持刷新列表
+
+**API调用**:
+- 端点: `POST /api/publish/reject_product_image`
+- 请求头: `Content-Type: application/json`
+- 请求体: `{ userId: number, userCode: string, applyCode: string }`
+- 响应: `{ statusCode: 200, message: string, dataClass: string }`
+
+
+**驳回后清理本地数据修改**:
+
+5. **驳回成功后清理本地数据和图片** (`src/components/ProductDetail.jsx:1730-1735`)
+   ```javascript
+   // 🧹 清理本地数据和图片文件
+   console.log('🧹 开始清理产品数据和本地图片...');
+   const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+   if (removed) {
+     console.log('✅ 产品数据和本地图片已清理');
+   }
+   ```
+   - 在驳回API返回成功后立即执行清理
+   - 删除index.json中对应的产品数据
+   - 删除本地存储的产品图片文件（原图、SKU图、场景图）
+   - 与提交成功的行为不同：提交成功保留数据，驳回成功删除数据
+
+**实现效果**:
+- ✅ 驳回成功后自动清理index.json中的产品索引
+- ✅ 驳回成功后自动删除本地图片文件
+- ✅ 释放本地存储空间
+- ✅ 避免驳回产品残留在本地文件系统
+
+**行为差异**:
+- **提交审核成功**: 保留产品数据和本地图片（便于调试和重复测试）
+- **驳回产品成功**: 删除产品数据和本地图片（释放存储空间）

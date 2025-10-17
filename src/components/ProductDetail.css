@@ -194,8 +194,8 @@
   margin-left: 0;
 }
 
-.sync-btn, .submit-btn {
-  padding: 6px 12px;
+.sync-btn, .submit-btn, .reject-btn {
+  padding: 6px;
   height: 24px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -206,7 +206,6 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 80px;
   justify-content: center;
   flex-shrink: 0;
 }
@@ -245,8 +244,26 @@
   cursor: not-allowed;
 }
 
+.reject-btn {
+  width: auto !important;
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.reject-btn:hover:not(:disabled) {
+  background: #c82333;
+  border-color: #c82333;
+}
+
+.reject-btn.rejecting {
+  background: #999;
+  border-color: #999;
+  cursor: not-allowed;
+}
+
 .help-btn {
-  padding: 6px 12px;
+  padding: 6px;
   height: 24px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -279,7 +296,7 @@
 }
 
 .layout-btn {
-  padding: 6px 8px;
+  padding: 6px;
   height: 24px;
   border: none;
   background: #fff;
@@ -358,7 +375,7 @@
   background: #fff3cd;
   border: 1px solid #ffeaa7;
   color: #856404;
-  padding: 6px 10px;
+  padding: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -2491,7 +2508,7 @@
 }
 
 .batch-sync-btn, .sku-batch-actions .sync-btn, .cancel-btn {
-  padding: 6px 12px;
+  padding: 6px;
   height: 24px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -2589,7 +2606,6 @@
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
-  min-width: 80px;
   justify-content: center;
   flex-shrink: 0;
   background: white;

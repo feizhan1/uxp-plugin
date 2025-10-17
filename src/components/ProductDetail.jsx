@@ -304,6 +304,7 @@ const ProductDetail = ({
   const [error, setError] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false); // 驳回操作进行中
   const [deletingImage, setDeletingImage] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null); // 批量上传进度 {current: 0, total: 0}
   const [uploadStats, setUploadStats] = useState(null); // 上传统计信息
@@ -822,7 +823,8 @@ const ProductDetail = ({
           // 确保API独有字段不被覆盖
           productName: currentProduct.productName,
           chineseName: currentProduct.chineseName,
-          chinesePackageList: currentProduct.chinesePackageList
+          chinesePackageList: currentProduct.chinesePackageList,
+          status: currentProduct.status
         });
       }
 
@@ -1690,6 +1692,83 @@ const ProductDetail = ({
    */
   const handleClose = () => {
     onClose?.();
+  };
+
+  /**
+   * 驳回产品
+   */
+  const handleRejectProduct = async () => {
+    try {
+      setIsRejecting(true);
+      setError(null);
+
+      console.log('🚫 开始驳回产品:', currentProduct.applyCode);
+
+      // 获取登录信息
+      const { userId, userCode } = getLoginInfo();
+      if (!userId || !userCode) {
+        throw new Error('无法获取用户登录信息，请重新登录');
+      }
+
+      // 调用驳回API
+      const response = await post('/api/publish/reject_product_image', {
+        userId: userId,
+        userCode: userCode,
+        applyCode: currentProduct.applyCode
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const { statusCode, message } = response || {};
+
+      // 检查响应状态
+      if (statusCode === 200) {
+        console.log('✅ 产品驳回成功:', message);
+
+        // 🧹 清理本地数据和图片文件
+        console.log('🧹 开始清理产品数据和本地图片...');
+        const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+        if (removed) {
+          console.log('✅ 产品数据和本地图片已清理');
+        }
+
+        // 显示成功提示
+        setToast({
+          open: true,
+          message: message || '驳回成功',
+          type: 'success'
+        });
+
+        // 延迟关闭详情页，让用户看到成功提示
+        setTimeout(() => {
+          if (onClose) {
+            console.log('📱 关闭产品详情页');
+            onClose();
+          }
+
+          // 通知父组件提交成功，触发列表刷新
+          if (onSubmit) {
+            console.log('🔄 通知父组件驳回成功，刷新列表');
+            onSubmit(currentProduct);
+          }
+        }, 1500);
+
+      } else {
+        throw new Error(message || '驳回失败');
+      }
+
+    } catch (error) {
+      console.error('❌ 驳回产品失败:', error);
+      setToast({
+        open: true,
+        message: `驳回失败: ${error.message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsRejecting(false);
+    }
   };
 
   /**
@@ -3913,18 +3992,17 @@ const ProductDetail = ({
           </div>
         </div>
         <div className="header-right">
-          <button
+          <div
             className="submit-btn"
             onClick={() => {
-              console.log('🔄 [刷新按钮] 触发页面刷新');
               initializeImageData();
             }}
             title="刷新页面数据"
-            role="button"
+            role="div"
             tabIndex="0"
           >
             刷新
-          </button>
+          </div>
           <div className="layout-selector">
             <div
               className={`layout-btn ${imageLayout === 'small' ? 'active' : ''}`}
@@ -3962,6 +4040,15 @@ const ProductDetail = ({
           >
             {getSyncButtonText()}
           </button>
+          {currentProduct.status === 3 && (
+            <button
+              className={`reject-btn ${isRejecting ? 'rejecting' : ''}`}
+              onClick={handleRejectProduct}
+              disabled={isRejecting}
+            >
+              {isRejecting ? '驳回中...' : '驳回'}
+            </button>
+          )}
           <button
             className={`submit-btn ${isSubmitting ? 'submitting' : ''}`}
             onClick={handleSubmitReview}

@@ -1154,17 +1154,33 @@ const TodoList = () => {
     try {
       console.log('产品详情页提交:', productData.applyCode)
 
-      // 从产品列表中移除已审核的产品
-      setData(prevData => {
-        return prevData.filter(item => item.applyCode !== productData.applyCode)
-      })
-
       // 关闭产品详情页
       setShowProductDetail(false)
       setCurrentProductData(null)
 
+      // 重新获取产品列表数据
+      console.log('🔄 重新获取产品列表...')
+      setLoading(true)
+      try {
+        const listRes = await get('/api/publish/get_product_list', {
+          params: { userId: loginInfo.data.UserId, userCode: loginInfo.data.UserCode },
+        })
+        const { statusCode: listStatusCode, dataClass: listDataClass } = listRes || {}
+        if (listStatusCode === 200) {
+          setData(listDataClass?.publishProductInfos || [])
+          console.log('✅ 产品列表已刷新')
+        } else {
+          throw new Error(listRes.message)
+        }
+      } catch (refreshErr) {
+        console.error('重新获取产品列表失败：', refreshErr)
+        setError(`刷新列表失败: ${refreshErr.message}`)
+      } finally {
+        setLoading(false)
+      }
+
       // 显示成功消息
-      setSuccessMsg('产品提交成功，已从待处理列表移除')
+      setSuccessMsg('操作成功')
 
     } catch (error) {
       console.error('产品提交处理失败:', error)
@@ -1450,12 +1466,12 @@ const TodoList = () => {
                 <div className='product-id'>
                   <span className='id-label'>编号</span>
                   <span className='id-value'>{item.applyCode}</span>
-                  <button
+                  <div
                     className='copy-product-code-btn'
                     onClick={() => handleCopyProductCode(item.applyCode)}
                   >
                     复制
-                  </button>
+                  </div>
                 </div>
                 <div className='product-status'>
                   <span className={`status-badge ${getProductStatus(item)}`}>

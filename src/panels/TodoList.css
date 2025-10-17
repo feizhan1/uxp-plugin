@@ -390,7 +390,7 @@
 }
 
 .copy-product-code-btn {
-  padding: 2px;
+  padding: 2px 6px;
   height: 16px;
   border: 1px solid #ddd;
   border-radius: 3px;
@@ -404,6 +404,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .copy-product-code-btn:hover {
