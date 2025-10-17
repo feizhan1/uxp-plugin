@@ -4036,13 +4036,15 @@ const ProductDetail = ({
               {isRejecting ? '驳回中...' : '驳回'}
             </button>
           )}
-          <button
-            className={`submit-btn ${isSubmitting ? 'submitting' : ''}`}
-            onClick={handleSubmitReview}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? '提交中...' : '提交审核'}
-          </button>
+          {currentProduct.status !== 4 && (
+            <button
+              className={`submit-btn ${isSubmitting ? 'submitting' : ''}`}
+              onClick={handleSubmitReview}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '提交中...' : '提交审核'}
+            </button>
+          )}
         </div>
       </div>
 
