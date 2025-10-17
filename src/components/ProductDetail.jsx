@@ -227,19 +227,6 @@ const LocalImage = React.memo(({ imageUrl, alt, className, hasLocal, needsRefres
           ✏️ 编辑中 - 右键在PS中打开
         </div>
       )}
-      {imageInfo && (
-        <div className={`image-info-tooltip ${hovered ? 'visible' : ''}`}>
-          <div className="tooltip-item">
-            名称: {imageUrl.split('/').pop().split('?')[0]}
-          </div>
-          <div className="tooltip-item">
-            尺寸: {imageInfo.width} x {imageInfo.height}
-          </div>
-          <div className="tooltip-item">
-            大小: {formatFileSize(imageInfo.fileSize)}
-          </div>
-        </div>
-      )}
     </div>
   );
 }, (prevProps, nextProps) => {

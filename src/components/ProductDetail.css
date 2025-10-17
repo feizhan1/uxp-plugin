@@ -2701,48 +2701,6 @@
   }
 }
 
-/* 图片信息浮层样式 */
-.image-info-tooltip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
-  padding: 6px;
-  border-radius: 6px;
-  z-index: 200;
-  pointer-events: none;
-  white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-
-.image-info-tooltip.visible {
-  opacity: 1;
-  visibility: visible;
-}
-
-/* 预览模式下隐藏tooltip */
-.preview-image-container .image-info-tooltip {
-  display: none !important;
-}
-
-.tooltip-item {
-  margin: 2px 0;
-  font-size: 9px;
-}
-
-.tooltip-item:first-child {
-  margin-top: 0;
-}
-
-.tooltip-item:last-child {
-  margin-bottom: 0;
-}
-
 /* 图片信息显示区域 */
 .image-info-display {
   padding: 3px 6px;

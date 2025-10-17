@@ -4511,3 +4511,50 @@ const handleSubmitSuccess = async (successMessage) => {
 **行为差异**:
 - **提交审核成功**: 保留产品数据和本地图片（便于调试和重复测试）
 - **驳回产品成功**: 删除产品数据和本地图片（释放存储空间）
+
+
+---
+
+## 2025-10-17 移除图片hover信息提示
+
+**需求**: 移除鼠标hover到图片上时显示的图片信息tooltip（名称、尺寸、大小）
+
+**实现细节**:
+
+1. **移除JSX代码** (`src/components/ProductDetail.jsx:230-242`)
+   - 删除 `image-info-tooltip` 组件及其内容
+   - 移除显示图片名称、尺寸、大小的tooltip HTML结构
+
+**移除的代码**:
+```jsx
+{imageInfo && (
+  <div className={`image-info-tooltip ${hovered ? 'visible' : ''}`}>
+    <div className="tooltip-item">
+      名称: {imageUrl.split('/').pop().split('?')[0]}
+    </div>
+    <div className="tooltip-item">
+      尺寸: {imageInfo.width} x {imageInfo.height}
+    </div>
+    <div className="tooltip-item">
+      大小: {formatFileSize(imageInfo.fileSize)}
+    </div>
+  </div>
+)}
+```
+
+2. **移除CSS样式** (`src/components/ProductDetail.css:2704-2744`)
+   - 删除 `.image-info-tooltip` 样式
+   - 删除 `.image-info-tooltip.visible` 样式
+   - 删除 `.preview-image-container .image-info-tooltip` 样式
+   - 删除 `.tooltip-item` 相关样式
+
+**实现效果**:
+- ✅ 移除了图片hover时的信息tooltip
+- ✅ 清理了相关的CSS样式代码
+- ✅ 简化了UI交互，减少视觉干扰
+- ✅ 保留了其他hover效果（如双击提示等）
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 移除tooltip JSX代码
+- `src/components/ProductDetail.css` - 移除tooltip样式
+- `src/panels/TodoList.jsx` - 移除产品名称的title属性

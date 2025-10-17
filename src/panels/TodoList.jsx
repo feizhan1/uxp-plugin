@@ -1482,7 +1482,6 @@ const TodoList = () => {
               <div className='card-body'>
                 <div
                   className={`product-name ${item.status === 4 ? 'clickable' : ''}`}
-                  title={item.productName}
                   onClick={item.status === 4 ? () => handleOpenItem(item, index) : undefined}
                   style={item.status === 4 ? { cursor: 'pointer' } : undefined}
                 >
