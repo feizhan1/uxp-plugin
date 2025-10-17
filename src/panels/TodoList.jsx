@@ -97,14 +97,15 @@ const TodoList = () => {
       senceImages.forEach((image, imageIndex) => {
         if (image.imageUrl) {
           productImages.push({
-            id: `${product.applyCode}_sence_${image.index || imageIndex}`,
+            id: `${product.applyCode}_scene_${image.index || imageIndex}`,
             url: image.imageUrl,
-            filename: `sence_${image.index || imageIndex}.jpg`,
+            filename: `scene_${image.index || imageIndex}.jpg`,
             applyCode: product.applyCode,
             productId: product.productId,
             productName: product.productName,
             sortOrder: image.index || imageIndex,
-            type: 'sence'
+            imageType: 'scene',  // 🔧 修复：使用 imageType 字段，并修正拼写为 scene
+            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -124,8 +125,9 @@ const TodoList = () => {
                 productId: product.productId,
                 productName: product.productName,
                 sortOrder: image.index || imageIndex,
-                type: 'sku',
-                skuIndex: sku.skuIndex || skuIndex
+                imageType: 'sku',  // 🔧 修复：使用 imageType 字段
+                skuIndex: sku.skuIndex || skuIndex,
+                sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
               })
             }
           })
@@ -146,7 +148,8 @@ const TodoList = () => {
             productId: product.productId,
             productName: product.productName,
             sortOrder: image.index || imageIndex,
-            type: 'original'
+            imageType: 'original',  // 🔧 修复：使用 imageType 字段
+            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -497,6 +500,15 @@ const TodoList = () => {
               // 执行批量下载
               if (imagesToDownload.length > 0) {
                 console.log(`📥 [collectProductImages] 准备下载 ${imagesToDownload.length} 张图片...`)
+                // 🔍 调试：记录场景图片的下载信息
+                const sceneImages = imagesToDownload.filter(img => img.imageType === 'scene')
+                console.log(`🔍 [DEBUG-场景图片] 即将下载 ${sceneImages.length} 张场景图片:`, sceneImages.map(img => ({
+                  id: img.id,
+                  imageType: img.imageType,
+                  applyCode: img.applyCode,
+                  sourceIndex: img.sourceIndex,
+                  urlPreview: img.url?.substring(0, 60) + '...'
+                })))
                 try {
                   const downloadResult = await localImageManager.downloadProductImages(imagesToDownload)
                   console.log(`✅ [collectProductImages] 新产品 ${product.applyCode} 图片下载完成:`, downloadResult)

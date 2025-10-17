@@ -698,7 +698,9 @@ export class LocalImageManager {
    * @returns {boolean} 是否需要下载
    */
   async shouldDownloadImage(imageInfo) {
-    const { id, url, imageUrl, applyCode, imageType, skuIndex, sourceIndex } = imageInfo;
+    const { id, url, imageUrl, applyCode, skuIndex, sourceIndex } = imageInfo;
+    // 🔧 兼容 imageType 和 type 字段
+    const imageType = imageInfo.imageType || imageInfo.type;
     const actualUrl = url || imageUrl;
 
     console.log(`🤔 [shouldDownloadImage] 检查图片是否需要下载:`, {
@@ -809,8 +811,25 @@ export class LocalImageManager {
    * @param {Object} imageInfo 图片信息
    */
   async downloadSingleImage(imageInfo) {
+    // 🔍 调试：记录接收到的完整 imageInfo
+    console.log(`🔍 [DEBUG-downloadSingleImage] 接收到的 imageInfo:`, {
+      id: imageInfo.id,
+      imageType: imageInfo.imageType,
+      imageTypeType: typeof imageInfo.imageType,
+      applyCode: imageInfo.applyCode,
+      sourceIndex: imageInfo.sourceIndex,
+      skuIndex: imageInfo.skuIndex,
+      hasImageUrl: !!imageInfo.imageUrl,
+      hasUrl: !!imageInfo.url,
+      urlPreview: (imageInfo.imageUrl || imageInfo.url)?.substring(0, 60) + '...',
+      allKeys: Object.keys(imageInfo)
+    });
+
     // 提取参数
     let { imageUrl, applyCode, sourceIndex, skuIndex } = imageInfo;
+
+    // 🔧 兼容 imageType 和 type 字段（修复字段名不统一问题）
+    const imageType = imageInfo.imageType || imageInfo.type;
 
     // 兼容旧格式参数名
     const url = imageUrl || imageInfo.url;
@@ -876,10 +895,24 @@ export class LocalImageManager {
 
         // 更新产品数据中的图片信息
         const product = this.getOrCreateProduct(applyCode);
-        console.log(`📝 [downloadSingleImage] 准备更新索引 - 产品: ${applyCode}, imageType: ${imageInfo.imageType}, skuIndex: ${skuIndex}, sourceIndex: ${sourceIndex}`);
+        console.log(`📝 [downloadSingleImage] 准备更新索引 - 产品: ${applyCode}, imageType: ${imageType}, skuIndex: ${skuIndex}, sourceIndex: ${sourceIndex}`);
 
-        // 根据imageType和skuIndex判断图片类型
-        if (imageInfo.imageType === 'scene') {
+        // 🔍 调试：显式检查 imageType 条件
+        console.log(`🔍 [DEBUG-imageType判断] imageType 详细检查:`, {
+          imageType: imageType,
+          imageTypeType: typeof imageType,
+          原始imageType: imageInfo.imageType,
+          原始type: imageInfo.type,
+          isScene: imageType === 'scene',
+          isSceneStrict: imageType === 'scene' && typeof imageType === 'string',
+          equalsSence: imageType === 'sence',
+          productHasSenceImages: !!product.senceImages,
+          senceImagesType: Array.isArray(product.senceImages) ? 'array' : typeof product.senceImages,
+          senceImagesLength: product.senceImages?.length || 0
+        });
+
+        // 🔧 根据 imageType 和 skuIndex 判断图片类型（使用兼容后的 imageType 变量）
+        if (imageType === 'scene') {
           // 处理场景图片 - 支持同一imageUrl多次出现
           console.log(`🔍 [downloadSingleImage] 查找场景图片: ${url}`);
           console.log(`🔍 [downloadSingleImage] 当前场景图片数组:`, product.senceImages);
@@ -896,6 +929,30 @@ export class LocalImageManager {
           const matchedSceneImages = product.senceImages.filter(img =>
             img.imageUrl === url || img.url === url
           );
+
+          // 🔍 调试：记录匹配结果
+          console.log(`🔍 [DEBUG-filter结果] 场景图片匹配结果:`, {
+            查找的url: url,
+            urlLength: url.length,
+            匹配数量: matchedSceneImages.length,
+            索引中总场景图片数: product.senceImages.length
+          });
+
+          if (matchedSceneImages.length === 0) {
+            console.log(`⚠️ [DEBUG-filter结果] 未找到匹配的场景图片！索引中的所有场景图片URL:`,
+              product.senceImages.map((img, i) => ({
+                index: i,
+                imageUrl: img.imageUrl,
+                imageUrlLength: img.imageUrl?.length,
+                url: img.url,
+                urlLength: img.url?.length,
+                imageUrl匹配: img.imageUrl === url,
+                url匹配: img.url === url,
+                status: img.status,
+                hasLocalPath: !!img.localPath
+              }))
+            );
+          }
 
           if (matchedSceneImages.length > 0) {
             console.log(`📝 [downloadSingleImage] 找到 ${matchedSceneImages.length} 个匹配的场景图片，准备全部更新`);
