@@ -293,15 +293,6 @@ const ProductDetail = ({
     return `${Math.round(bytes / (1024 * 1024))} MB`;
   };
 
-  // 调试：打印传入的productData
-  console.log('🔍 [ProductDetail] 接收到的productData:', {
-    applyCode: productData?.applyCode,
-    productName: productData?.productName,
-    chineseName: productData?.chineseName,
-    chinesePackageList: productData?.chinesePackageList,
-    所有字段: productData ? Object.keys(productData) : []
-  });
-
   // 状态管理
   const [currentProduct, setCurrentProduct] = useState(productData || {});
   const [imageGroups, setImageGroups] = useState({
@@ -795,15 +786,6 @@ const ProductDetail = ({
       setLoading(true);
       setError(null);
 
-      // 调试：打印产品数据中的字段
-      console.log('🔍 [ProductDetail] 当前产品数据:', {
-        applyCode: currentProduct.applyCode,
-        productName: currentProduct.productName,
-        chineseName: currentProduct.chineseName,
-        chinesePackageList: currentProduct.chinesePackageList,
-        所有字段: Object.keys(currentProduct)
-      });
-
       if (!currentProduct.applyCode) {
         throw new Error('缺少产品申请码');
       }
@@ -834,11 +816,11 @@ const ProductDetail = ({
           到: 'LocalImageManager最新数据',
           applyCode: latestProductData.applyCode
         });
-        // 合并数据：保留原始API数据（如chineseName、chinesePackageList等），更新图片相关数据
+        // 合并数据：以本地图片数据为基础，补充API独有的字段
         setCurrentProduct({
-          ...currentProduct,        // 保留API返回的所有字段
-          ...latestProductData,     // 覆盖图片相关的最新数据
-          // 确保关键的API字段不被覆盖
+          ...latestProductData,     // 本地图片相关的最新数据
+          // 确保API独有字段不被覆盖
+          productName: currentProduct.productName,
           chineseName: currentProduct.chineseName,
           chinesePackageList: currentProduct.chinesePackageList
         });
