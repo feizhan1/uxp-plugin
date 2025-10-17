@@ -194,7 +194,7 @@
   margin-left: 0;
 }
 
-.sync-btn, .submit-btn, .reject-btn {
+.sync-btn, .submit-btn, .detail-reject-btn {
   padding: 6px;
   height: 24px;
   border: 1px solid #ddd;
@@ -244,19 +244,19 @@
   cursor: not-allowed;
 }
 
-.reject-btn {
+.detail-reject-btn {
   width: auto !important;
   background: #dc3545;
   color: white;
   border-color: #dc3545;
 }
 
-.reject-btn:hover:not(:disabled) {
+.detail-reject-btn:hover:not(:disabled) {
   background: #c82333;
   border-color: #c82333;
 }
 
-.reject-btn.rejecting {
+.detail-reject-btn.rejecting {
   background: #999;
   border-color: #999;
   cursor: not-allowed;

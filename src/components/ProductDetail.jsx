@@ -4029,7 +4029,7 @@ const ProductDetail = ({
           </button>
           {currentProduct.status === 3 && (
             <button
-              className={`reject-btn ${isRejecting ? 'rejecting' : ''}`}
+              className={`detail-reject-btn ${isRejecting ? 'rejecting' : ''}`}
               onClick={handleRejectProduct}
               disabled={isRejecting}
             >
