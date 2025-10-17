@@ -618,7 +618,7 @@ const TodoList = () => {
 
       console.log('撤回产品:', params)
 
-      const res = await post('/api/publish/reject_product_image', params, {
+      const res = await post('/api/publish/revoke_product_image', params, {
         headers: { 'Content-Type': 'application/json' }
       })
 
