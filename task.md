@@ -4337,3 +4337,76 @@ sku中的第一个颜色款式class="sku-header"元素改为左右布局。右�
 4、其他逻辑保持不变，不要改动现有逻辑，需要复用现有代码和逻辑
 think harder
 
+
+
+---
+
+## 2025-10-17 禁用提交审核后的数据清理功能
+
+**需求**: 提交审核API成功后，不删除产品数据和本地图片文件，保留数据便于调试和验证
+
+**问题分析**:
+- 当前逻辑在提交审核成功后会自动删除产品数据和本地图片
+- 这导致无法重复测试提交流程，不利于开发调试
+- 虽然注释说"清理功能已禁用"，但实际代码仍在执行删除操作
+
+**修改内容**:
+1. **注释删除逻辑** - 注释掉 `localImageManager.removeProduct()` 调用
+2. **保留其他功能** - 保持关闭详情页和通知父组件的逻辑不变
+3. **更新注释说明** - 修改函数注释，明确说明这是"保留模式"
+4. **更新日志消息** - 清晰说明产品数据和图片不会被删除
+
+**修改文件**:
+- `src/components/ProductDetail.jsx:1646-1686` - `handleSubmitSuccess` 函数
+
+**修改前**:
+```javascript
+const handleSubmitSuccess = async (successMessage) => {
+  try {
+    console.log('🎉 提交成功:', successMessage);
+    console.log('🚧 [本地测试模式] 清理功能已禁用，保留产品数据和本地图片');
+    
+    // TODO: 本地测试完成后取消下面的注释
+    console.log('🧹 开始清理产品数据...');
+    
+    // 实际上在执行删除
+    const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+    // ...
+  }
+}
+```
+
+**修改后**:
+```javascript
+/**
+ * 处理提交成功后的操作
+ * 保留模式 - 产品数据和本地图片文件不会被删除
+ */
+const handleSubmitSuccess = async (successMessage) => {
+  try {
+    console.log('🎉 提交成功:', successMessage);
+    console.log('💾 保留模式 - 产品数据和本地图片不会被删除');
+    
+    // 数据清理功能已禁用 - 保留产品数据和本地图片文件
+    // const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+    
+    // 1. 关闭产品详情页
+    setTimeout(() => { if (onClose) onClose(); }, 1500);
+    
+    // 2. 触发父组件提交回调
+    if (onSubmit) onSubmit(currentProduct);
+  }
+}
+```
+
+**实现效果**:
+- ✅ 提交审核成功后，产品数据保留在 `index.json` 中
+- ✅ 本地图片文件不会被删除
+- ✅ 详情页仍会在1.5秒后自动关闭
+- ✅ 父组件仍会收到提交成功的通知
+- ✅ 可以重复测试提交流程而不丢失数据
+- ✅ 便于开发调试和验证功能
+
+**后续说明**:
+如需恢复自动清理功能，取消注释 `localImageManager.removeProduct()` 调用即可。
+

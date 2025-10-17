@@ -50,6 +50,13 @@ const TodoList = () => {
   // Toast 提示状态
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState('info')
+
+  // 撤回确认对话框状态
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false)
+  const [rejectingProduct, setRejectingProduct] = useState(null)
+
+  // 状态筛选
+  const [statusFilter, setStatusFilter] = useState(3) // 默认显示待处理（状态码3）
 // loginInfo
 //   {
 //     "success": true,
@@ -580,6 +587,67 @@ const TodoList = () => {
     }
   }
 
+  // 点击"撤回"时，显示确认对话框
+  const handleRejectProduct = (item, index) => {
+    if(openIngIndex === index) return
+    if (!item) return
+
+    // 保存产品信息并显示确认对话框
+    setRejectingProduct({ item, index })
+    setShowRejectConfirm(true)
+  }
+
+  // 确认撤回操作，调用撤回API
+  const doRejectProduct = async () => {
+    if (!rejectingProduct) return
+
+    const { item, index } = rejectingProduct
+
+    // 关闭确认对话框
+    setShowRejectConfirm(false)
+
+    setOpenLoading(true)
+    setOpenIngIndex(index)
+    setError(null)
+    try {
+      const params = {
+        applyCode: item.applyCode,
+        userId: loginInfo?.data?.UserId || 0,
+        userCode: loginInfo?.data?.UserCode || 'string',
+      }
+
+      console.log('撤回产品:', params)
+
+      const res = await post('/api/publish/reject_product_image', params, {
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      const {statusCode, message} = res || {}
+      if(statusCode === 200) {
+        setSuccessMsg(message || '撤回成功')
+
+        // 直接更新本地产品状态为3（待处理），优化体验
+        setData(prevData => {
+          return prevData.map(product =>
+            product.applyCode === item.applyCode
+              ? { ...product, status: 3 }
+              : product
+          )
+        })
+      } else {
+        // 失败时显示错误提示
+        throw new Error(message || '撤回失败')
+      }
+    } catch (e) {
+      console.error('撤回产品失败：', e)
+      setError(e?.message || '撤回产品失败')
+    } finally {
+      setOpenLoading(false)
+      setOpenIngIndex(null)
+      setRejectingProduct(null)
+    }
+  }
+
   // 监听数据变化（用于调试）
   useEffect(() => {
     console.log('TodoList 数据已更新：', data)
@@ -1027,7 +1095,11 @@ const TodoList = () => {
 
   // 获取产品状态样式类名
   const getProductStatus = (item) => {
-    const status = item.status || '待处理'
+    const status = item.status
+    // 处理数字状态码
+    if (status === 3) return 'pending'
+    if (status === 4) return 'completed'
+    // 处理字符串状态
     switch (status) {
       case '审核完成':
         return 'completed'
@@ -1042,8 +1114,12 @@ const TodoList = () => {
 
   // 获取产品状态文本
   const getProductStatusText = (item) => {
-    const status = item.status || '待处理'
-    return status
+    const status = item.status
+    // 处理数字状态码
+    if (status === 3) return '待处理'
+    if (status === 4) return '已处理'
+    // 处理字符串状态（兼容旧数据）
+    return status || '待处理'
   }
 
   // 同步专用的下载完成回调
@@ -1203,16 +1279,30 @@ const TodoList = () => {
 
           {/* 右侧操作按钮 */}
           <div className="header-right">
-            {/* 只在非搜索模式下显示同步状态按钮 */}
+            {/* 只在非搜索模式下显示同步状态按钮和筛选器 */}
             {!searchMode && (
-              <button
-                className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
-                disabled={isSyncing}
-                onClick={handleManualSync}
-                title={isSyncing ? syncStatus : "点击执行同步"}
-              >
-                {isSyncing ? (syncStatus || '同步中') : '就绪'}
-              </button>
+              <>
+                <button
+                  className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
+                  disabled={isSyncing}
+                  onClick={handleManualSync}
+                  title={isSyncing ? syncStatus : "点击执行同步"}
+                >
+                  {isSyncing ? (syncStatus || '同步中') : '就绪'}
+                </button>
+                {/* 状态筛选下拉框 - 只在非产品详情页显示 */}
+                {!showProductDetail && (
+                  <select
+                    className="status-filter-select"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(Number(e.target.value))}
+                    title="筛选产品状态"
+                  >
+                    <option value={3}>待处理</option>
+                    <option value={4}>已处理</option>
+                  </select>
+                )}
+              </>
             )}
             <button
               className="action-btn secondary"
@@ -1293,6 +1383,19 @@ const TodoList = () => {
         onCancel={() => setShowCloseConfirm(false)}
         onConfirm={doClose}
       />
+      {/* 撤回产品确认 */}
+      <Confirm
+        open={showRejectConfirm}
+        title="撤回确认"
+        message="确定要撤回该产品吗？撤回后产品状态将变为待处理。"
+        confirmText="确认撤回"
+        cancelText="取消"
+        onCancel={() => {
+          setShowRejectConfirm(false)
+          setRejectingProduct(null)
+        }}
+        onConfirm={doRejectProduct}
+      />
       {/* 产品列表 */}
       {/* 调试信息 - 开发期临时添加 */}
       {console.log('🎨 [render] 当前状态:', { loading, error: !!error, dataLength: data.length, data })}
@@ -1341,7 +1444,7 @@ const TodoList = () => {
         ) : (
           // 原有的产品卡片列表
           <div className='product-grid'>
-            {data.map((item, index) => (
+            {data.filter(item => item.status === statusFilter).map((item, index) => (
             <div className='product-card' key={item.applyCode || item.id}>
               <div className='card-header'>
                 <div className='product-id'>
@@ -1361,26 +1464,35 @@ const TodoList = () => {
                 </div>
               </div>
               <div className='card-body'>
-                <div className='product-name' title={item.productName}>
+                <div
+                  className={`product-name ${item.status === 4 ? 'clickable' : ''}`}
+                  title={item.productName}
+                  onClick={item.status === 4 ? () => handleOpenItem(item, index) : undefined}
+                  style={item.status === 4 ? { cursor: 'pointer' } : undefined}
+                >
                   {item.productName}
                 </div>
               </div>
               <div className='card-footer'>
-                <button
-                  className={`process-btn ${openIngIndex === index ? 'loading' : ''}`}
-                  onClick={() => handleOpenItem(item, index)}
-                  disabled={openIngIndex === index}
-                >
-                  {openIngIndex === index ? (
-                    <>
-                      加载中...
-                    </>
-                  ) : (
-                    <>
-                      去处理
-                    </>
-                  )}
-                </button>
+                {item.status === 4 ? (
+                  // 状态为4（已处理）时显示撤回按钮
+                  <button
+                    className={`reject-btn ${openIngIndex === index ? 'loading' : ''}`}
+                    onClick={() => handleRejectProduct(item, index)}
+                    disabled={openIngIndex === index}
+                  >
+                    {openIngIndex === index ? '处理中...' : '撤回'}
+                  </button>
+                ) : (
+                  // 状态为3（待处理）或其他状态时显示去处理按钮
+                  <button
+                    className={`process-btn ${openIngIndex === index ? 'loading' : ''}`}
+                    onClick={() => handleOpenItem(item, index)}
+                    disabled={openIngIndex === index}
+                  >
+                    {openIngIndex === index ? '加载中...' : '去处理'}
+                  </button>
+                )}
               </div>
             </div>
             ))}

@@ -76,6 +76,39 @@
   }
 }
 
+/* 状态筛选下拉框样式 */
+.status-filter-select {
+  padding: 6px 24px 6px 12px;
+  height: 28px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background-color: #fff;
+  background-image: url('data:image/svg+xml;charset=UTF-8,<svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1.5L6 6.5L11 1.5" stroke="%23666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  color: #333;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.status-filter-select:hover {
+  border-color: #999;
+  background-color: #f9f9f9;
+}
+
+.status-filter-select:focus {
+  border-color: var(--theme-color, #ec6608);
+  box-shadow: 0 0 0 2px rgba(236, 102, 8, 0.1);
+}
+
 /* 登录徽章容器 */
 .login-badge-container {
   position: relative;
@@ -428,6 +461,15 @@
   -webkit-box-orient: vertical;
 }
 
+/* 可点击的产品名称样式 */
+.product-name.clickable {
+  transition: all 0.2s ease;
+}
+
+.product-name.clickable:hover {
+  text-decoration: underline;
+}
+
 .product-meta {
   display: flex;
   flex-direction: column;
@@ -490,6 +532,41 @@
 }
 
 .process-btn.loading {
+  background: #999;
+}
+
+/* 撤回按钮样式 */
+.reject-btn {
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: #6c757d;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 24px;
+}
+
+.reject-btn:hover:not(:disabled) {
+  background: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+.reject-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.reject-btn.loading {
   background: #999;
 }
 
