@@ -1107,13 +1107,17 @@ export class LocalImageManager {
   /**
    * 获取或创建产品
    * @param {string} applyCode 申请码
+   * @param {Object} productData 产品数据（可选），包含 chineseName, chinesePackageList, status 等字段
    * @returns {Object} 产品信息
    */
-  getOrCreateProduct(applyCode) {
+  getOrCreateProduct(applyCode, productData = {}) {
     let product = this.findProductByApplyCode(applyCode);
     if (!product) {
       product = {
         applyCode: applyCode,
+        chineseName: productData.chineseName || '',
+        chinesePackageList: productData.chinesePackageList || [],
+        status: productData.status || 3,
         originalImages: [],
         publishSkus: [],
         senceImages: [],
@@ -1121,7 +1125,11 @@ export class LocalImageManager {
         userCode: null
       };
       this.indexData.push(product);
-      console.log(`📦 [getOrCreateProduct] 创建新产品: ${applyCode}`);
+      console.log(`📦 [getOrCreateProduct] 创建新产品: ${applyCode}`, {
+        chineseName: product.chineseName,
+        chinesePackageList: product.chinesePackageList,
+        status: product.status
+      });
     }
     return product;
   }
@@ -1170,7 +1178,8 @@ export class LocalImageManager {
         if (found) {
           return {
             ...found,
-            applyCode: product.applyCode
+            applyCode: product.applyCode,
+            imageType: 'scene'
           };
         }
       }

@@ -1,5 +1,80 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 提交审核API添加chineseName和chinesePackageList参数 (2025-01-30)
+
+### 完成情况：在提交审核接口调用中添加产品中文名称和中文包装信息
+
+**需求描述**：
+- 点击"提交审核"按钮时，调用 `/api/publish/submit_product_image` 接口
+- 在请求参数中添加 `chineseName`（中文名称）和 `chinesePackageList`（中文包装列表）字段
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:1557-1562)
+
+在 `submitForReview()` 函数的 payload 对象中添加两个字段：
+
+```javascript
+const payload = {
+  userId: userId,
+  userCode: userCode,
+  applyCode: currentProduct.applyCode,
+  chineseName: currentProduct.chineseName,           // 新增：产品中文名称
+  chinesePackageList: currentProduct.chinesePackageList, // 新增：中文包装信息
+
+  // 原始图片 - 只包含imageUrl
+  originalImages: (currentProduct.originalImages || []).map(img => ({
+    imageUrl: img.imageUrl
+  })),
+  // ...
+};
+```
+
+**修改效果**：
+- 提交审核时，API请求会包含产品的中文名称和包装信息
+- 数据来源于 `currentProduct` 对象中已存在的字段
+- 与其他产品信息一起提交给后端进行审核
+
+---
+
+## ✅ 修复场景图翻译同意后索引文件不更新的bug (2025-01-30)
+
+### 完成情况：修复了场景图翻译流程中索引文件无法更新的问题
+
+**问题描述**：
+- 在产品详情页的场景图中上传图片后，点击预览→翻译→对比预览→同意
+- 索引文件中对应的图片信息没有更新（imageUrl、localPath等字段未更新为翻译后的值）
+- SKU图的相同流程正常工作
+
+**根本原因**：
+- `LocalImageManager.getImageInfo()` 方法在返回场景图信息时，缺少 `imageType: 'scene'` 标识字段
+- 导致 `ProductDetail.jsx` 中的 `handleApplyTranslation()` 函数无法识别场景图类型
+- 无法进入场景图的索引更新分支，从而导致索引文件未更新
+
+**技术实现**：
+
+#### LocalImageManager.js 修改 (src/utils/LocalImageManager.js:1171-1175)
+
+在 `getImageInfo()` 方法返回场景图信息时，添加 `imageType: 'scene'` 字段：
+
+```javascript
+if (found) {
+  return {
+    ...found,
+    applyCode: product.applyCode,
+    imageType: 'scene'  // 新增：标识为场景图类型
+  };
+}
+```
+
+**修复效果**：
+- 场景图翻译同意后，索引文件正确更新
+- 图片URL更新为翻译后的URL（带-f后缀）
+- localPath正确保存翻译后的图片路径
+- 与SKU图的行为保持一致
+
+---
+
 ## ✅ SKU图和场景图新增"一键删除"功能 (2025-01-30)
 
 ### 完成情况：为SKU图片和场景图片添加了一键删除整组图片的功能

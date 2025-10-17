@@ -1558,6 +1558,8 @@ const ProductDetail = ({
         userId: userId,
         userCode: userCode,
         applyCode: currentProduct.applyCode,
+        chineseName: currentProduct.chineseName,
+        chinesePackageList: currentProduct.chinesePackageList,
 
         // 原始图片 - 只包含imageUrl
         originalImages: (currentProduct.originalImages || []).map(img => ({

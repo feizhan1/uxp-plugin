@@ -6,7 +6,8 @@
       "Bash(dir:*)",
       "Bash(git add:*)",
       "WebFetch(domain:forums.creativeclouddeveloper.com)",
-      "WebFetch(domain:openapi-doc.xiangjifanyi.com)"
+      "WebFetch(domain:openapi-doc.xiangjifanyi.com)",
+      "Read(//Users/feizhan/Desktop/ps/tvcmall-plugin/product-images/**)"
     ],
     "deny": [],
     "ask": []

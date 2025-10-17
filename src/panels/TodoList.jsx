@@ -306,8 +306,8 @@ const TodoList = () => {
               // 确保LocalImageManager已初始化
               await localImageManager.initialize()
 
-              // 获取或创建产品记录
-              const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
+              // 获取或创建产品记录，传入产品详情数据以保存chineseName等字段
+              const productRecord = localImageManager.getOrCreateProduct(product.applyCode, imageRes.dataClass)
 
               // 更新产品数据 - 使用API返回的完整数据结构
               const { originalImages, publishSkus, senceImages } = imageRes.dataClass
@@ -926,7 +926,8 @@ const TodoList = () => {
 
           // 保存新产品的完整数据到LocalImageManager索引中
           try {
-            const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
+            // 传入产品详情数据以保存chineseName等字段
+            const productRecord = localImageManager.getOrCreateProduct(product.applyCode, imageRes.dataClass)
             const { originalImages, publishSkus, senceImages } = imageRes.dataClass
 
             if (Array.isArray(originalImages)) {
