@@ -385,9 +385,16 @@ const TodoList = () => {
               if (Array.isArray(senceImages)) {
                 productRecord.senceImages = senceImages.map((img, index) => ({
                   ...img,
+                  imageUrl: img.imageUrl || img.url,  // 统一字段名称为 imageUrl
                   status: 'not_downloaded', // 初始状态
                   timestamp: Date.now()
                 }))
+                console.log(`🔍 [场景图片字段检查] ${product.applyCode} 保存的场景图片:`, productRecord.senceImages.map(img => ({
+                  hasImageUrl: !!img.imageUrl,
+                  hasUrl: !!img.url,
+                  imageUrl: img.imageUrl,
+                  url: img.url
+                })))
               } else {
                 // 确保senceImages始终是数组
                 productRecord.senceImages = []
@@ -470,11 +477,13 @@ const TodoList = () => {
               // 收集场景图片
               if (Array.isArray(senceImages)) {
                 senceImages.forEach((img, index) => {
-                  if (img.imageUrl) {
+                  // 支持 imageUrl 或 url 字段
+                  const imageUrl = img.imageUrl || img.url
+                  if (imageUrl) {
                     imagesToDownload.push({
                       id: `${product.applyCode}_scene_${index}`,
-                      url: img.imageUrl,
-                      imageUrl: img.imageUrl,  // 保留 imageUrl 字段给 downloadSingleImage 使用
+                      url: imageUrl,
+                      imageUrl: imageUrl,  // 保留 imageUrl 字段给 downloadSingleImage 使用
                       filename: `scene_${index}.jpg`,
                       applyCode: product.applyCode,
                       productId: product.productId,
@@ -954,6 +963,7 @@ const TodoList = () => {
             if (Array.isArray(senceImages)) {
               productRecord.senceImages = senceImages.map((img, index) => ({
                 ...img,
+                imageUrl: img.imageUrl || img.url,  // 统一字段名称为 imageUrl
                 status: 'not_downloaded',
                 timestamp: Date.now()
               }))
