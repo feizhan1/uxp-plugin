@@ -1117,7 +1117,7 @@ const TodoList = () => {
     const status = item.status
     // 处理数字状态码
     if (status === 3) return '待处理'
-    if (status === 4) return '已处理'
+    if (status === 4) return '编辑审核中'
     // 处理字符串状态（兼容旧数据）
     return status || '待处理'
   }
@@ -1299,7 +1299,7 @@ const TodoList = () => {
                     title="筛选产品状态"
                   >
                     <option value={3}>待处理</option>
-                    <option value={4}>已处理</option>
+                    <option value={4}>编辑审核中</option>
                   </select>
                 )}
               </>
