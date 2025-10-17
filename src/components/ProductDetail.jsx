@@ -804,14 +804,9 @@ const ProductDetail = ({
           到: 'LocalImageManager最新数据',
           applyCode: latestProductData.applyCode
         });
-        // 合并数据：以本地图片数据为基础，补充API独有的字段
+        // 直接使用本地索引的最新数据
         setCurrentProduct({
-          ...latestProductData,     // 本地图片相关的最新数据
-          // 确保API独有字段不被覆盖
-          productName: currentProduct.productName,
-          chineseName: currentProduct.chineseName,
-          chinesePackageList: currentProduct.chinesePackageList,
-          status: currentProduct.status
+          ...latestProductData
         });
       }
 
