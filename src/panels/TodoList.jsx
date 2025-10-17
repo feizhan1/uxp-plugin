@@ -548,39 +548,41 @@ const TodoList = () => {
     }
   }, [loginInfo])
 
-  // 点击"去处理"时，请求详情后打开ProductDetail
+  // 点击"去处理"时，从本地索引读取数据后打开ProductDetail
   const handleOpenItem = async (item, index) => {
     if(openIngIndex === index) return
     if (!item) return
     setOpenLoading(true)
     setOpenIngIndex(index)
     setError(null)
+
     try {
-      const params = {
-        applyCode: item.applyCode,
+      // 确保LocalImageManager已初始化
+      await localImageManager.initialize()
+
+      // 从本地索引读取产品数据
+      const localProductData = localImageManager.findProductByApplyCode(item.applyCode)
+
+      if (!localProductData) {
+        // 本地没有数据，提示用户等待同步
+        setError('请稍后，数据同步中...')
+        return
+      }
+
+      // 使用本地数据打开产品详情页
+      const productData = {
+        ...localProductData,
         userId: loginInfo?.data?.UserId,
         userCode: loginInfo?.data?.UserCode,
       }
-      const res = await get('/api/publish/get_product_images', {
-        params,
-      })
-      const {statusCode, dataClass} = res  || {}
-      if(statusCode === 200) {
-        // 设置完整的产品数据用于ProductDetail组件
-        const productData = {
-          ...item,
-          ...(dataClass || {}),
-          ...params
-        }
-        setCurrentProductData(productData)
-        setShowProductDetail(true)
-        console.log('打开产品详情页:', productData.applyCode)
-      } else {
-        throw new Error(res.message)
-      }
+
+      setCurrentProductData(productData)
+      setShowProductDetail(true)
+      console.log('打开产品详情页（使用本地索引数据）:', productData.applyCode)
+
     } catch (e) {
-      console.error('获取产品图片失败：', e)
-      setError(e?.message || '获取待办工单图片失败')
+      console.error('打开产品详情失败：', e)
+      setError(e?.message || '打开产品详情失败')
     } finally {
       setOpenLoading(false)
       setOpenIngIndex(null)
