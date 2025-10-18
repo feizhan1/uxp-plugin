@@ -3875,6 +3875,13 @@ const ProductDetail = ({
         skuIndex: imageToDelete.skuIndex
       });
 
+      // 保存当前滚动位置（在修改状态前保存）
+      if (contentRef.current) {
+        const currentScrollPosition = contentRef.current.scrollTop;
+        setSavedScrollPosition(currentScrollPosition);
+        console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+      }
+
       // 先从本地状态中移除图片，提供即时视觉反馈
       removeImageFromState(imageToDelete);
 
