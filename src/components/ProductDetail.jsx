@@ -1187,6 +1187,31 @@ const ProductDetail = ({
         throw new Error('无法获取用户登录信息，请重新登录');
       }
 
+      // ========== 前端验证：检查SKU图片完整性 ==========
+      const missingSkus = [];
+      (currentProduct.publishSkus || []).forEach(sku => {
+        const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
+                         sku.skuImages.some(img => img.imageUrl);
+        if (!hasImages) {
+          const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
+          missingSkus.push(attrName);
+        }
+      });
+
+      if (missingSkus.length > 0) {
+        const errorMessage = `产品图片不可为空属性：${missingSkus.join('、')}`;
+        console.warn('⚠️ SKU图片验证失败:', errorMessage);
+        setToast({
+          open: true,
+          message: errorMessage,
+          type: 'error'
+        });
+        throw new Error(errorMessage);
+      }
+
+      console.log('✅ SKU图片验证通过');
+      // ========== 验证结束 ==========
+
       // 1. 获取当前产品需要上传的图片（SKU+场景）
       await localImageManager.initialize();
       const modifiedImages = localImageManager.getModifiedImages(currentProduct.applyCode);
@@ -1548,31 +1573,6 @@ const ProductDetail = ({
       if (!userId || !userCode) {
         throw new Error('无法获取用户登录信息，请重新登录');
       }
-
-      // ========== 前端验证：检查SKU图片完整性 ==========
-      const missingSkus = [];
-      (currentProduct.publishSkus || []).forEach(sku => {
-        const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
-                         sku.skuImages.some(img => img.imageUrl);
-        if (!hasImages) {
-          const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
-          missingSkus.push(attrName);
-        }
-      });
-
-      if (missingSkus.length > 0) {
-        const errorMessage = `产品图片不可为空属性：${missingSkus.join('、')}`;
-        console.warn('⚠️ SKU图片验证失败:', errorMessage);
-        setToast({
-          open: true,
-          message: errorMessage,
-          type: 'error'
-        });
-        throw new Error(errorMessage);
-      }
-
-      console.log('✅ SKU图片验证通过');
-      // ========== 验证结束 ==========
 
       // 构建完整的API请求体
       const payload = {

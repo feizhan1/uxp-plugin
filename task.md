@@ -4633,3 +4633,60 @@ const handleSubmitSuccess = async (successMessage) => {
 - `src/components/ProductDetail.jsx` - 移除tooltip JSX代码
 - `src/components/ProductDetail.css` - 移除tooltip样式
 - `src/panels/TodoList.jsx` - 移除产品名称的title属性
+
+---
+
+## 2025-10-18 添加SKU图片完整性前端验证
+
+**需求**: 在用户点击"提交审核"按钮时，立即验证所有SKU是否都有图片，如果有缺失立即用Toast提示，避免等到后端API返回错误才发现
+
+**问题背景**:
+- 后端API `/api/publish/submit_product_image` 会验证所有SKU必须有图片
+- 如果某个SKU（如"粉色"）没有图片，后端返回错误：`产品图片不可为空属性：粉色`
+- 原实现需要等API调用失败后才能看到错误，用户体验不佳
+
+**实现细节**:
+
+1. **添加前端验证逻辑** (`src/components/ProductDetail.jsx:1552-1575`)
+   ```javascript
+   // ========== 前端验证：检查SKU图片完整性 ==========
+   const missingSkus = [];
+   (currentProduct.publishSkus || []).forEach(sku => {
+     const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
+                      sku.skuImages.some(img => img.imageUrl);
+     if (!hasImages) {
+       const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
+       missingSkus.push(attrName);
+     }
+   });
+
+   if (missingSkus.length > 0) {
+     const errorMessage = `产品图片不可为空属性：${missingSkus.join('、')}`;
+     console.warn('⚠️ SKU图片验证失败:', errorMessage);
+     setToast({
+       open: true,
+       message: errorMessage,
+       type: 'error'
+     });
+     throw new Error(errorMessage);
+   }
+
+   console.log('✅ SKU图片验证通过');
+   ```
+
+**验证流程**:
+1. 遍历所有 `publishSkus`
+2. 检查每个SKU的 `skuImages` 是否为空或所有 `imageUrl` 为空
+3. 收集缺失图片的SKU属性名称（如"粉色"、"蓝色"）
+4. 如果有缺失，立即显示Toast错误提示
+5. 抛出异常中止提交流程，不调用后端API
+
+**实现效果**:
+- ✅ 点击"提交审核"时立即验证SKU图片完整性
+- ✅ 使用Toast显示友好的错误提示（符合UXP规范）
+- ✅ 错误信息格式与后端一致：`产品图片不可为空属性：粉色`
+- ✅ 支持多个SKU缺失：`产品图片不可为空属性：粉色、蓝色、黑色`
+- ✅ 验证通过后才调用后端API，减少无效请求
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - submitForReview函数添加前端验证
