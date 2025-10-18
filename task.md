@@ -4690,3 +4690,20 @@ const handleSubmitSuccess = async (successMessage) => {
 
 **修改文件**:
 - `src/components/ProductDetail.jsx` - submitForReview函数添加前端验证
+
+**后续修复**:
+
+1. **移动验证时机** (ProductDetail.jsx:1190-1213)
+   - 将验证逻辑从 `submitForReview` 移到 `handleSubmitReview` 开头
+   - 确保用户点击"提交审核"按钮后立即验证，不需要等待图片上传
+   - 验证失败直接中止，不会进行后续的上传和API调用
+
+2. **修复[object Object]显示问题** (ProductDetail.jsx:1196-1200)
+   - 问题：`attrClasses` 是对象数组 `[{attrName: '颜色', attrValue: '粉色'}]`，直接 join 会显示 `[object Object]`
+   - 修复：先 map 提取 `attrValue`，再 join 成字符串
+   ```javascript
+   const attrName = (sku.attrClasses || [])
+     .map(attr => attr.attrValue || attr.attrName)
+     .join('-') || `SKU${sku.skuIndex}`;
+   ```
+   - 现在正确显示：`产品图片不可为空属性：粉色` 而不是 `产品图片不可为空属性：[object Object]`
