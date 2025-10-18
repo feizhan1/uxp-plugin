@@ -804,9 +804,10 @@ const ProductDetail = ({
           到: 'LocalImageManager最新数据',
           applyCode: latestProductData.applyCode
         });
-        // 直接使用本地索引的最新数据
+        // 保留原始数据并合并本地索引的最新数据
         setCurrentProduct({
-          ...latestProductData
+          ...latestProductData,
+          chineseName: currentProduct.chineseName,
         });
       }
 
@@ -1547,6 +1548,31 @@ const ProductDetail = ({
       if (!userId || !userCode) {
         throw new Error('无法获取用户登录信息，请重新登录');
       }
+
+      // ========== 前端验证：检查SKU图片完整性 ==========
+      const missingSkus = [];
+      (currentProduct.publishSkus || []).forEach(sku => {
+        const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
+                         sku.skuImages.some(img => img.imageUrl);
+        if (!hasImages) {
+          const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
+          missingSkus.push(attrName);
+        }
+      });
+
+      if (missingSkus.length > 0) {
+        const errorMessage = `产品图片不可为空属性：${missingSkus.join('、')}`;
+        console.warn('⚠️ SKU图片验证失败:', errorMessage);
+        setToast({
+          open: true,
+          message: errorMessage,
+          type: 'error'
+        });
+        throw new Error(errorMessage);
+      }
+
+      console.log('✅ SKU图片验证通过');
+      // ========== 验证结束 ==========
 
       // 构建完整的API请求体
       const payload = {
@@ -3987,7 +4013,7 @@ const ProductDetail = ({
             返回
           </button>
           <div className="product-info">
-            <h1 className="product-title">{currentProduct.productName}</h1>
+            <h1 className="product-title">{currentProduct.chineseName}</h1>
             <div className="product-code">
               <span>编号: {currentProduct.applyCode}</span>
               <button className="copy-code-btn" onClick={handleCopyProductCode}>
