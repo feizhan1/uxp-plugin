@@ -649,6 +649,19 @@ const TodoList = () => {
       if(statusCode === 200) {
         setSuccessMsg(message || '撤回成功')
 
+        // 重置产品所有图片的状态为 pending_edit
+        try {
+          await localImageManager.initialize()
+          const resetResult = await localImageManager.resetProductImagesStatus(item.applyCode, 'pending_edit')
+          if (resetResult.success) {
+            console.log(`✅ 已重置 ${resetResult.resetCount} 张图片的状态为 pending_edit`)
+          } else {
+            console.warn(`⚠️ 重置图片状态失败: ${resetResult.error}`)
+          }
+        } catch (error) {
+          console.error('重置图片状态时出错:', error)
+        }
+
         // 直接更新本地产品状态为3（待处理），优化体验
         setData(prevData => {
           return prevData.map(product =>

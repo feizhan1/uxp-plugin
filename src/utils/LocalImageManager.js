@@ -2586,6 +2586,74 @@ export class LocalImageManager {
   }
 
   /**
+   * 重置产品的所有图片状态
+   * @param {string} applyCode - 产品编号
+   * @param {string} newStatus - 新状态，默认为 'pending_edit'
+   * @returns {Promise<{success: boolean, resetCount: number, error?: string}>}
+   */
+  async resetProductImagesStatus(applyCode, newStatus = 'pending_edit') {
+    console.log(`🔄 [resetProductImagesStatus] 开始重置产品 ${applyCode} 的所有图片状态为 ${newStatus}`);
+
+    try {
+      // 查找产品
+      const product = this.indexData.find(p => p.applyCode === applyCode);
+      if (!product) {
+        console.warn(`⚠️ [resetProductImagesStatus] 找不到产品: ${applyCode}`);
+        return { success: false, resetCount: 0, error: '产品不存在' };
+      }
+
+      let resetCount = 0;
+
+      // 重置原图状态
+      if (Array.isArray(product.originalImages)) {
+        product.originalImages.forEach((img, index) => {
+          if (img.status !== newStatus) {
+            console.log(`  重置原图[${index}]: ${img.status} -> ${newStatus}`);
+            img.status = newStatus;
+            resetCount++;
+          }
+        });
+      }
+
+      // 重置 SKU 图片状态
+      if (Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach((sku, skuIndex) => {
+          if (Array.isArray(sku.skuImages)) {
+            sku.skuImages.forEach((img, imgIndex) => {
+              if (img.status !== newStatus) {
+                console.log(`  重置SKU[${skuIndex}]图片[${imgIndex}]: ${img.status} -> ${newStatus}`);
+                img.status = newStatus;
+                resetCount++;
+              }
+            });
+          }
+        });
+      }
+
+      // 重置场景图状态
+      if (Array.isArray(product.senceImages)) {
+        product.senceImages.forEach((img, index) => {
+          if (img.status !== newStatus) {
+            console.log(`  重置场景图[${index}]: ${img.status} -> ${newStatus}`);
+            img.status = newStatus;
+            resetCount++;
+          }
+        });
+      }
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [resetProductImagesStatus] 成功重置 ${resetCount} 张图片的状态`);
+      return { success: true, resetCount };
+
+    } catch (error) {
+      console.error(`❌ [resetProductImagesStatus] 重置失败:`, error);
+      return { success: false, resetCount: 0, error: error.message };
+    }
+  }
+
+  /**
    * 解析唯一图片ID
    * @param {string} uniqueImageId 唯一图片ID，格式: applyCode_imageType_index 或 applyCode_sku_skuIndex_imageIndex
    * @returns {Object|null} 解析结果
