@@ -2396,7 +2396,7 @@ export class LocalImageManager {
 
       // 更新图片信息
       const oldUrl = targetImage.imageUrl;
-      targetImage.status = 'synced';
+      targetImage.status = 'completed';
       targetImage.imageUrl = newUrl;
       targetImage.uploadedTimestamp = Date.now();
 
@@ -2512,7 +2512,7 @@ export class LocalImageManager {
         const expectedId = `${applyCode}_original_${i}`;
 
         if (uploadedImageIds.includes(expectedId)) {
-          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
             results.details.original.updated++;
             results.totalUpdated++;
             console.log(`✅ [validateUploadResults] 原图[${i}] URL已更新: ${img.imageUrl}`);
@@ -2535,7 +2535,7 @@ export class LocalImageManager {
             const expectedId = `${applyCode}_sku_${sku.skuIndex}_${i}`;
 
             if (uploadedImageIds.includes(expectedId)) {
-              if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+              if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
                 results.details.sku.updated++;
                 results.totalUpdated++;
                 console.log(`✅ [validateUploadResults] SKU[${sku.skuIndex}]图片[${i}] URL已更新: ${img.imageUrl}`);
@@ -2559,7 +2559,7 @@ export class LocalImageManager {
         const expectedId = `${applyCode}_scene_${i}`;
 
         if (uploadedImageIds.includes(expectedId)) {
-          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
             results.details.scene.updated++;
             results.totalUpdated++;
             console.log(`✅ [validateUploadResults] 场景图[${i}] URL已更新: ${img.imageUrl}`);
