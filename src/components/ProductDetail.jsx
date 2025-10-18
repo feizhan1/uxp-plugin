@@ -3894,12 +3894,24 @@ const ProductDetail = ({
         } else {
           console.error('❌ [executeDelete] 数据删除失败，需要重新加载数据');
           setError('删除图片失败，正在重新加载数据');
+          // 保存滚动位置
+          if (contentRef.current) {
+            const currentScrollPosition = contentRef.current.scrollTop;
+            setSavedScrollPosition(currentScrollPosition);
+            console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+          }
           // 如果数据层删除失败，重新初始化数据以保持一致性
           await initializeImageData();
         }
       } catch (syncError) {
         console.error('❌ [executeDelete] 数据同步失败:', syncError);
         setError(`删除图片失败: ${syncError.message}`);
+        // 保存滚动位置
+        if (contentRef.current) {
+          const currentScrollPosition = contentRef.current.scrollTop;
+          setSavedScrollPosition(currentScrollPosition);
+          console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+        }
         // 数据同步失败时重新加载以保持一致性
         await initializeImageData();
       }
