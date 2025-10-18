@@ -1866,11 +1866,11 @@ const ProductDetail = ({
           // 从本地状态中移除图片
           removeImageFromState(image);
 
-          // 同步到LocalImageManager（使用索引0，因为每次删除后数组会变短）
+          // 同步到LocalImageManager
           const success = await localImageManager.deleteImageByIndex(
             currentProduct.applyCode,
             type,
-            0, // 总是删除第一张，因为数组会动态缩短
+            type === 'sku' ? image.imageUrl : 0, // SKU使用imageUrl精确定位，其他类型使用索引0（数组会动态缩短）
             skuIndex
           );
 
