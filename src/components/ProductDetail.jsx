@@ -1193,7 +1193,10 @@ const ProductDetail = ({
         const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
                          sku.skuImages.some(img => img.imageUrl);
         if (!hasImages) {
-          const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
+          // attrClasses 是对象数组 [{attrName: '颜色', attrValue: '粉色'}]
+          const attrName = (sku.attrClasses || [])
+            .map(attr => attr.attrValue || attr.attrName)
+            .join('-') || `SKU${sku.skuIndex}`;
           missingSkus.push(attrName);
         }
       });
