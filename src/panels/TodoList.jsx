@@ -658,6 +658,14 @@ const TodoList = () => {
           } else {
             console.warn(`⚠️ 重置图片状态失败: ${resetResult.error}`)
           }
+
+          // 更新产品状态为3（待处理）
+          const statusUpdateResult = await localImageManager.updateProductStatus(item.applyCode, 3)
+          if (statusUpdateResult.success) {
+            console.log('✅ 产品状态已更新为3（待处理）')
+          } else {
+            console.warn('⚠️ 更新产品状态失败:', statusUpdateResult.error)
+          }
         } catch (error) {
           console.error('重置图片状态时出错:', error)
         }
