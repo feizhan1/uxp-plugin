@@ -4026,6 +4026,12 @@ export class LocalImageManager {
           product.originalImages.splice(imageIndex, 1);
           deletedSuccessfully = true;
           console.log(`✅ [deleteImageByIndex] 从原始图片索引中移除: 索引=${imageIndex}`);
+
+          // 重新计算所有图片的index字段
+          product.originalImages.forEach((img, idx) => {
+            img.index = idx;
+          });
+          console.log(`🔄 [deleteImageByIndex] 已重新计算原始图片索引，当前数量: ${product.originalImages.length}`);
         }
       } else if (imageType === 'sku') {
         if (product.publishSkus) {
@@ -4035,6 +4041,12 @@ export class LocalImageManager {
             sku.skuImages.splice(imageIndex, 1);
             deletedSuccessfully = true;
             console.log(`✅ [deleteImageByIndex] 从SKU图片索引中移除: SKU=${skuIndex}, 索引=${imageIndex}`);
+
+            // 重新计算所有图片的index字段
+            sku.skuImages.forEach((img, idx) => {
+              img.index = idx;
+            });
+            console.log(`🔄 [deleteImageByIndex] 已重新计算SKU图片索引，SKU=${skuIndex}，当前数量: ${sku.skuImages.length}`);
           }
         }
       } else if (imageType === 'scene') {
@@ -4043,6 +4055,12 @@ export class LocalImageManager {
           product.senceImages.splice(imageIndex, 1);
           deletedSuccessfully = true;
           console.log(`✅ [deleteImageByIndex] 从场景图片索引中移除: 索引=${imageIndex}`);
+
+          // 重新计算所有图片的index字段
+          product.senceImages.forEach((img, idx) => {
+            img.index = idx;
+          });
+          console.log(`🔄 [deleteImageByIndex] 已重新计算场景图片索引，当前数量: ${product.senceImages.length}`);
         }
       }
 
