@@ -4052,7 +4052,7 @@ const ProductDetail = ({
               {isRejecting ? '驳回中...' : '驳回'}
             </button>
           )}
-          {currentProduct.status !== 4 && (
+          {currentProduct.status === 3 && (
             <button
               className={`submit-btn ${isSubmitting ? 'submitting' : ''}`}
               onClick={handleSubmitReview}

@@ -1198,7 +1198,7 @@ const TodoList = () => {
 
       // 延迟3秒后再请求列表数据
       console.log('🔄 等待3秒后重新获取产品列表...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // 重新获取产品列表数据
       console.log('🔄 重新获取产品列表...')
