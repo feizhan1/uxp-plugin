@@ -4036,17 +4036,21 @@ export class LocalImageManager {
       } else if (imageType === 'sku') {
         if (product.publishSkus) {
           const sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
-          if (sku && sku.skuImages && imageIndex >= 0 && imageIndex < sku.skuImages.length) {
-            imageInfo = sku.skuImages[imageIndex];
-            sku.skuImages.splice(imageIndex, 1);
-            deletedSuccessfully = true;
-            console.log(`✅ [deleteImageByIndex] 从SKU图片索引中移除: SKU=${skuIndex}, 索引=${imageIndex}`);
+          if (sku && sku.skuImages) {
+            // 对于SKU图片，imageIndex参数实际传入的是imageUrl
+            const index = sku.skuImages.findIndex(img => img.imageUrl === imageIndex);
+            if (index >= 0) {
+              imageInfo = sku.skuImages[index];
+              sku.skuImages.splice(index, 1);
+              deletedSuccessfully = true;
+              console.log(`✅ [deleteImageByIndex] 从SKU图片索引中移除: SKU=${skuIndex}, imageUrl=${imageIndex}`);
 
-            // 重新计算所有图片的index字段
-            sku.skuImages.forEach((img, idx) => {
-              img.index = idx;
-            });
-            console.log(`🔄 [deleteImageByIndex] 已重新计算SKU图片索引，SKU=${skuIndex}，当前数量: ${sku.skuImages.length}`);
+              // 重新计算所有图片的index字段
+              sku.skuImages.forEach((img, idx) => {
+                img.index = idx;
+              });
+              console.log(`🔄 [deleteImageByIndex] 已重新计算SKU图片索引，SKU=${skuIndex}，当前数量: ${sku.skuImages.length}`);
+            }
           }
         }
       } else if (imageType === 'scene') {

@@ -3883,7 +3883,7 @@ const ProductDetail = ({
         const success = await localImageManager.deleteImageByIndex(
           currentProduct.applyCode,
           imageToDelete.type,
-          imageToDelete.index,
+          imageToDelete.type === 'sku' ? imageToDelete.imageUrl : imageToDelete.index,  // SKU使用imageUrl，其他使用index
           imageToDelete.skuIndex
         );
 
