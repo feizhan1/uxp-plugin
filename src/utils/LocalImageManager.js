@@ -2654,6 +2654,39 @@ export class LocalImageManager {
   }
 
   /**
+   * 更新产品的状态
+   * @param {string} applyCode - 产品编号
+   * @param {number} newStatus - 新状态值
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async updateProductStatus(applyCode, newStatus) {
+    console.log(`🔄 [updateProductStatus] 更新产品 ${applyCode} 状态为 ${newStatus}`);
+
+    try {
+      // 查找产品
+      const product = this.findProductByApplyCode(applyCode);
+      if (!product) {
+        console.warn(`⚠️ [updateProductStatus] 找不到产品: ${applyCode}`);
+        return { success: false, error: '产品不存在' };
+      }
+
+      // 更新状态
+      const oldStatus = product.status;
+      product.status = newStatus;
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [updateProductStatus] 产品状态已更新: ${oldStatus} -> ${newStatus}`);
+      return { success: true };
+
+    } catch (error) {
+      console.error(`❌ [updateProductStatus] 更新失败:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * 解析唯一图片ID
    * @param {string} uniqueImageId 唯一图片ID，格式: applyCode_imageType_index 或 applyCode_sku_skuIndex_imageIndex
    * @returns {Object|null} 解析结果

@@ -1646,6 +1646,18 @@ const ProductDetail = ({
       //   console.log('✅ 产品数据已从本地索引移除');
       // }
 
+      // 更新产品状态为4（编辑审核中）
+      await localImageManager.initialize();
+      const statusUpdateResult = await localImageManager.updateProductStatus(
+        currentProduct.applyCode,
+        4
+      );
+      if (statusUpdateResult.success) {
+        console.log('✅ 产品状态已更新为4（编辑审核中）');
+      } else {
+        console.warn('⚠️ 更新产品状态失败:', statusUpdateResult.error);
+      }
+
       // 1. 关闭产品详情页 - 延迟执行确保用户看到成功状态
       setTimeout(() => {
         if (onClose) {
