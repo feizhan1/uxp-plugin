@@ -634,6 +634,10 @@
   flex-shrink: 0;
 }
 
+.sku-actions button+button {
+  margin-left: 10px;
+}
+
 .add-image-btn {
   padding: 4px 8px;
   height: 24px;

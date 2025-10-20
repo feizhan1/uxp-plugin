@@ -4451,30 +4451,29 @@ const ProductDetail = ({
               <div className="sku-header">
                 <h3>{sku.skuTitle} ({sku.images.length})</h3>
                 <div className="sku-actions">
-                  {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
-                    <div className="sku-batch-actions">
-                      {!batchSyncMode ? (
-                        <button className="batch-sync-btn" onClick={handleStartBatchSync}>
-                          批量同步
-                        </button>
-                      ) : (
-                        <div className="batch-sync-controls">
-                          <button
-                            className="sync-btn"
-                            disabled={selectedImages.size === 0 || syncingBatch}
-                            onClick={handleExecuteSync}
-                          >
-                            同步 ({selectedImages.size})
-                          </button>
-                          <button className="cancel-btn" onClick={handleCancelBatchSync}>
-                            取消
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {sku.images.length > 0 && (
+                    {sku.images.length > 0 && (
                     <>
+                      {/* 批量同步 skuIndex为0时才显示*/}
+                      {skuIndex === 0 && (
+                        !batchSyncMode ? (
+                          <button className="batch-sync-to-ps-btn" onClick={handleStartBatchSync}>
+                            批量同步
+                          </button>
+                        ) : (
+                          <div className="batch-sync-controls">
+                            <button
+                              className="sync-btn"
+                              disabled={selectedImages.size === 0 || syncingBatch}
+                              onClick={handleExecuteSync}
+                            >
+                              同步 ({selectedImages.size})
+                            </button>
+                            <button className="cancel-btn" onClick={handleCancelBatchSync}>
+                              取消
+                            </button>
+                          </div>
+                        )
+                      )}
                       <button
                         className="batch-sync-to-ps-btn"
                         onClick={() => handleBatchSyncGroupToPS('sku', sku.skuIndex || skuIndex)}

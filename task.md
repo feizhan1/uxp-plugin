@@ -1,5 +1,50 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 批量同步按钮仅在第一个SKU时显示 (2025-01-30)
+
+### 完成情况：限制批量同步按钮仅在 skuIndex 为 0 时显示
+
+**需求描述**：
+- 批量同步按钮（"批量同步"、"同步 (N)"、"取消"）应该只在第一个 SKU 组中显示
+- 其他 SKU 组不显示批量同步相关按钮
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:4457-4476)
+
+在批量同步按钮的渲染条件中添加 `skuIndex === 0` 的判断：
+
+```javascript
+{/* 批量同步 skuIndex为0时才显示*/}
+{(sku.skuIndex || skuIndex) === 0 && (
+  !batchSyncMode ? (
+    <button className="batch-sync-to-ps-btn" onClick={handleStartBatchSync}>
+      批量同步
+    </button>
+  ) : (
+    <div className="batch-sync-controls">
+      <button
+        className="sync-btn"
+        disabled={selectedImages.size === 0 || syncingBatch}
+        onClick={handleExecuteSync}
+      >
+        同步 ({selectedImages.size})
+      </button>
+      <button className="cancel-btn" onClick={handleCancelBatchSync}>
+        取消
+      </button>
+    </div>
+  )
+)}
+```
+
+**修复效果**：
+- 批量同步按钮仅在第一个 SKU 组显示
+- 避免界面混乱，UI 更加清晰
+- 保持批量同步功能的一致性
+
+---
+
 ## ✅ 修复SKU和场景图"一键删除"后滚动位置丢失的问题 (2025-01-30)
 
 ### 完成情况：修复了一键删除图片后页面滚动位置回到顶部的问题
