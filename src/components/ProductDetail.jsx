@@ -1897,6 +1897,13 @@ const ProductDetail = ({
       setError(null);
       console.log(`🗑️ [executeBatchDelete] 开始批量删除 ${images.length} 张图片, type: ${type}, skuIndex: ${skuIndex}`);
 
+      // 保存当前滚动位置（在删除前保存）
+      if (contentRef.current) {
+        const currentScrollPosition = contentRef.current.scrollTop;
+        setSavedScrollPosition(currentScrollPosition);
+        console.log('💾 [executeBatchDelete] 保存滚动位置:', currentScrollPosition);
+      }
+
       // 逐个删除图片
       let successCount = 0;
       let failCount = 0;

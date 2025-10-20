@@ -1,5 +1,40 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 修复SKU和场景图"一键删除"后滚动位置丢失的问题 (2025-01-30)
+
+### 完成情况：修复了一键删除图片后页面滚动位置回到顶部的问题
+
+**问题描述**：
+- 在SKU图或场景图中点击"一键删除"按钮删除图片后
+- 页面滚动位置会回到顶部，而不是停留在原来的位置
+- 单张图片删除时滚动位置正常保持
+
+**根本原因**：
+- `executeBatchDelete()` 函数在批量删除前没有保存当前滚动位置
+- 删除完成后调用 `initializeImageData()` 重新加载数据，导致界面重新渲染，滚动位置丢失
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:1900-1905)
+
+在 `executeBatchDelete()` 函数开始时添加滚动位置保存逻辑：
+
+```javascript
+// 保存当前滚动位置（在删除前保存）
+if (contentRef.current) {
+  const currentScrollPosition = contentRef.current.scrollTop;
+  setSavedScrollPosition(currentScrollPosition);
+  console.log('💾 [executeBatchDelete] 保存滚动位置:', currentScrollPosition);
+}
+```
+
+**修复效果**：
+- 一键删除图片后，页面滚动位置正确保持在原位置
+- 与单张图片删除的行为保持一致
+- 提升用户体验，避免需要重新滚动查找
+
+---
+
 ## ✅ 提交审核API添加chineseName和chinesePackageList参数 (2025-01-30)
 
 ### 完成情况：在提交审核接口调用中添加产品中文名称和中文包装信息
