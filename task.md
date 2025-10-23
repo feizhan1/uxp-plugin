@@ -1,5 +1,50 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 撤回产品时自动更新本地图片URL (2025-01-31)
+
+### 完成情况：撤回产品成功后，根据 localPath 更新本地索引中的 imageUrl
+
+**问题描述**：
+- 执行产品撤回操作后，本地索引文件中的图片 imageUrl 未更新
+- 导致图片URL可能指向旧的或错误的地址
+- 需要在撤回成功后，基于 localPath 重新构建正确的 imageUrl
+
+**转换规则**：
+- 如果 `localPath = "test_2508180013/old_3.jpg"`
+- 则 `imageUrl = "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_3.jpg"`
+- 适用于原图、SKU图、场景图的所有图片
+
+**技术实现**：
+
+#### LocalImageManager.js 新增方法 (src/utils/LocalImageManager.js:2689-2768)
+
+新增 `updateProductImageUrlsByLocalPath(applyCode)` 方法：
+- 遍历产品的 originalImages、publishSkus.skuImages、senceImages
+- 对于每张有 localPath 的图片，更新 imageUrl 为：`https://openapi.sjlpj.cn:5002/publishoriginapath/${localPath}`
+- 保存更新后的索引数据
+- 返回更新的图片数量统计
+
+#### TodoList.jsx 调用新方法 (src/panels/TodoList.jsx:670-676)
+
+在 `doRejectProduct` 函数中，撤回成功后调用：
+```javascript
+// 🔄 根据 localPath 更新所有图片的 imageUrl
+const updateUrlResult = await localImageManager.updateProductImageUrlsByLocalPath(item.applyCode)
+if (updateUrlResult.success) {
+  console.log(`✅ 已更新 ${updateUrlResult.updateCount} 张图片的 imageUrl`)
+} else {
+  console.warn(`⚠️ 更新图片 URL 失败: ${updateUrlResult.error}`)
+}
+```
+
+**修复效果**：
+- 撤回产品时自动同步更新所有图片的 imageUrl
+- 确保 imageUrl 与 localPath 保持一致
+- 避免图片URL错误导致的显示或上传问题
+- 提供详细的日志记录，便于调试和监控
+
+---
+
 ## ✅ 优化文件选择器默认显示所有图片格式 (2025-01-31)
 
 ### 完成情况：移除文件类型限制，让 Windows 系统默认显示所有图片格式

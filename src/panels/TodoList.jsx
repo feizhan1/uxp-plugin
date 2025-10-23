@@ -666,6 +666,14 @@ const TodoList = () => {
           } else {
             console.warn('⚠️ 更新产品状态失败:', statusUpdateResult.error)
           }
+
+          // 🔄 根据 localPath 更新所有图片的 imageUrl
+          const updateUrlResult = await localImageManager.updateProductImageUrlsByLocalPath(item.applyCode)
+          if (updateUrlResult.success) {
+            console.log(`✅ 已更新 ${updateUrlResult.updateCount} 张图片的 imageUrl`)
+          } else {
+            console.warn(`⚠️ 更新图片 URL 失败: ${updateUrlResult.error}`)
+          }
         } catch (error) {
           console.error('重置图片状态时出错:', error)
         }

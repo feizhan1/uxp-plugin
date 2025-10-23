@@ -2687,6 +2687,87 @@ export class LocalImageManager {
   }
 
   /**
+   * 根据 localPath 更新产品的所有图片 imageUrl
+   * @param {string} applyCode - 产品编号
+   * @returns {Promise<{success: boolean, updateCount: number, error?: string}>}
+   */
+  async updateProductImageUrlsByLocalPath(applyCode) {
+    console.log(`🔄 [updateProductImageUrlsByLocalPath] 开始更新产品 ${applyCode} 的所有图片 URL`);
+
+    try {
+      // 查找产品
+      const product = this.indexData.find(p => p.applyCode === applyCode);
+      if (!product) {
+        console.warn(`⚠️ [updateProductImageUrlsByLocalPath] 找不到产品: ${applyCode}`);
+        return { success: false, updateCount: 0, error: '产品不存在' };
+      }
+
+      const baseUrl = 'https://openapi.sjlpj.cn:5002/publishoriginapath/';
+      let updateCount = 0;
+
+      // 更新原图 URL
+      if (Array.isArray(product.originalImages)) {
+        product.originalImages.forEach((img, index) => {
+          if (img.localPath) {
+            const newUrl = `${baseUrl}${img.localPath}`;
+            if (img.imageUrl !== newUrl) {
+              console.log(`  更新原图[${index}] URL: ${img.imageUrl} -> ${newUrl}`);
+              img.imageUrl = newUrl;
+              updateCount++;
+            }
+          }
+        });
+      }
+
+      // 更新 SKU 图片 URL
+      if (Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach((sku, skuIndex) => {
+          if (Array.isArray(sku.skuImages)) {
+            sku.skuImages.forEach((img, imgIndex) => {
+              if (img.localPath) {
+                const newUrl = `${baseUrl}${img.localPath}`;
+                if (img.imageUrl !== newUrl) {
+                  console.log(`  更新SKU[${skuIndex}]图片[${imgIndex}] URL: ${img.imageUrl} -> ${newUrl}`);
+                  img.imageUrl = newUrl;
+                  updateCount++;
+                }
+              }
+            });
+          }
+        });
+      }
+
+      // 更新场景图 URL
+      if (Array.isArray(product.senceImages)) {
+        product.senceImages.forEach((img, index) => {
+          if (img.localPath) {
+            const newUrl = `${baseUrl}${img.localPath}`;
+            if (img.imageUrl !== newUrl) {
+              console.log(`  更新场景图[${index}] URL: ${img.imageUrl} -> ${newUrl}`);
+              img.imageUrl = newUrl;
+              updateCount++;
+            }
+          }
+        });
+      }
+
+      // 保存索引数据
+      if (updateCount > 0) {
+        await this.saveIndexData();
+        console.log(`✅ [updateProductImageUrlsByLocalPath] 成功更新 ${updateCount} 张图片的 URL`);
+      } else {
+        console.log(`ℹ️ [updateProductImageUrlsByLocalPath] 没有需要更新的图片 URL`);
+      }
+
+      return { success: true, updateCount };
+
+    } catch (error) {
+      console.error(`❌ [updateProductImageUrlsByLocalPath] 更新失败:`, error);
+      return { success: false, updateCount: 0, error: error.message };
+    }
+  }
+
+  /**
    * 解析唯一图片ID
    * @param {string} uniqueImageId 唯一图片ID，格式: applyCode_imageType_index 或 applyCode_sku_skuIndex_imageIndex
    * @returns {Object|null} 解析结果
