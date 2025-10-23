@@ -7,7 +7,8 @@
       "Bash(git add:*)",
       "WebFetch(domain:forums.creativeclouddeveloper.com)",
       "WebFetch(domain:openapi-doc.xiangjifanyi.com)",
-      "Read(//Users/feizhan/Desktop/ps/tvcmall-plugin/product-images/**)"
+      "Read(//Users/feizhan/Desktop/ps/tvcmall-plugin/product-images/**)",
+      "Bash(git commit -m \"$(cat <<''EOF''\n✨ 优化文件选择器默认显示所有图片格式\n\n- 移除 getFileForOpening 的 types 限制\n- Windows 11 用户现在可以直接看到所有支持的图片格式（PNG/JPG/JPEG）\n- 保留 isValidImageFormat() 格式验证机制\n- 提升用户体验，无需手动切换文件类型过滤器\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

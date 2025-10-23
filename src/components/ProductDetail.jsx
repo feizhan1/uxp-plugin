@@ -2398,10 +2398,11 @@ const ProductDetail = ({
         console.warn(`⚠️ [handleAddImage] 获取产品文件夹失败，使用默认位置:`, error);
       }
 
-      // 显示文件选择对话框 - 限制PNG/JPG格式，尝试定位到产品文件夹
+      // 显示文件选择对话框 - 默认显示所有文件（格式验证在代码中进行），尝试定位到产品文件夹
       const fileOptions = {
-        allowMultiple: true,
-        types: ['png', 'jpg', 'jpeg']
+        allowMultiple: true
+        // 移除 types 限制，让 Windows 系统默认显示所有图片格式
+        // 格式验证由 isValidImageFormat() 函数在代码中完成
       };
       if (initialFolder) {
         fileOptions.initialLocation = initialFolder;

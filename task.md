@@ -1,5 +1,51 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 优化文件选择器默认显示所有图片格式 (2025-01-31)
+
+### 完成情况：移除文件类型限制，让 Windows 系统默认显示所有图片格式
+
+**问题描述**：
+- 在 SKU 和场景图区域点击"添加图片"时
+- Windows 11 系统下文件选择器默认只显示 PNG 格式
+- 用户需要手动在下拉菜单中切换到 JPG 或"所有支持的格式"
+- 降低了用户体验和操作效率
+
+**根本原因**：
+- `getFileForOpening()` 使用 `types: ['png', 'jpg', 'jpeg']` 限制文件类型
+- Windows 系统会将数组中第一个元素（png）作为默认过滤器
+- 用户无法一次性看到所有支持的图片格式
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:2401-2409)
+
+移除 `types` 参数限制，让文件选择器默认显示所有文件：
+
+```javascript
+// 显示文件选择对话框 - 默认显示所有文件（格式验证在代码中进行），尝试定位到产品文件夹
+const fileOptions = {
+  allowMultiple: true
+  // 移除 types 限制，让 Windows 系统默认显示所有图片格式
+  // 格式验证由 isValidImageFormat() 函数在代码中完成
+};
+if (initialFolder) {
+  fileOptions.initialLocation = initialFolder;
+}
+```
+
+**格式验证保障**：
+- `LocalImageManager.js:51` 的 `isValidImageFormat()` 函数会验证文件格式
+- 仅允许 PNG、JPG、JPEG 格式，其他格式会被拒绝
+- 用户选择错误格式时会收到清晰的错误提示
+
+**修复效果**：
+- Windows 用户可以直接看到所有图片文件（PNG、JPG、JPEG）
+- 无需手动切换文件类型过滤器
+- 保留格式验证，确保安全性
+- 提升用户体验和操作流畅度
+
+---
+
 ## ✅ 批量同步按钮仅在第一个SKU时显示 (2025-01-30)
 
 ### 完成情况：限制批量同步按钮仅在 skuIndex 为 0 时显示
