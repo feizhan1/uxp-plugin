@@ -2016,7 +2016,7 @@ async function getImageFileEntry(imageInfo) {
         if (hasLocal) {
           // 找到对应的下载ID
           for (const [downloadId, imageInfo] of localImageManager.indexData) {
-            if (imageInfo.url === url && (imageInfo.status === 'downloaded' || imageInfo.status === 'synced' || imageInfo.status === 'modified')) {
+            if (imageInfo.url === url && (imageInfo.status === 'downloaded' || imageInfo.status === 'synced' || imageInfo.status === 'modified' || imageInfo.status === 'pending_edit' || imageInfo.status === 'editing')) {
               localFile = await localImageManager.getLocalImageFile(downloadId);
               if (localFile) {
                 console.log(`✅ [智能获取文件] URL匹配成功: 使用本地文件 ${downloadId}`);
