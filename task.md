@@ -1,5 +1,61 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 点击就绪按钮时同步产品状态到本地索引 (2025-01-31)
+
+### 完成情况：手动更新时自动检查并同步 API 产品状态到本地 index.json
+
+**问题描述**：
+- 点击"就绪"按钮进行手动更新时，只从 API 获取产品列表并更新 UI
+- 本地索引文件 index.json 中的产品状态未与 API 返回的状态同步
+- 可能导致本地状态与服务器状态不一致
+
+**需求**：
+- 在手动更新时，检查 API 返回的产品状态和本地索引中的产品状态
+- 如果不一致，将本地索引中的产品状态更新为 API 返回的状态
+- 确保本地数据与服务器数据保持一致
+
+**技术实现**：
+
+#### TodoList.jsx 修改 executeSync 函数 (src/panels/TodoList.jsx:1062-1080)
+
+在 `executeSync` 函数中，获取产品列表后添加状态同步逻辑：
+
+```javascript
+// 🔄 同步产品状态到本地索引
+await localImageManager.initialize()
+let statusUpdateCount = 0
+for (const apiProduct of productList) {
+  const localProduct = localImageManager.findProductByApplyCode(apiProduct.applyCode)
+
+  if (localProduct && localProduct.status !== apiProduct.status) {
+    console.log(`🔄 [executeSync] 产品 ${apiProduct.applyCode} 状态不一致: 本地=${localProduct.status}, API=${apiProduct.status}`)
+    const result = await localImageManager.updateProductStatus(apiProduct.applyCode, apiProduct.status)
+    if (result.success) {
+      statusUpdateCount++
+      console.log(`✅ [executeSync] 已更新产品 ${apiProduct.applyCode} 状态: ${localProduct.status} → ${apiProduct.status}`)
+    }
+  }
+}
+
+if (statusUpdateCount > 0) {
+  console.log(`✅ [executeSync] 状态同步完成，共更新 ${statusUpdateCount} 个产品`)
+}
+```
+
+**实现效果**：
+- 点击"就绪"按钮后，自动检查并同步产品状态
+- 遍历所有产品，比较 API 状态和本地状态
+- 如果发现不一致，自动调用 `localImageManager.updateProductStatus()` 更新
+- 提供详细的日志输出，记录每个更新的产品和更新总数
+- 确保本地 index.json 与服务器数据保持一致
+
+**使用的现有方法**：
+- `localImageManager.findProductByApplyCode(applyCode)`: 查找本地产品
+- `localImageManager.updateProductStatus(applyCode, newStatus)`: 更新产品状态
+- `localImageManager.saveIndexData()`: 自动保存索引数据（在 updateProductStatus 内部调用）
+
+---
+
 ## ✅ 撤回产品时自动更新本地图片URL (2025-01-31)
 
 ### 完成情况：撤回产品成功后，根据 localPath 更新本地索引中的 imageUrl

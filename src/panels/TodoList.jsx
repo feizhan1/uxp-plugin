@@ -1059,6 +1059,26 @@ const TodoList = () => {
       // 更新本地产品列表
       setData(productList)
 
+      // 🔄 同步产品状态到本地索引
+      await localImageManager.initialize()
+      let statusUpdateCount = 0
+      for (const apiProduct of productList) {
+        const localProduct = localImageManager.findProductByApplyCode(apiProduct.applyCode)
+
+        if (localProduct && localProduct.status !== apiProduct.status) {
+          console.log(`🔄 [executeSync] 产品 ${apiProduct.applyCode} 状态不一致: 本地=${localProduct.status}, API=${apiProduct.status}`)
+          const result = await localImageManager.updateProductStatus(apiProduct.applyCode, apiProduct.status)
+          if (result.success) {
+            statusUpdateCount++
+            console.log(`✅ [executeSync] 已更新产品 ${apiProduct.applyCode} 状态: ${localProduct.status} → ${apiProduct.status}`)
+          }
+        }
+      }
+
+      if (statusUpdateCount > 0) {
+        console.log(`✅ [executeSync] 状态同步完成，共更新 ${statusUpdateCount} 个产品`)
+      }
+
       setSyncStatus('正在收集图片信息...')
 
       // 🎯 使用增量同步：调用现有的collectProductImages函数，带进度回调
