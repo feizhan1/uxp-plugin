@@ -1,11 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:*)",
-      "Read(//c/Users/macdown/AppData/Roaming/Adobe/UXP/PluginsStorage/PHSP/26/Developer/7d40622e/PluginData/tvcmall-plugin/product-images/**)",
-      "Bash(dir:*)",
-      "Bash(git add:*)",
-      "WebFetch(domain:forums.creativeclouddeveloper.com)"
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

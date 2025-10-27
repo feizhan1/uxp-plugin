@@ -2,6 +2,7 @@
 // 负责产品图片的本地存储、下载、索引和同步管理
 
 import { get } from './http.js';
+import { storageLocationManager } from './StorageLocationManager.js';
 
 // 检测是否在UXP环境中
 const isUXPEnvironment = () => {
@@ -69,6 +70,7 @@ export class LocalImageManager {
     this.maxConcurrentDownloads = 3; // 最大并发下载数
     this.retryCount = 3; // 重试次数
     this.initialized = false; // 初始化状态
+    this.productFolderCache = new Map(); // 产品文件夹缓存 {applyCode: folderObject}
   }
 
   /**
@@ -149,16 +151,18 @@ export class LocalImageManager {
    */
   async createImageDirectory() {
     try {
-      // 获取用户文档目录
-      const dataFolder = await fs.getDataFolder();
+      // 使用存储位置管理器获取用户选择的本地文件夹
+      console.log('🚀 [LocalImageManager] 获取存储位置...');
+      const baseFolder = await storageLocationManager.getStorageFolder();
+      console.log('✅ [LocalImageManager] 基础文件夹:', baseFolder.nativePath);
 
-      // 创建或获取插件专用目录
+      // 在用户选择的文件夹下创建插件专用目录
       let pluginFolder;
       try {
-        pluginFolder = await dataFolder.createFolder('tvcmall-plugin', { overwrite: false });
+        pluginFolder = await baseFolder.createFolder('tvcmall-plugin', { overwrite: false });
       } catch (error) {
         if (error.message.includes('exists')) {
-          pluginFolder = await dataFolder.getEntry('tvcmall-plugin');
+          pluginFolder = await baseFolder.getEntry('tvcmall-plugin');
           console.log('插件目录已存在，直接使用');
         } else {
           throw error;
@@ -177,10 +181,82 @@ export class LocalImageManager {
         }
       }
 
-      console.log('图片存储目录:', this.imageFolder.nativePath);
+      console.log('✅ [LocalImageManager] 图片存储目录:', this.imageFolder.nativePath);
     } catch (error) {
-      console.error('创建图片存储目录失败:', error);
+      console.error('❌ [LocalImageManager] 创建图片存储目录失败:', error);
       throw new Error(`无法创建图片存储目录: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取或创建产品文件夹
+   * @param {string} applyCode - 产品申请码
+   * @returns {Promise<Folder>} 产品文件夹对象
+   */
+  async getOrCreateProductFolder(applyCode) {
+    if (!applyCode) {
+      throw new Error('产品申请码不能为空');
+    }
+
+    // 检查缓存
+    if (this.productFolderCache.has(applyCode)) {
+      return this.productFolderCache.get(applyCode);
+    }
+
+    try {
+      let productFolder;
+      try {
+        // 尝试创建产品文件夹
+        productFolder = await this.imageFolder.createFolder(applyCode, { overwrite: false });
+        console.log(`✅ [getOrCreateProductFolder] 创建产品文件夹: ${applyCode}`);
+      } catch (error) {
+        if (error.message.includes('exists')) {
+          // 文件夹已存在，直接获取
+          productFolder = await this.imageFolder.getEntry(applyCode);
+          console.log(`📁 [getOrCreateProductFolder] 产品文件夹已存在: ${applyCode}`);
+        } else {
+          throw error;
+        }
+      }
+
+      // 缓存文件夹引用
+      this.productFolderCache.set(applyCode, productFolder);
+      return productFolder;
+    } catch (error) {
+      console.error(`❌ [getOrCreateProductFolder] 创建/获取产品文件夹失败: ${applyCode}`, error);
+      throw new Error(`无法创建产品文件夹 ${applyCode}: ${error.message}`);
+    }
+  }
+
+  /**
+   * 根据路径获取文件（支持产品子文件夹）
+   * @param {string} localPath - 本地路径（格式：applyCode/filename.jpg）
+   * @returns {Promise<File>} 文件对象
+   */
+  async getFileByPath(localPath) {
+    if (!localPath) {
+      throw new Error('文件路径不能为空');
+    }
+
+    try {
+      // 解析路径：applyCode/filename.jpg
+      const pathParts = localPath.split('/');
+
+      if (pathParts.length !== 2) {
+        throw new Error(`无效的文件路径格式: ${localPath}，期望格式：applyCode/filename.jpg`);
+      }
+
+      const [folderName, fileName] = pathParts;
+
+      // 获取产品文件夹
+      const productFolder = await this.getOrCreateProductFolder(folderName);
+
+      // 获取文件
+      const file = await productFolder.getEntry(fileName);
+      return file;
+    } catch (error) {
+      console.error(`❌ [getFileByPath] 获取文件失败: ${localPath}`, error);
+      throw error;
     }
   }
 
@@ -227,6 +303,16 @@ export class LocalImageManager {
             });
           }
         });
+
+        // 数据完整性检查和自动修复
+        const fixedCount = this.validateAndFixImageData();
+        if (fixedCount > 0) {
+          console.log(`🔧 [loadIndexData] 修复了 ${fixedCount} 个缺失localPath的图片记录，已自动保存`);
+          // 异步保存修复后的数据，不阻塞加载流程
+          this.saveIndexData().catch(error => {
+            console.error('❌ [loadIndexData] 保存修复后的数据失败:', error);
+          });
+        }
       } else {
         console.log('📂 [loadIndexData] 未找到索引文件，创建新的索引');
         this.indexData = [];
@@ -237,6 +323,84 @@ export class LocalImageManager {
     }
   }
 
+  /**
+   * 验证并修复图片数据的完整性
+   * 检查所有图片是否缺少 localPath 字段，如果缺少则重置状态为 not_downloaded
+   * @returns {number} 修复的图片数量
+   */
+  validateAndFixImageData() {
+    let fixedCount = 0;
+
+    console.log('🔍 [validateAndFixImageData] 开始检查图片数据完整性...');
+
+    this.indexData.forEach((product) => {
+      // 检查原始图片
+      if (Array.isArray(product.originalImages)) {
+        product.originalImages.forEach((img, index) => {
+          if (this.needsFixing(img)) {
+            console.log(`🔧 [validateAndFixImageData] 修复原始图片: ${product.applyCode} - ${index}`);
+            img.status = 'not_downloaded';
+            img.timestamp = Date.now();
+            fixedCount++;
+          }
+        });
+      }
+
+      // 检查SKU图片
+      if (Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach((sku, skuIndex) => {
+          if (Array.isArray(sku.skuImages)) {
+            sku.skuImages.forEach((img, imgIndex) => {
+              if (this.needsFixing(img)) {
+                console.log(`🔧 [validateAndFixImageData] 修复SKU图片: ${product.applyCode} - SKU${skuIndex} - ${imgIndex}`);
+                img.status = 'not_downloaded';
+                img.timestamp = Date.now();
+                fixedCount++;
+              }
+            });
+          }
+        });
+      }
+
+      // 检查场景图片
+      if (Array.isArray(product.senceImages)) {
+        product.senceImages.forEach((img, index) => {
+          if (this.needsFixing(img)) {
+            console.log(`🔧 [validateAndFixImageData] 修复场景图片: ${product.applyCode} - ${index}`);
+            img.status = 'not_downloaded';
+            img.timestamp = Date.now();
+            fixedCount++;
+          }
+        });
+      }
+    });
+
+    if (fixedCount > 0) {
+      console.log(`✅ [validateAndFixImageData] 共修复了 ${fixedCount} 个缺失localPath的图片记录`);
+    } else {
+      console.log(`✅ [validateAndFixImageData] 图片数据完整性检查通过，无需修复`);
+    }
+
+    return fixedCount;
+  }
+
+  /**
+   * 判断图片是否需要修复
+   * 如果图片缺少 localPath 但状态不是 'not_downloaded' 或 'download_failed'，则需要修复
+   * @param {Object} img 图片对象
+   * @returns {boolean} 是否需要修复
+   */
+  needsFixing(img) {
+    // 如果没有 localPath 字段（或为空字符串）
+    const hasNoLocalPath = !img.localPath || img.localPath === '';
+
+    // 如果状态不是 'not_downloaded' 或 'download_failed'
+    const hasInvalidStatus = img.status &&
+                            img.status !== 'not_downloaded' &&
+                            img.status !== 'download_failed';
+
+    return hasNoLocalPath && hasInvalidStatus;
+  }
 
   /**
    * 保存产品索引数据
@@ -247,13 +411,84 @@ export class LocalImageManager {
         throw new Error('图片存储目录未初始化');
       }
 
+      console.log(`💾 [saveIndexData] 准备保存 ${this.indexData.length} 个产品的索引数据`);
+
+      // 验证数据完整性
+      let totalImages = 0;
+      let imagesWithLocalPath = 0;
+      let imagesWithoutLocalPath = 0;
+
+      this.indexData.forEach((product, index) => {
+        let productImageCount = 0;
+        let productImagesWithPath = 0;
+
+        // 统计原始图片
+        if (product.originalImages) {
+          product.originalImages.forEach(img => {
+            productImageCount++;
+            totalImages++;
+            if (img.localPath) {
+              productImagesWithPath++;
+              imagesWithLocalPath++;
+            } else if (img.status !== 'not_downloaded' && img.status !== 'download_failed') {
+              imagesWithoutLocalPath++;
+              console.warn(`⚠️ [saveIndexData] 产品${product.applyCode} 原始图片缺少localPath但status=${img.status}:`, img.imageUrl);
+            }
+          });
+        }
+
+        // 统计SKU图片
+        if (product.publishSkus) {
+          product.publishSkus.forEach(sku => {
+            if (sku.skuImages) {
+              sku.skuImages.forEach(img => {
+                productImageCount++;
+                totalImages++;
+                if (img.localPath) {
+                  productImagesWithPath++;
+                  imagesWithLocalPath++;
+                } else if (img.status !== 'not_downloaded' && img.status !== 'download_failed') {
+                  imagesWithoutLocalPath++;
+                  console.warn(`⚠️ [saveIndexData] 产品${product.applyCode} SKU${sku.skuIndex}图片缺少localPath但status=${img.status}:`, img.imageUrl);
+                }
+              });
+            }
+          });
+        }
+
+        // 统计场景图片
+        if (product.senceImages) {
+          product.senceImages.forEach(img => {
+            productImageCount++;
+            totalImages++;
+            if (img.localPath) {
+              productImagesWithPath++;
+              imagesWithLocalPath++;
+            } else if (img.status !== 'not_downloaded' && img.status !== 'download_failed') {
+              imagesWithoutLocalPath++;
+              console.warn(`⚠️ [saveIndexData] 产品${product.applyCode} 场景图片缺少localPath但status=${img.status}:`, img.imageUrl);
+            }
+          });
+        }
+
+        if (index < 3 || productImageCount > 0) {
+          console.log(`📊 [saveIndexData] 产品${index + 1} (${product.applyCode}): ${productImageCount}张图片, ${productImagesWithPath}张有localPath`);
+        }
+      });
+
+      console.log(`📊 [saveIndexData] 统计汇总: 总图片=${totalImages}, 有localPath=${imagesWithLocalPath}, 缺少localPath=${imagesWithoutLocalPath}`);
+
+      if (imagesWithoutLocalPath > 0) {
+        console.warn(`⚠️ [saveIndexData] 发现 ${imagesWithoutLocalPath} 张图片缺少localPath但状态不是not_downloaded/download_failed`);
+      }
+
       const indexFile = await this.imageFolder.createFile('index.json', { overwrite: true });
 
       // 直接保存产品数组格式
       await indexFile.write(JSON.stringify(this.indexData, null, 2), { format: formats.utf8 });
-      console.log(`产品索引数据已保存: ${this.indexData.length} 个产品`);
+      console.log(`✅ [saveIndexData] 产品索引数据已成功保存: ${this.indexData.length} 个产品`);
     } catch (error) {
-      console.error('保存索引数据失败:', error);
+      console.error('❌ [saveIndexData] 保存索引数据失败:', error);
       throw error;
     }
   }
@@ -458,73 +693,116 @@ export class LocalImageManager {
 
   /**
    * 检查是否需要下载图片
+   * 支持同一imageUrl在多个位置（SKU、场景图）出现的情况
    * @param {Object} imageInfo 图片信息
    * @returns {boolean} 是否需要下载
    */
   async shouldDownloadImage(imageInfo) {
-    const { id, url } = imageInfo;
+    const { id, url, imageUrl, applyCode, skuIndex, sourceIndex } = imageInfo;
+    // 🔧 兼容 imageType 和 type 字段
+    const imageType = imageInfo.imageType || imageInfo.type;
+    const actualUrl = url || imageUrl;
 
-    console.log(`🤔 [shouldDownloadImage] 检查图片 ${id} 是否需要下载:`, {
-      hasId: !!id,
-      hasUrl: !!url,
-      urlPreview: url ? url.substring(0, 50) + '...' : null
+    console.log(`🤔 [shouldDownloadImage] 检查图片是否需要下载:`, {
+      id: id,
+      urlPreview: actualUrl ? actualUrl.substring(0, 50) + '...' : null,
+      applyCode: applyCode,
+      imageType: imageType,
+      skuIndex: skuIndex,
+      sourceIndex: sourceIndex
     });
 
-    if (!id || !url) {
-      console.log(`❌ [shouldDownloadImage] 图片 ${id} 缺少必要信息，跳过下载`);
+    if (!id || !actualUrl || !applyCode) {
+      console.log(`❌ [shouldDownloadImage] 缺少必要信息，跳过下载`);
       return false;
     }
 
-    const existingInfo = this.getImageInfo(id);
-    console.log(`🤔 [shouldDownloadImage] 图片 ${id} 索引检查:`, {
-      hasExisting: !!existingInfo,
-      existingStatus: existingInfo?.status,
-      existingUrl: existingInfo?.imageUrl ? existingInfo.imageUrl.substring(0, 50) + '...' : null,
-      existingLocalPath: existingInfo?.localPath
+    // 查找产品
+    const product = this.findProductByApplyCode(applyCode);
+    if (!product) {
+      console.log(`✅ [shouldDownloadImage] 产品不存在，需要下载并创建: ${applyCode}`);
+      return true;
+    }
+
+    // 根据 imageType 和 skuIndex 找到特定位置的图片记录
+    let targetImage = null;
+    let locationDesc = '';
+
+    if (imageType === 'scene') {
+      // 查找场景图片（兼容 imageUrl 和 url 字段）
+      locationDesc = `场景图片[${sourceIndex}]`;
+      if (product.senceImages) {
+        targetImage = product.senceImages.find(img =>
+          img.imageUrl === actualUrl || img.url === actualUrl
+        );
+      }
+    } else if (skuIndex !== undefined && skuIndex !== null) {
+      // 查找SKU图片（兼容 imageUrl 和 url 字段）
+      locationDesc = `SKU[${skuIndex}]图片[${sourceIndex}]`;
+      const sku = product.publishSkus?.find(s => s.skuIndex === skuIndex);
+      if (sku && sku.skuImages) {
+        targetImage = sku.skuImages.find(img =>
+          img.imageUrl === actualUrl || img.url === actualUrl
+        );
+      }
+    } else {
+      // 查找原始图片（兼容 imageUrl 和 url 字段）
+      locationDesc = `原始图片[${sourceIndex}]`;
+      if (product.originalImages) {
+        targetImage = product.originalImages.find(img =>
+          img.imageUrl === actualUrl || img.url === actualUrl
+        );
+      }
+    }
+
+    console.log(`🔍 [shouldDownloadImage] ${locationDesc} 索引状态:`, {
+      found: !!targetImage,
+      status: targetImage?.status,
+      hasLocalPath: !!targetImage?.localPath,
+      localPath: targetImage?.localPath
     });
 
-    if (!existingInfo) {
-      console.log(`✅ [shouldDownloadImage] 图片 ${id} 是新图片，需要下载`);
-      return true; // 新图片需要下载
+    // 如果该位置的记录不存在或没有localPath，需要下载
+    if (!targetImage || !targetImage.localPath) {
+      console.log(`✅ [shouldDownloadImage] ${locationDesc} 索引未更新，需要下载/更新`);
+      return true;
     }
 
     // 检查是否已标记为下载失败（用户已跳过）
-    if (existingInfo.status === 'download_failed') {
-      console.log(`⏭️ [shouldDownloadImage] 图片 ${id} 已标记为下载失败，跳过下载`);
-      return false; // 已跳过的图片不再下载
+    if (targetImage.status === 'download_failed') {
+      console.log(`⏭️ [shouldDownloadImage] ${locationDesc} 已标记为下载失败，跳过下载`);
+      return false;
     }
 
     // 检查本地文件是否存在
     try {
-      console.log(`🔍 [shouldDownloadImage] 检查本地文件是否存在: ${existingInfo.localPath}`);
-      const localFile = await this.imageFolder.getEntry(existingInfo.localPath);
+      console.log(`🔍 [shouldDownloadImage] 检查本地文件: ${targetImage.localPath}`);
+      const localFile = await this.getFileByPath(targetImage.localPath);
       if (!localFile) {
-        console.log(`✅ [shouldDownloadImage] 本地文件不存在，需要重新下载: ${existingInfo.localPath}`);
-        return true; // 本地文件不存在，需要重新下载
+        console.log(`✅ [shouldDownloadImage] ${locationDesc} 本地文件不存在，需要重新下载`);
+        return true;
       }
 
       // 检查URL是否发生变化
-      if (existingInfo.imageUrl !== url) {
-        console.log(`✅ [shouldDownloadImage] 图片 ${id} URL已变化，需要重新下载`);
-        console.log(`🔍 [shouldDownloadImage] 旧URL: ${existingInfo.imageUrl}`);
-        console.log(`🔍 [shouldDownloadImage] 新URL: ${url}`);
+      if (targetImage.imageUrl !== actualUrl) {
+        console.log(`✅ [shouldDownloadImage] ${locationDesc} URL已变化，需要重新下载`);
         return true;
       }
 
       // 检查文件是否过期（可选：7天）
-      const fileAge = Date.now() - existingInfo.timestamp;
+      const fileAge = Date.now() - (targetImage.timestamp || 0);
       const maxAge = 7 * 24 * 60 * 60 * 1000; // 7天
       if (fileAge > maxAge) {
-        console.log(`✅ [shouldDownloadImage] 图片 ${id} 已过期，需要重新下载 (年龄: ${Math.round(fileAge / (24 * 60 * 60 * 1000))} 天)`);
+        console.log(`✅ [shouldDownloadImage] ${locationDesc} 已过期，需要重新下载 (年龄: ${Math.round(fileAge / (24 * 60 * 60 * 1000))} 天)`);
         return true;
       }
 
-      console.log(`❌ [shouldDownloadImage] 图片 ${id} 本地文件存在且有效，跳过下载`);
-      return false; // 本地文件存在且有效
+      console.log(`❌ [shouldDownloadImage] ${locationDesc} 本地文件存在且有效，跳过下载`);
+      return false;
     } catch (error) {
-      console.warn(`✅ [shouldDownloadImage] 检查本地文件失败 ${id}:`, error);
+      console.warn(`✅ [shouldDownloadImage] ${locationDesc} 文件检查失败:`, error);
       console.log(`✅ [shouldDownloadImage] 因为文件检查失败，将重新下载`);
-      return true; // 检查失败时重新下载
+      return true;
     }
   }
 
@@ -533,8 +811,25 @@ export class LocalImageManager {
    * @param {Object} imageInfo 图片信息
    */
   async downloadSingleImage(imageInfo) {
+    // 🔍 调试：记录接收到的完整 imageInfo
+    console.log(`🔍 [DEBUG-downloadSingleImage] 接收到的 imageInfo:`, {
+      id: imageInfo.id,
+      imageType: imageInfo.imageType,
+      imageTypeType: typeof imageInfo.imageType,
+      applyCode: imageInfo.applyCode,
+      sourceIndex: imageInfo.sourceIndex,
+      skuIndex: imageInfo.skuIndex,
+      hasImageUrl: !!imageInfo.imageUrl,
+      hasUrl: !!imageInfo.url,
+      urlPreview: (imageInfo.imageUrl || imageInfo.url)?.substring(0, 60) + '...',
+      allKeys: Object.keys(imageInfo)
+    });
+
     // 提取参数
     let { imageUrl, applyCode, sourceIndex, skuIndex } = imageInfo;
+
+    // 🔧 兼容 imageType 和 type 字段（修复字段名不统一问题）
+    const imageType = imageInfo.imageType || imageInfo.type;
 
     // 兼容旧格式参数名
     const url = imageUrl || imageInfo.url;
@@ -555,72 +850,264 @@ export class LocalImageManager {
         const localFilename = this.generateLocalFilename(imageInfo);
         console.log(`📁 [downloadSingleImage] 生成的本地文件名: ${localFilename}`);
 
-        // 下载图片
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`下载失败 (${response.status}): ${response.statusText}`);
+        // 解析路径
+        const pathParts = localFilename.split('/');
+        if (pathParts.length !== 2) {
+          throw new Error(`无效的文件路径格式: ${localFilename}`);
+        }
+        const [folderName, fileName] = pathParts;
+
+        // 获取或创建产品文件夹
+        const productFolder = await this.getOrCreateProductFolder(folderName);
+
+        // 检查文件是否已存在
+        let arrayBuffer;
+        let localFile;
+        try {
+          localFile = await productFolder.getEntry(fileName);
+          if (localFile && localFile.isFile) {
+            // 文件已存在，读取文件大小
+            arrayBuffer = await localFile.read({ format: formats.binary });
+            console.log(`📂 [downloadSingleImage] 文件已存在，跳过下载: ${localFilename} (大小: ${arrayBuffer.byteLength} bytes)`);
+          } else {
+            localFile = null;
+          }
+        } catch (err) {
+          // 文件不存在，需要下载
+          localFile = null;
         }
 
-        const arrayBuffer = await response.arrayBuffer();
+        // 如果文件不存在，下载图片
+        if (!localFile) {
+          console.log(`⬇️ [downloadSingleImage] 开始下载图片: ${url}`);
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`下载失败 (${response.status}): ${response.statusText}`);
+          }
 
-        // 保存到本地
-        const localFile = await this.imageFolder.createFile(localFilename, { overwrite: true });
-        await localFile.write(arrayBuffer, { format: formats.binary });
+          arrayBuffer = await response.arrayBuffer();
+
+          // 在产品文件夹中创建文件
+          localFile = await productFolder.createFile(fileName, { overwrite: true });
+          await localFile.write(arrayBuffer, { format: formats.binary });
+          console.log(`✅ [downloadSingleImage] 文件下载完成: ${localFilename} (大小: ${arrayBuffer.byteLength} bytes)`);
+        }
 
         // 更新产品数据中的图片信息
         const product = this.getOrCreateProduct(applyCode);
+        console.log(`📝 [downloadSingleImage] 准备更新索引 - 产品: ${applyCode}, imageType: ${imageType}, skuIndex: ${skuIndex}, sourceIndex: ${sourceIndex}`);
 
-        // 根据imageType和skuIndex判断图片类型
-        if (imageInfo.imageType === 'scene') {
-          // 处理场景图片
-          let sceneImage = product.senceImages.find(img => img.imageUrl === url);
-          if (!sceneImage) {
-            sceneImage = { imageUrl: url };
+        // 🔍 调试：显式检查 imageType 条件
+        console.log(`🔍 [DEBUG-imageType判断] imageType 详细检查:`, {
+          imageType: imageType,
+          imageTypeType: typeof imageType,
+          原始imageType: imageInfo.imageType,
+          原始type: imageInfo.type,
+          isScene: imageType === 'scene',
+          isSceneStrict: imageType === 'scene' && typeof imageType === 'string',
+          equalsSence: imageType === 'sence',
+          productHasSenceImages: !!product.senceImages,
+          senceImagesType: Array.isArray(product.senceImages) ? 'array' : typeof product.senceImages,
+          senceImagesLength: product.senceImages?.length || 0
+        });
+
+        // 🔧 根据 imageType 和 skuIndex 判断图片类型（使用兼容后的 imageType 变量）
+        if (imageType === 'scene') {
+          // 处理场景图片 - 支持同一imageUrl多次出现
+          console.log(`🔍 [downloadSingleImage] 查找场景图片: ${url}`);
+          console.log(`🔍 [downloadSingleImage] 当前场景图片数组:`, product.senceImages);
+          console.log(`🔍 [downloadSingleImage] 场景图片字段检查:`, product.senceImages.map((img, i) => ({
+            index: i,
+            hasImageUrl: !!img.imageUrl,
+            hasUrl: !!img.url,
+            imageUrl: img.imageUrl,
+            url: img.url,
+            allKeys: Object.keys(img)
+          })));
+
+          // 收集所有匹配的场景图片（支持重复imageUrl，兼容url和imageUrl两种字段名）
+          const matchedSceneImages = product.senceImages.filter(img =>
+            img.imageUrl === url || img.url === url
+          );
+
+          // 🔍 调试：记录匹配结果
+          console.log(`🔍 [DEBUG-filter结果] 场景图片匹配结果:`, {
+            查找的url: url,
+            urlLength: url.length,
+            匹配数量: matchedSceneImages.length,
+            索引中总场景图片数: product.senceImages.length
+          });
+
+          if (matchedSceneImages.length === 0) {
+            console.log(`⚠️ [DEBUG-filter结果] 未找到匹配的场景图片！索引中的所有场景图片URL:`,
+              product.senceImages.map((img, i) => ({
+                index: i,
+                imageUrl: img.imageUrl,
+                imageUrlLength: img.imageUrl?.length,
+                url: img.url,
+                urlLength: img.url?.length,
+                imageUrl匹配: img.imageUrl === url,
+                url匹配: img.url === url,
+                status: img.status,
+                hasLocalPath: !!img.localPath
+              }))
+            );
+          }
+
+          if (matchedSceneImages.length > 0) {
+            console.log(`📝 [downloadSingleImage] 找到 ${matchedSceneImages.length} 个匹配的场景图片，准备全部更新`);
+
+            matchedSceneImages.forEach((sceneImage, idx) => {
+              console.log(`📝 [downloadSingleImage] 更新前的场景图片 ${idx + 1}:`, JSON.stringify(sceneImage));
+
+              // 更新图片信息（确保imageUrl字段存在，以便后续查找）
+              Object.assign(sceneImage, {
+                imageUrl: url,  // 统一字段名称为 imageUrl
+                localPath: localFilename,
+                status: 'pending_edit',
+                timestamp: Date.now(),
+                fileSize: arrayBuffer.byteLength,
+                index: sourceIndex
+              });
+
+              console.log(`✅ [downloadSingleImage] 更新后的场景图片 ${idx + 1}:`, JSON.stringify(sceneImage));
+
+              // 验证更新
+              if (!sceneImage.localPath || !sceneImage.fileSize) {
+                console.error(`❌ [downloadSingleImage] 场景图片 ${idx + 1} 更新失败！缺少必要字段`);
+              } else {
+                console.log(`✅ [downloadSingleImage] 场景图片 ${idx + 1} 更新成功: localPath=${sceneImage.localPath}, fileSize=${sceneImage.fileSize}`);
+              }
+            });
+          } else {
+            console.log(`⚠️ [downloadSingleImage] 场景图片不存在，创建新记录`);
+            const sceneImage = { imageUrl: url };
             product.senceImages.push(sceneImage);
-          }
 
-          // 更新图片信息
-          Object.assign(sceneImage, {
-            localPath: localFilename,
-            status: 'pending_edit',
-            timestamp: Date.now(),
-            fileSize: arrayBuffer.byteLength,
-            index: sourceIndex
-          });
+            console.log(`📝 [downloadSingleImage] 更新前的场景图片:`, JSON.stringify(sceneImage));
+
+            // 更新图片信息
+            Object.assign(sceneImage, {
+              localPath: localFilename,
+              status: 'pending_edit',
+              timestamp: Date.now(),
+              fileSize: arrayBuffer.byteLength,
+              index: sourceIndex
+            });
+
+            console.log(`✅ [downloadSingleImage] 更新后的场景图片:`, JSON.stringify(sceneImage));
+
+            // 验证更新
+            if (!sceneImage.localPath || !sceneImage.fileSize) {
+              console.error(`❌ [downloadSingleImage] 场景图片更新失败！缺少必要字段`);
+            } else {
+              console.log(`✅ [downloadSingleImage] 场景图片更新成功: localPath=${sceneImage.localPath}, fileSize=${sceneImage.fileSize}`);
+            }
+          }
         } else if (skuIndex !== undefined && skuIndex !== null) {
-          // 处理SKU图片
-          let sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
-          if (!sku) {
-            sku = {
-              skuIndex: skuIndex,
-              attrClasses: [],
-              skuImages: []
-            };
-            product.publishSkus.push(sku);
+          // 处理SKU图片 - 支持同一imageUrl在多个SKU中出现
+          console.log(`🔍 [downloadSingleImage] 查找SKU图片: skuIndex=${skuIndex}, url=${url}`);
+          console.log(`🔍 [downloadSingleImage] 当前publishSkus数组长度:`, product.publishSkus.length);
+
+          // 收集所有包含该imageUrl的SKU图片（支持重复imageUrl）
+          const matchedSkuImages = [];
+          for (const s of product.publishSkus) {
+            if (s.skuImages) {
+              s.skuImages.forEach(img => {
+                if (img.imageUrl === url) {
+                  matchedSkuImages.push({ sku: s, image: img });
+                  console.log(`🔍 [downloadSingleImage] 在SKU ${s.skuIndex} 中找到匹配图片`);
+                }
+              });
+            }
           }
 
-          // 查找现有的skuImage或新增
-          let skuImage = sku.skuImages.find(img => img.imageUrl === url);
-          if (!skuImage) {
-            skuImage = { imageUrl: url };
-            sku.skuImages.push(skuImage);
-          }
+          // 如果找到匹配的图片，更新所有匹配项
+          if (matchedSkuImages.length > 0) {
+            console.log(`📝 [downloadSingleImage] 找到 ${matchedSkuImages.length} 个匹配的SKU图片，准备全部更新`);
 
-          // 更新图片信息
-          Object.assign(skuImage, {
-            localPath: localFilename,
-            status: 'pending_edit',
-            timestamp: Date.now(),
-            fileSize: arrayBuffer.byteLength,
-            index: sourceIndex
-          });
+            matchedSkuImages.forEach(({ sku, image }, idx) => {
+              console.log(`📝 [downloadSingleImage] 更新前的SKU ${sku.skuIndex} 图片 ${idx + 1}:`, JSON.stringify(image));
+
+              // 更新图片信息
+              Object.assign(image, {
+                localPath: localFilename,
+                status: 'pending_edit',
+                timestamp: Date.now(),
+                fileSize: arrayBuffer.byteLength,
+                index: sourceIndex
+              });
+
+              console.log(`✅ [downloadSingleImage] 更新后的SKU ${sku.skuIndex} 图片 ${idx + 1}:`, JSON.stringify(image));
+
+              // 验证更新
+              if (!image.localPath || !image.fileSize) {
+                console.error(`❌ [downloadSingleImage] SKU ${sku.skuIndex} 图片 ${idx + 1} 更新失败！缺少必要字段`);
+              } else {
+                console.log(`✅ [downloadSingleImage] SKU ${sku.skuIndex} 图片 ${idx + 1} 更新成功: localPath=${image.localPath}, fileSize=${image.fileSize}`);
+              }
+            });
+          } else {
+            // 如果没找到图片，则按 skuIndex 查找或创建SKU
+            console.log(`🔍 [downloadSingleImage] 图片不存在，按skuIndex查找SKU: ${skuIndex}`);
+            let sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
+            if (!sku) {
+              console.log(`⚠️ [downloadSingleImage] SKU ${skuIndex} 不存在，创建新SKU`);
+              sku = {
+                skuIndex: skuIndex,
+                attrClasses: [],
+                skuImages: []
+              };
+              product.publishSkus.push(sku);
+            }
+
+            console.log(`🔍 [downloadSingleImage] 使用的SKU:`, { skuIndex: sku.skuIndex, skuImagesCount: sku.skuImages?.length });
+
+            // 查找或创建skuImage
+            let skuImage = sku.skuImages.find(img => img.imageUrl === url);
+            console.log(`🔍 [downloadSingleImage] SKU中查找图片结果:`, skuImage ? '找到' : '未找到');
+
+            if (!skuImage) {
+              console.log(`⚠️ [downloadSingleImage] SKU图片不存在，创建新记录`);
+              skuImage = { imageUrl: url };
+              sku.skuImages.push(skuImage);
+            }
+
+            console.log(`📝 [downloadSingleImage] 更新前的SKU图片:`, JSON.stringify(skuImage));
+
+            // 更新图片信息
+            Object.assign(skuImage, {
+              localPath: localFilename,
+              status: 'pending_edit',
+              timestamp: Date.now(),
+              fileSize: arrayBuffer.byteLength,
+              index: sourceIndex
+            });
+
+            console.log(`✅ [downloadSingleImage] 更新后的SKU图片:`, JSON.stringify(skuImage));
+
+            // 验证更新
+            if (!skuImage.localPath || !skuImage.fileSize) {
+              console.error(`❌ [downloadSingleImage] SKU图片更新失败！缺少必要字段`);
+            } else {
+              console.log(`✅ [downloadSingleImage] SKU图片更新成功: localPath=${skuImage.localPath}, fileSize=${skuImage.fileSize}`);
+            }
+          }
         } else {
           // 处理原始图片
+          console.log(`🔍 [downloadSingleImage] 查找原始图片: ${url}`);
+          console.log(`🔍 [downloadSingleImage] 当前原始图片数组长度:`, product.originalImages.length);
+
           let originalImage = product.originalImages.find(img => img.imageUrl === url);
+          console.log(`🔍 [downloadSingleImage] 查找结果:`, originalImage ? '找到' : '未找到');
+
           if (!originalImage) {
+            console.log(`⚠️ [downloadSingleImage] 原始图片不存在，创建新记录`);
             originalImage = { imageUrl: url };
             product.originalImages.push(originalImage);
           }
+
+          console.log(`📝 [downloadSingleImage] 更新前的原始图片:`, JSON.stringify(originalImage));
 
           // 更新图片信息
           Object.assign(originalImage, {
@@ -629,9 +1116,18 @@ export class LocalImageManager {
             timestamp: Date.now(),
             fileSize: arrayBuffer.byteLength
           });
+
+          console.log(`✅ [downloadSingleImage] 更新后的原始图片:`, JSON.stringify(originalImage));
+
+          // 验证更新
+          if (!originalImage.localPath || !originalImage.fileSize) {
+            console.error(`❌ [downloadSingleImage] 原始图片更新失败！缺少必要字段`);
+          } else {
+            console.log(`✅ [downloadSingleImage] 原始图片更新成功: localPath=${originalImage.localPath}, fileSize=${originalImage.fileSize}`);
+          }
         }
 
-        console.log(`图片下载完成: ${url} -> ${localFilename}`);
+        console.log(`✅ 图片下载完成: ${url} -> ${localFilename}`);
         return;
 
       } catch (error) {
@@ -651,13 +1147,13 @@ export class LocalImageManager {
 
 
   /**
-   * 生成本地文件名
-   * 统一使用简单的命名规则：{申请码}_{原始文件名}
+   * 生成本地文件路径（包含产品文件夹）
+   * 统一使用简单的命名规则：{申请码}/{原始文件名}
    * @param {Object} imageInfo 图片信息
    * @param {string} imageInfo.url 图片URL
    * @param {string} imageInfo.applyCode 申请码
    * @param {string} [imageInfo.imageType] 图片类型（可选，不影响命名）
-   * @returns {string} 本地文件名
+   * @returns {string} 本地文件路径（格式：applyCode/filename.jpg）
    */
   generateLocalFilename(imageInfo) {
     const { imageUrl, url, applyCode } = imageInfo;
@@ -676,19 +1172,19 @@ export class LocalImageManager {
       // 获取文件名部分（路径的最后一段）
       const originalFilename = pathname.split('/').pop() || 'image.jpg';
 
-      // 生成统一格式：{申请码}_{原始文件名}
-      const localFilename = `${applyCode}_${originalFilename}`;
+      // 生成统一格式：{申请码}/{原始文件名}（包含产品文件夹）
+      const localFilePath = `${applyCode}/${originalFilename}`;
 
-      console.log(`✅ [generateLocalFilename] 生成本地文件名: ${actualUrl} -> ${localFilename}`);
-      return localFilename;
+      console.log(`✅ [generateLocalFilename] 生成本地文件路径: ${actualUrl} -> ${localFilePath}`);
+      return localFilePath;
 
     } catch (error) {
-      console.error('❌ [generateLocalFilename] 生成本地文件名失败:', error);
+      console.error('❌ [generateLocalFilename] 生成本地文件路径失败:', error);
 
       // 备用方案：使用时间戳避免冲突
-      const fallbackName = `${applyCode}_fallback_${Date.now()}.jpg`;
-      console.warn(`⚠️ [generateLocalFilename] 使用备用方案: ${fallbackName}`);
-      return fallbackName;
+      const fallbackPath = `${applyCode}/fallback_${Date.now()}.jpg`;
+      console.warn(`⚠️ [generateLocalFilename] 使用备用方案: ${fallbackPath}`);
+      return fallbackPath;
     }
   }
 
@@ -708,7 +1204,7 @@ export class LocalImageManager {
     }
 
     try {
-      const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
+      const localFile = await this.getFileByPath(imageInfo.localPath);
       return localFile;
     } catch (error) {
       console.warn(`获取本地图片文件失败 ${imageId}:`, error);
@@ -799,7 +1295,7 @@ export class LocalImageManager {
         for (const img of product.originalImages) {
           if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
             try {
-              const localFile = await this.imageFolder.getEntry(img.localPath);
+              const localFile = await this.getFileByPath(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
               const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -818,7 +1314,7 @@ export class LocalImageManager {
             for (const img of sku.skuImages) {
               if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
                 try {
-                  const localFile = await this.imageFolder.getEntry(img.localPath);
+                  const localFile = await this.getFileByPath(img.localPath);
                   const arrayBuffer = await localFile.read({ format: formats.binary });
                   const mimeType = getMimeTypeFromExtension(img.localPath);
                   const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -837,7 +1333,7 @@ export class LocalImageManager {
         for (const img of product.senceImages) {
           if (img.imageUrl === imageUrl && this.isImageStatusAvailable(img.status) && img.localPath) {
             try {
-              const localFile = await this.imageFolder.getEntry(img.localPath);
+              const localFile = await this.getFileByPath(img.localPath);
               const arrayBuffer = await localFile.read({ format: formats.binary });
               const mimeType = getMimeTypeFromExtension(img.localPath);
               const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -865,7 +1361,7 @@ export class LocalImageManager {
         return null;
       }
 
-      const localFile = await this.imageFolder.getEntry(imageInfo.localPath);
+      const localFile = await this.getFileByPath(imageInfo.localPath);
       const arrayBuffer = await localFile.read({ format: formats.binary });
       const mimeType = getMimeTypeFromExtension(imageInfo.localPath);
       const blob = new Blob([arrayBuffer], { type: mimeType });
@@ -1021,13 +1517,17 @@ export class LocalImageManager {
   /**
    * 获取或创建产品
    * @param {string} applyCode 申请码
+   * @param {Object} productData 产品数据（可选），包含 chineseName, chinesePackageList, status 等字段
    * @returns {Object} 产品信息
    */
-  getOrCreateProduct(applyCode) {
+  getOrCreateProduct(applyCode, productData = {}) {
     let product = this.findProductByApplyCode(applyCode);
     if (!product) {
       product = {
         applyCode: applyCode,
+        chineseName: productData.chineseName || '',
+        chinesePackageList: productData.chinesePackageList || [],
+        status: productData.status || 3,
         originalImages: [],
         publishSkus: [],
         senceImages: [],
@@ -1035,7 +1535,11 @@ export class LocalImageManager {
         userCode: null
       };
       this.indexData.push(product);
-      console.log(`📦 [getOrCreateProduct] 创建新产品: ${applyCode}`);
+      console.log(`📦 [getOrCreateProduct] 创建新产品: ${applyCode}`, {
+        chineseName: product.chineseName,
+        chinesePackageList: product.chinesePackageList,
+        status: product.status
+      });
     }
     return product;
   }
@@ -1084,7 +1588,8 @@ export class LocalImageManager {
         if (found) {
           return {
             ...found,
-            applyCode: product.applyCode
+            applyCode: product.applyCode,
+            imageType: 'scene'
           };
         }
       }
@@ -1114,27 +1619,32 @@ export class LocalImageManager {
         throw new Error(`不支持的图片格式: ${file.name}，仅支持PNG和JPG格式`);
       }
 
-      // 生成规范文件名
+      // 生成规范文件名（包含产品文件夹）
       const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
       const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
-      const standardFileName = `${applyCode}_${baseFileName}${originalExtension}`;
+      const standardFileName = `${baseFileName}${originalExtension}`;
 
       // 检查文件名是否已存在，如果存在则添加序号
       let finalFileName = standardFileName;
+      let finalFilePath = `${applyCode}/${finalFileName}`;
       let counter = 1;
-      while (await this.fileExists(finalFileName)) {
+      while (await this.fileExists(finalFilePath)) {
         const nameWithoutExt = standardFileName.substring(0, standardFileName.lastIndexOf('.'));
         finalFileName = `${nameWithoutExt}_${counter}${originalExtension}`;
+        finalFilePath = `${applyCode}/${finalFileName}`;
         counter++;
       }
 
-      console.log(`📝 [addLocalImage] 生成文件名: ${file.name} -> ${finalFileName}`);
+      console.log(`📝 [addLocalImage] 生成文件路径: ${file.name} -> ${finalFilePath}`);
 
       // 读取文件内容 - 使用UXP兼容的方式
       const arrayBuffer = await file.read({ format: formats.binary });
 
-      // 保存到本地文件系统
-      const localFile = await this.imageFolder.createFile(finalFileName, { overwrite: false });
+      // 获取或创建产品文件夹
+      const productFolder = await this.getOrCreateProductFolder(applyCode);
+
+      // 在产品文件夹中保存文件
+      const localFile = await productFolder.createFile(finalFileName, { overwrite: false });
       await localFile.write(arrayBuffer, { format: formats.binary });
 
       console.log(`💾 [addLocalImage] 文件已保存: ${finalFileName}`);
@@ -1144,8 +1654,8 @@ export class LocalImageManager {
 
       // 创建图片记录
       const imageRecord = {
-        imageUrl: `local://${finalFileName}`, // 使用特殊URL标记为本地添加的图片
-        localPath: finalFileName,
+        imageUrl: `local://${finalFilePath}`, // 使用特殊URL标记为本地添加的图片
+        localPath: finalFilePath,
         status: 'pending_edit',
         timestamp: Date.now(),
         fileSize: arrayBuffer.byteLength,
@@ -1230,35 +1740,40 @@ export class LocalImageManager {
             continue;
           }
 
-          // 生成规范文件名
+          // 生成规范文件名（包含产品文件夹）
           const originalExtension = file.name.substring(file.name.lastIndexOf('.')) || '.jpg';
           const baseFileName = file.name.substring(0, file.name.lastIndexOf('.')) || 'image';
-          const standardFileName = `${applyCode}_${baseFileName}${originalExtension}`;
+          const standardFileName = `${baseFileName}${originalExtension}`;
 
           // 检查文件名是否已存在，如果存在则添加序号
           let finalFileName = standardFileName;
+          let finalFilePath = `${applyCode}/${finalFileName}`;
           let counter = 1;
-          while (await this.fileExists(finalFileName)) {
+          while (await this.fileExists(finalFilePath)) {
             const nameWithoutExt = standardFileName.substring(0, standardFileName.lastIndexOf('.'));
             finalFileName = `${nameWithoutExt}_${counter}${originalExtension}`;
+            finalFilePath = `${applyCode}/${finalFileName}`;
             counter++;
           }
 
-          console.log(`📝 [addLocalImages] 生成文件名: ${file.name} -> ${finalFileName}`);
+          console.log(`📝 [addLocalImages] 生成文件路径: ${file.name} -> ${finalFilePath}`);
 
           // 读取文件内容 - 使用UXP兼容的方式
           const arrayBuffer = await file.read({ format: formats.binary });
 
-          // 保存到本地文件系统
-          const localFile = await this.imageFolder.createFile(finalFileName, { overwrite: false });
+          // 获取或创建产品文件夹
+          const productFolder = await this.getOrCreateProductFolder(applyCode);
+
+          // 在产品文件夹中保存文件
+          const localFile = await productFolder.createFile(finalFileName, { overwrite: false });
           await localFile.write(arrayBuffer, { format: formats.binary });
 
-          console.log(`💾 [addLocalImages] 文件已保存: ${finalFileName}`);
+          console.log(`💾 [addLocalImages] 文件已保存: ${finalFilePath}`);
 
           // 创建图片记录
           const imageRecord = {
-            imageUrl: `local://${finalFileName}`, // 使用特殊URL标记为本地添加的图片
-            localPath: finalFileName,
+            imageUrl: `local://${finalFilePath}`, // 使用特殊URL标记为本地添加的图片
+            localPath: finalFilePath,
             status: 'pending_edit',
             timestamp: Date.now(),
             fileSize: arrayBuffer.byteLength,
@@ -1589,11 +2104,21 @@ export class LocalImageManager {
             img.modifiedTimestamp = Date.now();
 
             if (modifiedFile) {
-              const modifiedFilename = `modified_${img.localPath}`;
-              const newFile = await this.imageFolder.createFile(modifiedFilename, { overwrite: true });
+              // 解析路径：applyCode/filename.jpg
+              const pathParts = img.localPath.split('/');
+              if (pathParts.length !== 2) {
+                throw new Error(`无效的文件路径格式: ${img.localPath}`);
+              }
+              const [folderName, fileName] = pathParts;
+              const modifiedFilename = `modified_${fileName}`;
+              const modifiedFilePath = `${folderName}/${modifiedFilename}`;
+
+              // 获取产品文件夹并保存修改后的文件
+              const productFolder = await this.getOrCreateProductFolder(folderName);
+              const newFile = await productFolder.createFile(modifiedFilename, { overwrite: true });
               const buffer = await modifiedFile.read({ format: formats.binary });
               await newFile.write(buffer, { format: formats.binary });
-              img.modifiedPath = modifiedFilename;
+              img.modifiedPath = modifiedFilePath;
             }
 
             imageFound = true;
@@ -1613,11 +2138,21 @@ export class LocalImageManager {
                 img.modifiedTimestamp = Date.now();
 
                 if (modifiedFile) {
-                  const modifiedFilename = `modified_${img.localPath}`;
-                  const newFile = await this.imageFolder.createFile(modifiedFilename, { overwrite: true });
+                  // 解析路径：applyCode/filename.jpg
+                  const pathParts = img.localPath.split('/');
+                  if (pathParts.length !== 2) {
+                    throw new Error(`无效的文件路径格式: ${img.localPath}`);
+                  }
+                  const [folderName, fileName] = pathParts;
+                  const modifiedFilename = `modified_${fileName}`;
+                  const modifiedFilePath = `${folderName}/${modifiedFilename}`;
+
+                  // 获取产品文件夹并保存修改后的文件
+                  const productFolder = await this.getOrCreateProductFolder(folderName);
+                  const newFile = await productFolder.createFile(modifiedFilename, { overwrite: true });
                   const buffer = await modifiedFile.read({ format: formats.binary });
                   await newFile.write(buffer, { format: formats.binary });
-                  img.modifiedPath = modifiedFilename;
+                  img.modifiedPath = modifiedFilePath;
                 }
 
                 imageFound = true;
@@ -1861,7 +2396,7 @@ export class LocalImageManager {
 
       // 更新图片信息
       const oldUrl = targetImage.imageUrl;
-      targetImage.status = 'synced';
+      targetImage.status = 'completed';
       targetImage.imageUrl = newUrl;
       targetImage.uploadedTimestamp = Date.now();
 
@@ -1977,7 +2512,7 @@ export class LocalImageManager {
         const expectedId = `${applyCode}_original_${i}`;
 
         if (uploadedImageIds.includes(expectedId)) {
-          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
             results.details.original.updated++;
             results.totalUpdated++;
             console.log(`✅ [validateUploadResults] 原图[${i}] URL已更新: ${img.imageUrl}`);
@@ -2000,7 +2535,7 @@ export class LocalImageManager {
             const expectedId = `${applyCode}_sku_${sku.skuIndex}_${i}`;
 
             if (uploadedImageIds.includes(expectedId)) {
-              if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+              if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
                 results.details.sku.updated++;
                 results.totalUpdated++;
                 console.log(`✅ [validateUploadResults] SKU[${sku.skuIndex}]图片[${i}] URL已更新: ${img.imageUrl}`);
@@ -2024,7 +2559,7 @@ export class LocalImageManager {
         const expectedId = `${applyCode}_scene_${i}`;
 
         if (uploadedImageIds.includes(expectedId)) {
-          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'synced') {
+          if (img.imageUrl && img.imageUrl.startsWith('http') && img.status === 'completed') {
             results.details.scene.updated++;
             results.totalUpdated++;
             console.log(`✅ [validateUploadResults] 场景图[${i}] URL已更新: ${img.imageUrl}`);
@@ -2048,6 +2583,188 @@ export class LocalImageManager {
     }
 
     return results;
+  }
+
+  /**
+   * 重置产品的所有图片状态
+   * @param {string} applyCode - 产品编号
+   * @param {string} newStatus - 新状态，默认为 'pending_edit'
+   * @returns {Promise<{success: boolean, resetCount: number, error?: string}>}
+   */
+  async resetProductImagesStatus(applyCode, newStatus = 'pending_edit') {
+    console.log(`🔄 [resetProductImagesStatus] 开始重置产品 ${applyCode} 的所有图片状态为 ${newStatus}`);
+
+    try {
+      // 查找产品
+      const product = this.indexData.find(p => p.applyCode === applyCode);
+      if (!product) {
+        console.warn(`⚠️ [resetProductImagesStatus] 找不到产品: ${applyCode}`);
+        return { success: false, resetCount: 0, error: '产品不存在' };
+      }
+
+      let resetCount = 0;
+
+      // 重置原图状态
+      if (Array.isArray(product.originalImages)) {
+        product.originalImages.forEach((img, index) => {
+          if (img.status !== newStatus) {
+            console.log(`  重置原图[${index}]: ${img.status} -> ${newStatus}`);
+            img.status = newStatus;
+            resetCount++;
+          }
+        });
+      }
+
+      // 重置 SKU 图片状态
+      if (Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach((sku, skuIndex) => {
+          if (Array.isArray(sku.skuImages)) {
+            sku.skuImages.forEach((img, imgIndex) => {
+              if (img.status !== newStatus) {
+                console.log(`  重置SKU[${skuIndex}]图片[${imgIndex}]: ${img.status} -> ${newStatus}`);
+                img.status = newStatus;
+                resetCount++;
+              }
+            });
+          }
+        });
+      }
+
+      // 重置场景图状态
+      if (Array.isArray(product.senceImages)) {
+        product.senceImages.forEach((img, index) => {
+          if (img.status !== newStatus) {
+            console.log(`  重置场景图[${index}]: ${img.status} -> ${newStatus}`);
+            img.status = newStatus;
+            resetCount++;
+          }
+        });
+      }
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [resetProductImagesStatus] 成功重置 ${resetCount} 张图片的状态`);
+      return { success: true, resetCount };
+
+    } catch (error) {
+      console.error(`❌ [resetProductImagesStatus] 重置失败:`, error);
+      return { success: false, resetCount: 0, error: error.message };
+    }
+  }
+
+  /**
+   * 更新产品的状态
+   * @param {string} applyCode - 产品编号
+   * @param {number} newStatus - 新状态值
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async updateProductStatus(applyCode, newStatus) {
+    console.log(`🔄 [updateProductStatus] 更新产品 ${applyCode} 状态为 ${newStatus}`);
+
+    try {
+      // 查找产品
+      const product = this.findProductByApplyCode(applyCode);
+      if (!product) {
+        console.warn(`⚠️ [updateProductStatus] 找不到产品: ${applyCode}`);
+        return { success: false, error: '产品不存在' };
+      }
+
+      // 更新状态
+      const oldStatus = product.status;
+      product.status = newStatus;
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [updateProductStatus] 产品状态已更新: ${oldStatus} -> ${newStatus}`);
+      return { success: true };
+
+    } catch (error) {
+      console.error(`❌ [updateProductStatus] 更新失败:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 根据 localPath 更新产品的所有图片 imageUrl
+   * @param {string} applyCode - 产品编号
+   * @returns {Promise<{success: boolean, updateCount: number, error?: string}>}
+   */
+  async updateProductImageUrlsByLocalPath(applyCode) {
+    console.log(`🔄 [updateProductImageUrlsByLocalPath] 开始更新产品 ${applyCode} 的所有图片 URL`);
+
+    try {
+      // 查找产品
+      const product = this.indexData.find(p => p.applyCode === applyCode);
+      if (!product) {
+        console.warn(`⚠️ [updateProductImageUrlsByLocalPath] 找不到产品: ${applyCode}`);
+        return { success: false, updateCount: 0, error: '产品不存在' };
+      }
+
+      const baseUrl = 'https://openapi.sjlpj.cn:5002/publishoriginapath/';
+      let updateCount = 0;
+
+      // 更新原图 URL
+      if (Array.isArray(product.originalImages)) {
+        product.originalImages.forEach((img, index) => {
+          if (img.localPath) {
+            const newUrl = `${baseUrl}${img.localPath}`;
+            if (img.imageUrl !== newUrl) {
+              console.log(`  更新原图[${index}] URL: ${img.imageUrl} -> ${newUrl}`);
+              img.imageUrl = newUrl;
+              updateCount++;
+            }
+          }
+        });
+      }
+
+      // 更新 SKU 图片 URL
+      if (Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach((sku, skuIndex) => {
+          if (Array.isArray(sku.skuImages)) {
+            sku.skuImages.forEach((img, imgIndex) => {
+              if (img.localPath) {
+                const newUrl = `${baseUrl}${img.localPath}`;
+                if (img.imageUrl !== newUrl) {
+                  console.log(`  更新SKU[${skuIndex}]图片[${imgIndex}] URL: ${img.imageUrl} -> ${newUrl}`);
+                  img.imageUrl = newUrl;
+                  updateCount++;
+                }
+              }
+            });
+          }
+        });
+      }
+
+      // 更新场景图 URL
+      if (Array.isArray(product.senceImages)) {
+        product.senceImages.forEach((img, index) => {
+          if (img.localPath) {
+            const newUrl = `${baseUrl}${img.localPath}`;
+            if (img.imageUrl !== newUrl) {
+              console.log(`  更新场景图[${index}] URL: ${img.imageUrl} -> ${newUrl}`);
+              img.imageUrl = newUrl;
+              updateCount++;
+            }
+          }
+        });
+      }
+
+      // 保存索引数据
+      if (updateCount > 0) {
+        await this.saveIndexData();
+        console.log(`✅ [updateProductImageUrlsByLocalPath] 成功更新 ${updateCount} 张图片的 URL`);
+      } else {
+        console.log(`ℹ️ [updateProductImageUrlsByLocalPath] 没有需要更新的图片 URL`);
+      }
+
+      return { success: true, updateCount };
+
+    } catch (error) {
+      console.error(`❌ [updateProductImageUrlsByLocalPath] 更新失败:`, error);
+      return { success: false, updateCount: 0, error: error.message };
+    }
   }
 
   /**
@@ -2127,7 +2844,7 @@ export class LocalImageManager {
             if (age > maxAge && img.status === 'synced') {
               try {
                 // 删除本地文件
-                this.imageFolder.getEntry(img.localPath).then(localFile => {
+                this.getFileByPath(img.localPath).then(localFile => {
                   if (localFile) {
                     localFile.delete();
                   }
@@ -2162,7 +2879,7 @@ export class LocalImageManager {
                 if (age > maxAge && img.status === 'synced') {
                   try {
                     // 删除本地文件
-                    this.imageFolder.getEntry(img.localPath).then(localFile => {
+                    this.getFileByPath(img.localPath).then(localFile => {
                       if (localFile) {
                         localFile.delete();
                       }
@@ -2994,7 +3711,7 @@ export class LocalImageManager {
       // 获取文件的真实修改时间
       let currentFileTime = null;
       try {
-        const file = await this.imageFolder.getEntry(localPath);
+        const file = await this.getFileByPath(localPath);
         const metadata = await file.getMetadata();
         currentFileTime = metadata.dateModified.getTime();
         console.log(`📁 [syncFileTimeBaseline] 文件真实修改时间: ${new Date(currentFileTime).toLocaleString()}`);
@@ -3491,15 +4208,31 @@ export class LocalImageManager {
           product.originalImages.splice(imageIndex, 1);
           deletedSuccessfully = true;
           console.log(`✅ [deleteImageByIndex] 从原始图片索引中移除: 索引=${imageIndex}`);
+
+          // 重新计算所有图片的index字段
+          product.originalImages.forEach((img, idx) => {
+            img.index = idx;
+          });
+          console.log(`🔄 [deleteImageByIndex] 已重新计算原始图片索引，当前数量: ${product.originalImages.length}`);
         }
       } else if (imageType === 'sku') {
         if (product.publishSkus) {
           const sku = product.publishSkus.find(s => s.skuIndex === skuIndex);
-          if (sku && sku.skuImages && imageIndex >= 0 && imageIndex < sku.skuImages.length) {
-            imageInfo = sku.skuImages[imageIndex];
-            sku.skuImages.splice(imageIndex, 1);
-            deletedSuccessfully = true;
-            console.log(`✅ [deleteImageByIndex] 从SKU图片索引中移除: SKU=${skuIndex}, 索引=${imageIndex}`);
+          if (sku && sku.skuImages) {
+            // 对于SKU图片，imageIndex参数实际传入的是imageUrl
+            const index = sku.skuImages.findIndex(img => img.imageUrl === imageIndex);
+            if (index >= 0) {
+              imageInfo = sku.skuImages[index];
+              sku.skuImages.splice(index, 1);
+              deletedSuccessfully = true;
+              console.log(`✅ [deleteImageByIndex] 从SKU图片索引中移除: SKU=${skuIndex}, imageUrl=${imageIndex}`);
+
+              // 重新计算所有图片的index字段
+              sku.skuImages.forEach((img, idx) => {
+                img.index = idx;
+              });
+              console.log(`🔄 [deleteImageByIndex] 已重新计算SKU图片索引，SKU=${skuIndex}，当前数量: ${sku.skuImages.length}`);
+            }
           }
         }
       } else if (imageType === 'scene') {
@@ -3508,6 +4241,12 @@ export class LocalImageManager {
           product.senceImages.splice(imageIndex, 1);
           deletedSuccessfully = true;
           console.log(`✅ [deleteImageByIndex] 从场景图片索引中移除: 索引=${imageIndex}`);
+
+          // 重新计算所有图片的index字段
+          product.senceImages.forEach((img, idx) => {
+            img.index = idx;
+          });
+          console.log(`🔄 [deleteImageByIndex] 已重新计算场景图片索引，当前数量: ${product.senceImages.length}`);
         }
       }
 

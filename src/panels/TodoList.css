@@ -38,7 +38,11 @@
   align-items: center;
   justify-content: center;
   min-width: 50px;
+  max-width: 200px;
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions .action-btn.secondary {
@@ -70,6 +74,39 @@
   50% {
     transform: scale(1.05);
   }
+}
+
+/* 状态筛选下拉框样式 */
+.status-filter-select {
+  padding: 6px 24px 6px 12px;
+  height: 28px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background-color: #fff;
+  background-image: url('data:image/svg+xml;charset=UTF-8,<svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1.5L6 6.5L11 1.5" stroke="%23666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  color: #333;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.status-filter-select:hover {
+  border-color: #999;
+  background-color: #f9f9f9;
+}
+
+.status-filter-select:focus {
+  border-color: var(--theme-color, #ec6608);
+  box-shadow: 0 0 0 2px rgba(236, 102, 8, 0.1);
 }
 
 /* 登录徽章容器 */
@@ -139,45 +176,7 @@
   border-color: #c82333;
 }
 
-/* 同步状态显示 */
-.sync-status {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  min-width: 200px;
-}
-
-.sync-icon {
-  font-size: 12px;
-  animation: sync-rotate 2s linear infinite;
-}
-
-.sync-text {
-  font-size: 11px;
-  color: #666;
-  text-align: center;
-  line-height: 1.4;
-}
-
-@keyframes sync-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* 同步状态样式已移除，状态信息直接显示在按钮中 */
 
 .list {
   /* 居中内容容器 */
@@ -374,7 +373,7 @@
 .product-id {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .id-label {
@@ -388,6 +387,32 @@
   font-weight: 600;
   color: #333;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.copy-product-code-btn {
+  padding: 2px 6px;
+  height: 16px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fff;
+  color: #666;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.copy-product-code-btn:hover {
+  background: #f5f5f5;
+  border-color: #999;
+  color: #333;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
 }
 
 /* 状态徽章 */
@@ -434,6 +459,15 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* 可点击的产品名称样式 */
+.product-name.clickable {
+  transition: all 0.2s ease;
+}
+
+.product-name.clickable:hover {
+  text-decoration: underline;
 }
 
 .product-meta {
@@ -498,6 +532,41 @@
 }
 
 .process-btn.loading {
+  background: #999;
+}
+
+/* 撤回按钮样式 */
+.reject-btn {
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: #6c757d;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 24px;
+}
+
+.reject-btn:hover:not(:disabled) {
+  background: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+.reject-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.reject-btn.loading {
   background: #999;
 }
 

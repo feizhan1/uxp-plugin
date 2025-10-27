@@ -1,0 +1,199 @@
+/* StorageSetupDialog.css - 存储位置配置对话框样式 */
+
+.storage-setup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.storage-setup-dialog {
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.storage-setup-header {
+  padding: 16px;
+  border-bottom: 1px solid #444;
+}
+
+.storage-setup-header h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.storage-setup-content {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.setup-message {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  border-left: 3px solid #0d99ff;
+}
+
+.setup-message.warning {
+  border-left-color: #ffa500;
+  background-color: #332200;
+}
+
+.setup-message p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #cccccc;
+}
+
+.setup-tips {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #1e1e1e;
+  border-radius: 4px;
+}
+
+.setup-tips h4 {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.setup-tips ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.setup-tips li {
+  font-size: 10px;
+  line-height: 1.6;
+  color: #cccccc;
+  margin-bottom: 4px;
+}
+
+.setup-info {
+  margin-bottom: 16px;
+}
+
+.setup-info p {
+  margin: 0 0 8px 0;
+  font-size: 10px;
+  color: #cccccc;
+}
+
+.path-example {
+  padding: 8px;
+  background-color: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #0d99ff;
+  word-break: break-all;
+}
+
+.setup-error {
+  margin-top: 12px;
+  padding: 8px;
+  background-color: #330000;
+  border: 1px solid #ff4444;
+  border-radius: 4px;
+  color: #ff6666;
+  font-size: 10px;
+}
+
+.storage-setup-footer {
+  padding: 16px;
+  border-top: 1px solid #444;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.storage-setup-footer button {
+  padding: 8px 16px;
+  font-size: 11px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.storage-setup-footer .btn-primary {
+  background-color: #0d99ff;
+  color: #ffffff;
+}
+
+.storage-setup-footer .btn-primary:hover:not(:disabled) {
+  background-color: #0a7acc;
+}
+
+.storage-setup-footer .btn-primary:disabled {
+  background-color: #555;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.storage-setup-footer .btn-secondary {
+  background-color: #444;
+  color: #cccccc;
+}
+
+.storage-setup-footer .btn-secondary:hover:not(:disabled) {
+  background-color: #555;
+}
+
+.storage-setup-footer .btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 4px;
+}
+
+.setup-loading .loading-spinner {
+  font-size: 24px;
+  animation: rotate 2s linear infinite;
+}
+
+.setup-loading div:last-child {
+  font-size: 11px;
+  color: #cccccc;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

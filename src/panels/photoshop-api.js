@@ -2011,18 +2011,26 @@ async function getImageFileEntry(imageInfo) {
       // 如果ID匹配失败且有URL，尝试URL匹配
       if (!localFile && url) {
         console.log(`[智能获取文件] ID匹配失败，尝试URL匹配: ${url.substring(0, 50)}...`);
-        hasLocal = await localImageManager.getLocalImageDisplayUrlByUrl(url) !== null;
 
-        if (hasLocal) {
-          // 找到对应的下载ID
-          for (const [downloadId, imageInfo] of localImageManager.indexData) {
-            if (imageInfo.url === url && (imageInfo.status === 'downloaded' || imageInfo.status === 'synced' || imageInfo.status === 'modified')) {
-              localFile = await localImageManager.getLocalImageFile(downloadId);
-              if (localFile) {
-                console.log(`✅ [智能获取文件] URL匹配成功: 使用本地文件 ${downloadId}`);
-                break;
-              }
+        // 使用 getImageInfo 直接查找图片信息
+        const imageInfo = localImageManager.getImageInfo(url);
+
+        if (imageInfo) {
+          console.log(`[智能获取文件] 通过URL找到图片信息:`, {
+            imageUrl: imageInfo.imageUrl?.substring(0, 50) + '...',
+            status: imageInfo.status,
+            localPath: imageInfo.localPath
+          });
+
+          // 检查状态是否允许获取本地文件
+          const allowedStatuses = ['downloaded', 'synced', 'modified', 'pending_edit', 'editing', 'completed'];
+          if (allowedStatuses.includes(imageInfo.status)) {
+            localFile = await localImageManager.getLocalImageFile(imageInfo.imageUrl);
+            if (localFile) {
+              console.log(`✅ [智能获取文件] URL匹配成功: 使用本地文件 ${imageInfo.localPath}`);
             }
+          } else {
+            console.log(`⚠️ [智能获取文件] 图片状态不允许获取本地文件: ${imageInfo.status}`);
           }
         }
       }
@@ -2035,6 +2043,20 @@ async function getImageFileEntry(imageInfo) {
       }
     } catch (error) {
       console.warn('[智能获取文件] 策略1异常:', error.message);
+    }
+  }
+
+  // 策略1.5: 处理 local:// 协议的本地文件
+  if (url && url.startsWith('local://')) {
+    try {
+      console.log('[智能获取文件] 策略1.5: 处理 local:// 协议');
+      const localPath = url.replace('local://', '');
+      await localImageManager.initialize();
+      const localFile = await localImageManager.getFileByPath(localPath);
+      console.log(`✅ [智能获取文件] 策略1.5成功: 使用本地文件 ${localPath}`);
+      return localFile;
+    } catch (error) {
+      console.warn('[智能获取文件] 策略1.5失败:', error.message);
     }
   }
 

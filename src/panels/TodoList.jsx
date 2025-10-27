@@ -7,8 +7,10 @@ import ImageDownloader from '../components/ImageDownloader'
 import ImageUploader from '../components/ImageUploader'
 import LocalFileManager from '../components/LocalFileManager'
 import ProductDetail from '../components/ProductDetail'
+import StorageSetupDialog from '../components/StorageSetupDialog'
 import { autoSyncManager } from '../utils/AutoSyncManager'
 import { localImageManager } from '../utils/LocalImageManager'
+import { storageLocationManager } from '../utils/StorageLocationManager'
 import { get } from '../utils/http'
 import { post } from '../utils/http'
 import './TodoList.css'
@@ -37,12 +39,24 @@ const TodoList = () => {
   const [showLocalFileManager, setShowLocalFileManager] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
+  const [showStorageSetupDialog, setShowStorageSetupDialog] = useState(false)
 
   // 搜索功能相关状态
   const [searchMode, setSearchMode] = useState(false) // 是否处于搜索模式
   const [searchQuery, setSearchQuery] = useState('') // 搜索关键字
   const [searchResults, setSearchResults] = useState([]) // 搜索结果
   const searchInputRef = useRef(null) // sp-textfield的ref
+
+  // Toast 提示状态
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('info')
+
+  // 撤回确认对话框状态
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false)
+  const [rejectingProduct, setRejectingProduct] = useState(null)
+
+  // 状态筛选
+  const [statusFilter, setStatusFilter] = useState(3) // 默认显示待处理（状态码3）
 // loginInfo
 //   {
 //     "success": true,
@@ -83,14 +97,15 @@ const TodoList = () => {
       senceImages.forEach((image, imageIndex) => {
         if (image.imageUrl) {
           productImages.push({
-            id: `${product.applyCode}_sence_${image.index || imageIndex}`,
+            id: `${product.applyCode}_scene_${image.index || imageIndex}`,
             url: image.imageUrl,
-            filename: `sence_${image.index || imageIndex}.jpg`,
+            filename: `scene_${image.index || imageIndex}.jpg`,
             applyCode: product.applyCode,
             productId: product.productId,
             productName: product.productName,
             sortOrder: image.index || imageIndex,
-            type: 'sence'
+            imageType: 'scene',  // 🔧 修复：使用 imageType 字段，并修正拼写为 scene
+            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -110,8 +125,9 @@ const TodoList = () => {
                 productId: product.productId,
                 productName: product.productName,
                 sortOrder: image.index || imageIndex,
-                type: 'sku',
-                skuIndex: sku.skuIndex || skuIndex
+                imageType: 'sku',  // 🔧 修复：使用 imageType 字段
+                skuIndex: sku.skuIndex || skuIndex,
+                sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
               })
             }
           })
@@ -132,7 +148,8 @@ const TodoList = () => {
             productId: product.productId,
             productName: product.productName,
             sortOrder: image.index || imageIndex,
-            type: 'original'
+            imageType: 'original',  // 🔧 修复：使用 imageType 字段
+            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -145,6 +162,29 @@ const TodoList = () => {
   useEffect(() => {
     if (!loginInfo?.success) return
     let cancelled = false
+
+    // 检查存储位置配置
+    async function checkStorageLocation() {
+      console.log('🔍 [checkStorageLocation] 检查存储位置配置...')
+
+      // 检查是否已配置存储位置
+      if (!storageLocationManager.hasConfigured()) {
+        console.log('⚠️ [checkStorageLocation] 未配置存储位置，显示配置对话框')
+        setShowStorageSetupDialog(true)
+        return false
+      }
+
+      // 验证已保存的位置是否有效
+      const isValid = await storageLocationManager.validateSavedLocation()
+      if (!isValid) {
+        console.log('⚠️ [checkStorageLocation] 存储位置失效，显示配置对话框')
+        setShowStorageSetupDialog(true)
+        return false
+      }
+
+      console.log('✅ [checkStorageLocation] 存储位置配置有效')
+      return true
+    }
 
     async function fetchListAndImages() {
       console.log('🚀 [fetchListAndImages] 开始获取产品列表...')
@@ -269,8 +309,8 @@ const TodoList = () => {
               // 确保LocalImageManager已初始化
               await localImageManager.initialize()
 
-              // 获取或创建产品记录
-              const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
+              // 获取或创建产品记录，传入产品详情数据以保存chineseName等字段
+              const productRecord = localImageManager.getOrCreateProduct(product.applyCode, imageRes.dataClass)
 
               // 更新产品数据 - 使用API返回的完整数据结构
               const { originalImages, publishSkus, senceImages } = imageRes.dataClass
@@ -348,9 +388,16 @@ const TodoList = () => {
               if (Array.isArray(senceImages)) {
                 productRecord.senceImages = senceImages.map((img, index) => ({
                   ...img,
+                  imageUrl: img.imageUrl || img.url,  // 统一字段名称为 imageUrl
                   status: 'not_downloaded', // 初始状态
                   timestamp: Date.now()
                 }))
+                console.log(`🔍 [场景图片字段检查] ${product.applyCode} 保存的场景图片:`, productRecord.senceImages.map(img => ({
+                  hasImageUrl: !!img.imageUrl,
+                  hasUrl: !!img.url,
+                  imageUrl: img.imageUrl,
+                  url: img.url
+                })))
               } else {
                 // 确保senceImages始终是数组
                 productRecord.senceImages = []
@@ -433,11 +480,13 @@ const TodoList = () => {
               // 收集场景图片
               if (Array.isArray(senceImages)) {
                 senceImages.forEach((img, index) => {
-                  if (img.imageUrl) {
+                  // 支持 imageUrl 或 url 字段
+                  const imageUrl = img.imageUrl || img.url
+                  if (imageUrl) {
                     imagesToDownload.push({
                       id: `${product.applyCode}_scene_${index}`,
-                      url: img.imageUrl,
-                      imageUrl: img.imageUrl,  // 保留 imageUrl 字段给 downloadSingleImage 使用
+                      url: imageUrl,
+                      imageUrl: imageUrl,  // 保留 imageUrl 字段给 downloadSingleImage 使用
                       filename: `scene_${index}.jpg`,
                       applyCode: product.applyCode,
                       productId: product.productId,
@@ -451,6 +500,15 @@ const TodoList = () => {
               // 执行批量下载
               if (imagesToDownload.length > 0) {
                 console.log(`📥 [collectProductImages] 准备下载 ${imagesToDownload.length} 张图片...`)
+                // 🔍 调试：记录场景图片的下载信息
+                const sceneImages = imagesToDownload.filter(img => img.imageType === 'scene')
+                console.log(`🔍 [DEBUG-场景图片] 即将下载 ${sceneImages.length} 张场景图片:`, sceneImages.map(img => ({
+                  id: img.id,
+                  imageType: img.imageType,
+                  applyCode: img.applyCode,
+                  sourceIndex: img.sourceIndex,
+                  urlPreview: img.url?.substring(0, 60) + '...'
+                })))
                 try {
                   const downloadResult = await localImageManager.downloadProductImages(imagesToDownload)
                   console.log(`✅ [collectProductImages] 新产品 ${product.applyCode} 图片下载完成:`, downloadResult)
@@ -483,13 +541,26 @@ const TodoList = () => {
       setProductImages(allImages)
     }
 
-    fetchListAndImages()
+    // 异步初始化流程
+    async function initialize() {
+      // 先检查存储位置
+      const storageValid = await checkStorageLocation()
+      if (!storageValid) {
+        console.log('⚠️ 存储位置未配置或失效，等待用户配置')
+        return
+      }
 
-    // 启动自动同步管理器
-    if (loginInfo?.success) {
-      console.log('启动自动同步管理器')
-      autoSyncManager.start(executeSync)
+      // 存储位置配置有效，继续获取数据
+      fetchListAndImages()
+
+      // 启动自动同步管理器
+      if (loginInfo?.success) {
+        console.log('启动自动同步管理器')
+        autoSyncManager.start(executeSync)
+      }
     }
+
+    initialize()
 
     return () => {
       cancelled = true
@@ -498,42 +569,134 @@ const TodoList = () => {
     }
   }, [loginInfo])
 
-  // 点击"去处理"时，请求详情后打开ProductDetail
+  // 点击"去处理"时，从本地索引读取数据后打开ProductDetail
   const handleOpenItem = async (item, index) => {
     if(openIngIndex === index) return
     if (!item) return
     setOpenLoading(true)
     setOpenIngIndex(index)
     setError(null)
+
     try {
-      const params = {
-        applyCode: item.applyCode,
+      // 确保LocalImageManager已初始化
+      await localImageManager.initialize()
+
+      // 从本地索引读取产品数据
+      const localProductData = localImageManager.findProductByApplyCode(item.applyCode)
+
+      if (!localProductData) {
+        // 本地没有数据，提示用户等待同步
+        setError('请稍后，数据同步中...')
+        return
+      }
+
+      // 使用本地数据打开产品详情页
+      const productData = {
+        ...localProductData,
         userId: loginInfo?.data?.UserId,
         userCode: loginInfo?.data?.UserCode,
       }
-      const res = await get('/api/publish/get_product_images', {
-        params,
-      })
-      const {statusCode, dataClass} = res  || {}
-      if(statusCode === 200) {
-        // 设置完整的产品数据用于ProductDetail组件
-        const productData = {
-          ...item,
-          ...(dataClass || {}),
-          ...params
-        }
-        setCurrentProductData(productData)
-        setShowProductDetail(true)
-        console.log('打开产品详情页:', productData.applyCode)
-      } else {
-        throw new Error(res.message)
-      }
+
+      setCurrentProductData(productData)
+      setShowProductDetail(true)
+      console.log('打开产品详情页（使用本地索引数据）:', productData.applyCode)
+
     } catch (e) {
-      console.error('获取产品图片失败：', e)
-      setError(e?.message || '获取待办工单图片失败')
+      console.error('打开产品详情失败：', e)
+      setError(e?.message || '打开产品详情失败')
     } finally {
       setOpenLoading(false)
       setOpenIngIndex(null)
+    }
+  }
+
+  // 点击"撤回"时，显示确认对话框
+  const handleRejectProduct = (item, index) => {
+    if(openIngIndex === index) return
+    if (!item) return
+
+    // 保存产品信息并显示确认对话框
+    setRejectingProduct({ item, index })
+    setShowRejectConfirm(true)
+  }
+
+  // 确认撤回操作，调用撤回API
+  const doRejectProduct = async () => {
+    if (!rejectingProduct) return
+
+    const { item, index } = rejectingProduct
+
+    // 关闭确认对话框
+    setShowRejectConfirm(false)
+
+    setOpenLoading(true)
+    setOpenIngIndex(index)
+    setError(null)
+    try {
+      const params = {
+        applyCode: item.applyCode,
+        userId: loginInfo?.data?.UserId || 0,
+        userCode: loginInfo?.data?.UserCode || 'string',
+      }
+
+      console.log('撤回产品:', params)
+
+      const res = await post('/api/publish/revoke_product_image', params, {
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      const {statusCode, message} = res || {}
+      if(statusCode === 200) {
+        setSuccessMsg(message || '撤回成功')
+
+        // 重置产品所有图片的状态为 pending_edit
+        try {
+          await localImageManager.initialize()
+          const resetResult = await localImageManager.resetProductImagesStatus(item.applyCode, 'pending_edit')
+          if (resetResult.success) {
+            console.log(`✅ 已重置 ${resetResult.resetCount} 张图片的状态为 pending_edit`)
+          } else {
+            console.warn(`⚠️ 重置图片状态失败: ${resetResult.error}`)
+          }
+
+          // 更新产品状态为3（待处理）
+          const statusUpdateResult = await localImageManager.updateProductStatus(item.applyCode, 3)
+          if (statusUpdateResult.success) {
+            console.log('✅ 产品状态已更新为3（待处理）')
+          } else {
+            console.warn('⚠️ 更新产品状态失败:', statusUpdateResult.error)
+          }
+
+          // 🔄 根据 localPath 更新所有图片的 imageUrl
+          const updateUrlResult = await localImageManager.updateProductImageUrlsByLocalPath(item.applyCode)
+          if (updateUrlResult.success) {
+            console.log(`✅ 已更新 ${updateUrlResult.updateCount} 张图片的 imageUrl`)
+          } else {
+            console.warn(`⚠️ 更新图片 URL 失败: ${updateUrlResult.error}`)
+          }
+        } catch (error) {
+          console.error('重置图片状态时出错:', error)
+        }
+
+        // 直接更新本地产品状态为3（待处理），优化体验
+        setData(prevData => {
+          return prevData.map(product =>
+            product.applyCode === item.applyCode
+              ? { ...product, status: 3 }
+              : product
+          )
+        })
+      } else {
+        // 失败时显示错误提示
+        throw new Error(message || '撤回失败')
+      }
+    } catch (e) {
+      console.error('撤回产品失败：', e)
+      setError(e?.message || '撤回产品失败')
+    } finally {
+      setOpenLoading(false)
+      setOpenIngIndex(null)
+      setRejectingProduct(null)
     }
   }
 
@@ -629,6 +792,27 @@ const TodoList = () => {
   // 登录成功回调
   const handleLoginSuccess = (info) => {
     setLoginInfo(info)
+  }
+
+  // 存储位置配置完成回调
+  const handleStorageSetupComplete = async (folder) => {
+    console.log('✅ [handleStorageSetupComplete] 存储位置配置完成:', folder?.nativePath)
+    setShowStorageSetupDialog(false)
+    setSuccessMsg('存储位置配置成功！正在同步产品数据...')
+
+    // 配置完成后，立即执行同步
+    try {
+      await executeSync('manual')
+    } catch (error) {
+      console.error('配置完成后同步失败:', error)
+      setError('同步失败: ' + error.message)
+    }
+  }
+
+  // 存储位置配置取消回调
+  const handleStorageSetupCancel = () => {
+    console.log('⚠️ [handleStorageSetupCancel] 用户取消了存储位置配置')
+    setError('必须选择存储位置才能继续使用插件')
   }
 
   // 图片下载完成回调
@@ -731,7 +915,7 @@ const TodoList = () => {
   }
 
   // 收集产品的图片信息（增量同步）
-  const collectProductImages = useCallback(async (productList) => {
+  const collectProductImages = useCallback(async (productList, onProgress) => {
     if (!productList || productList.length === 0) {
       return []
     }
@@ -769,7 +953,14 @@ const TodoList = () => {
 
     const allImages = []
 
-    for (const product of productsToSync) {
+    for (let i = 0; i < productsToSync.length; i++) {
+      const product = productsToSync[i]
+
+      // 报告进度
+      if (onProgress) {
+        onProgress(i + 1, productsToSync.length, product.applyCode)
+      }
+
       try {
         const params = {
           applyCode: product.applyCode,
@@ -787,7 +978,8 @@ const TodoList = () => {
 
           // 保存新产品的完整数据到LocalImageManager索引中
           try {
-            const productRecord = localImageManager.getOrCreateProduct(product.applyCode)
+            // 传入产品详情数据以保存chineseName等字段
+            const productRecord = localImageManager.getOrCreateProduct(product.applyCode, imageRes.dataClass)
             const { originalImages, publishSkus, senceImages } = imageRes.dataClass
 
             if (Array.isArray(originalImages)) {
@@ -812,6 +1004,7 @@ const TodoList = () => {
             if (Array.isArray(senceImages)) {
               productRecord.senceImages = senceImages.map((img, index) => ({
                 ...img,
+                imageUrl: img.imageUrl || img.url,  // 统一字段名称为 imageUrl
                 status: 'not_downloaded',
                 timestamp: Date.now()
               }))
@@ -868,8 +1061,11 @@ const TodoList = () => {
 
       setSyncStatus('正在收集图片信息...')
 
-      // 🎯 使用增量同步：调用现有的collectProductImages函数
-      const allImages = await collectProductImages(productList) || []
+      // 🎯 使用增量同步：调用现有的collectProductImages函数，带进度回调
+      const allImages = await collectProductImages(productList, (current, total, applyCode) => {
+        setSyncStatus(`收集中 ${current}/${total}`)
+        console.log(`图片收集进度: ${current}/${total}, 当前产品: ${applyCode}`)
+      }) || []
 
       console.log(`=== 图片收集汇总 ===`)
       console.log(`总共收集到 ${allImages.length} 张图片`)
@@ -892,23 +1088,58 @@ const TodoList = () => {
         return
       }
 
-      // 显示下载对话框并开始同步
-      console.log(`=== 启动ImageDownloader ===`)
-      setSyncStatus(`准备同步 ${allImages.length} 张图片...`)
-      setIsManualSync(syncType === 'manual')
-      console.log(`设置同步状态: isManualSync=${syncType === 'manual'}, 图片数量=${allImages.length}`)
-      setShowImageDownloader(true)
-      console.log(`已显示ImageDownloader组件`)
+      // 🔥 后台静默下载，不显示弹窗
+      console.log(`=== 开始后台下载 ${allImages.length} 张图片 ===`)
+      setSyncStatus(`同步中 0/${allImages.length}`)
+
+      // 进度回调
+      const onProgressCallback = (current, total, currentImage) => {
+        console.log(`同步进度: ${current}/${total}, 当前图片:`, currentImage?.id)
+        setSyncStatus(`同步中 ${current}/${total}`)
+      }
+
+      // 错误回调
+      const downloadErrors = []
+      const onErrorCallback = (error, imageInfo) => {
+        downloadErrors.push({ error: error.message, imageInfo })
+        console.error('下载图片失败:', imageInfo?.id, error.message)
+      }
+
+      // 执行后台批量下载
+      const results = await localImageManager.downloadProductImages(
+        allImages,
+        onProgressCallback,
+        onErrorCallback
+      )
+
+      console.log('后台下载完成，结果:', results)
+
+      // 如果有失败的图片，自动跳过它们
+      if (results.failed > 0 && downloadErrors.length > 0) {
+        console.log(`自动跳过 ${downloadErrors.length} 张失败的图片`)
+        try {
+          const skippedCount = await localImageManager.skipFailedImages(downloadErrors)
+          console.log(`✅ 已自动跳过 ${skippedCount} 张失败的图片`)
+          results.skipped = (results.skipped || 0) + skippedCount
+          results.failed = 0
+        } catch (error) {
+          console.error('自动跳过失败的图片时出错:', error)
+        }
+      }
+
+      // 显示同步结果
+      const message = `同步完成: 成功${results.success}张, 跳过${results.skipped}张${results.failed > 0 ? `, 失败${results.failed}张` : ''}`
+      setSuccessMsg(message)
+      console.log('✅ 后台同步完成')
 
     } catch (error) {
       console.error(`${syncType === 'auto' ? '自动' : '手动'}同步失败:`, error)
       setError(`同步失败: ${error.message}`)
-      setIsManualSync(false)
     } finally {
       setIsSyncing(false)
       setSyncStatus('')
     }
-  }, [loginInfo])
+  }, [loginInfo, collectProductImages])
 
   // 手动同步所有图片到本地
   const handleManualSync = async () => {
@@ -918,7 +1149,11 @@ const TodoList = () => {
 
   // 获取产品状态样式类名
   const getProductStatus = (item) => {
-    const status = item.status || '待处理'
+    const status = item.status
+    // 处理数字状态码
+    if (status === 3) return 'pending'
+    if (status === 4) return 'completed'
+    // 处理字符串状态
     switch (status) {
       case '审核完成':
         return 'completed'
@@ -933,8 +1168,12 @@ const TodoList = () => {
 
   // 获取产品状态文本
   const getProductStatusText = (item) => {
-    const status = item.status || '待处理'
-    return status
+    const status = item.status
+    // 处理数字状态码
+    if (status === 3) return '待处理'
+    if (status === 4) return '编辑审核中'
+    // 处理字符串状态（兼容旧数据）
+    return status || '待处理'
   }
 
   // 同步专用的下载完成回调
@@ -969,17 +1208,37 @@ const TodoList = () => {
     try {
       console.log('产品详情页提交:', productData.applyCode)
 
-      // 从产品列表中移除已审核的产品
-      setData(prevData => {
-        return prevData.filter(item => item.applyCode !== productData.applyCode)
-      })
-
       // 关闭产品详情页
       setShowProductDetail(false)
       setCurrentProductData(null)
 
+      // 延迟3秒后再请求列表数据
+      console.log('🔄 等待3秒后重新获取产品列表...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // 重新获取产品列表数据
+      console.log('🔄 重新获取产品列表...')
+      setLoading(true)
+      try {
+        const listRes = await get('/api/publish/get_product_list', {
+          params: { userId: loginInfo.data.UserId, userCode: loginInfo.data.UserCode },
+        })
+        const { statusCode: listStatusCode, dataClass: listDataClass } = listRes || {}
+        if (listStatusCode === 200) {
+          setData(listDataClass?.publishProductInfos || [])
+          console.log('✅ 产品列表已刷新')
+        } else {
+          throw new Error(listRes.message)
+        }
+      } catch (refreshErr) {
+        console.error('重新获取产品列表失败：', refreshErr)
+        setError(`刷新列表失败: ${refreshErr.message}`)
+      } finally {
+        setLoading(false)
+      }
+
       // 显示成功消息
-      setSuccessMsg('产品提交成功，已从待处理列表移除')
+      setSuccessMsg('操作成功')
 
     } catch (error) {
       console.error('产品提交处理失败:', error)
@@ -1029,6 +1288,18 @@ const TodoList = () => {
     setSearchResults([])
   }, [])
 
+  // 复制产品编号到剪贴板
+  const handleCopyProductCode = async (applyCode) => {
+    try {
+      await navigator.clipboard.writeText(applyCode)
+      setToastMessage('产品编号已复制')
+      setToastType('success')
+    } catch (error) {
+      console.error('复制产品编号失败:', error)
+      setToastMessage('复制失败: ' + error.message)
+      setToastType('error')
+    }
+  }
 
   // 未登录时，显示登录组件
   if (!loginInfo?.success) {
@@ -1082,16 +1353,30 @@ const TodoList = () => {
 
           {/* 右侧操作按钮 */}
           <div className="header-right">
-            {/* 只在非搜索模式下显示同步按钮 */}
+            {/* 只在非搜索模式下显示同步状态按钮和筛选器 */}
             {!searchMode && (
-              <button
-                className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                title={isSyncing ? syncStatus : "同步所有图片到本地"}
-              >
-                {isSyncing ? '同步中' : '同步'}
-              </button>
+              <>
+                <button
+                  className={`action-btn ${isSyncing ? 'syncing' : 'secondary'}`}
+                  disabled={isSyncing}
+                  onClick={handleManualSync}
+                  title={isSyncing ? syncStatus : "点击执行同步"}
+                >
+                  {isSyncing ? (syncStatus || '同步中') : '就绪'}
+                </button>
+                {/* 状态筛选下拉框 - 只在非产品详情页显示 */}
+                {!showProductDetail && (
+                  <select
+                    className="status-filter-select"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(Number(e.target.value))}
+                    title="筛选产品状态"
+                  >
+                    <option value={3}>待处理</option>
+                    <option value={4}>编辑审核中</option>
+                  </select>
+                )}
+              </>
             )}
             <button
               className="action-btn secondary"
@@ -1125,13 +1410,6 @@ const TodoList = () => {
       {loading && <div className="loading">加载中...</div>}
       {/* 打开中 */}
       {openLoading && <div className="loading">打开中...</div>}
-      {/* 同步状态 */}
-      {isSyncing && !showImageDownloader && (
-        <div className="sync-status">
-          <div className="sync-icon">🔄</div>
-          <div className="sync-text">{syncStatus}</div>
-        </div>
-      )}
       {/* 错误提示（可自定义时长的弹窗） */}
       <Toast 
         open={!!error}
@@ -1148,6 +1426,15 @@ const TodoList = () => {
         message={successMsg}
         duration={successDuration}
         onClose={() => setSuccessMsg('')}
+        position="top"
+      />
+      {/* 复制提示 */}
+      <Toast
+        open={!!toastMessage}
+        type={toastType}
+        message={toastMessage}
+        duration={2000}
+        onClose={() => setToastMessage('')}
         position="top"
       />
       {/* 退出登录确认 */}
@@ -1169,6 +1456,19 @@ const TodoList = () => {
         cancelText="取消"
         onCancel={() => setShowCloseConfirm(false)}
         onConfirm={doClose}
+      />
+      {/* 撤回产品确认 */}
+      <Confirm
+        open={showRejectConfirm}
+        title="撤回确认"
+        message="确定要撤回该产品吗？撤回后产品状态将变为待处理。"
+        confirmText="确认撤回"
+        cancelText="取消"
+        onCancel={() => {
+          setShowRejectConfirm(false)
+          setRejectingProduct(null)
+        }}
+        onConfirm={doRejectProduct}
       />
       {/* 产品列表 */}
       {/* 调试信息 - 开发期临时添加 */}
@@ -1218,12 +1518,18 @@ const TodoList = () => {
         ) : (
           // 原有的产品卡片列表
           <div className='product-grid'>
-            {data.map((item, index) => (
+            {data.filter(item => item.status === statusFilter).map((item, index) => (
             <div className='product-card' key={item.applyCode || item.id}>
               <div className='card-header'>
                 <div className='product-id'>
                   <span className='id-label'>编号</span>
                   <span className='id-value'>{item.applyCode}</span>
+                  <div
+                    className='copy-product-code-btn'
+                    onClick={() => handleCopyProductCode(item.applyCode)}
+                  >
+                    复制
+                  </div>
                 </div>
                 <div className='product-status'>
                   <span className={`status-badge ${getProductStatus(item)}`}>
@@ -1232,26 +1538,34 @@ const TodoList = () => {
                 </div>
               </div>
               <div className='card-body'>
-                <div className='product-name' title={item.productName}>
+                <div
+                  className={`product-name ${item.status === 4 ? 'clickable' : ''}`}
+                  onClick={item.status === 4 ? () => handleOpenItem(item, index) : undefined}
+                  style={item.status === 4 ? { cursor: 'pointer' } : undefined}
+                >
                   {item.productName}
                 </div>
               </div>
               <div className='card-footer'>
-                <button
-                  className={`process-btn ${openIngIndex === index ? 'loading' : ''}`}
-                  onClick={() => handleOpenItem(item, index)}
-                  disabled={openIngIndex === index}
-                >
-                  {openIngIndex === index ? (
-                    <>
-                      加载中...
-                    </>
-                  ) : (
-                    <>
-                      去处理
-                    </>
-                  )}
-                </button>
+                {item.status === 4 ? (
+                  // 状态为4（已处理）时显示撤回按钮
+                  <button
+                    className={`reject-btn ${openIngIndex === index ? 'loading' : ''}`}
+                    onClick={() => handleRejectProduct(item, index)}
+                    disabled={openIngIndex === index}
+                  >
+                    {openIngIndex === index ? '处理中...' : '撤回'}
+                  </button>
+                ) : (
+                  // 状态为3（待处理）或其他状态时显示去处理按钮
+                  <button
+                    className={`process-btn ${openIngIndex === index ? 'loading' : ''}`}
+                    onClick={() => handleOpenItem(item, index)}
+                    disabled={openIngIndex === index}
+                  >
+                    {openIngIndex === index ? '加载中...' : '去处理'}
+                  </button>
+                )}
               </div>
             </div>
             ))}
@@ -1300,6 +1614,14 @@ const TodoList = () => {
           onClose={handleProductDetailClose}
           onSubmit={handleProductDetailSubmit}
           onUpdate={handleProductDetailUpdate}
+        />
+      )}
+      {/* 存储位置配置对话框 */}
+      {showStorageSetupDialog && (
+        <StorageSetupDialog
+          onComplete={handleStorageSetupComplete}
+          onCancel={handleStorageSetupCancel}
+          isRetry={storageLocationManager.hasConfigured()}
         />
       )}
     </div>

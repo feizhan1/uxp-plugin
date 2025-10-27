@@ -1,5 +1,1003 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 撤回产品时自动更新本地图片URL (2025-01-31)
+
+### 完成情况：撤回产品成功后，根据 localPath 更新本地索引中的 imageUrl
+
+**问题描述**：
+- 执行产品撤回操作后，本地索引文件中的图片 imageUrl 未更新
+- 导致图片URL可能指向旧的或错误的地址
+- 需要在撤回成功后，基于 localPath 重新构建正确的 imageUrl
+
+**转换规则**：
+- 如果 `localPath = "test_2508180013/old_3.jpg"`
+- 则 `imageUrl = "https://openapi.sjlpj.cn:5002/publishoriginapath/test_2508180013/old_3.jpg"`
+- 适用于原图、SKU图、场景图的所有图片
+
+**技术实现**：
+
+#### LocalImageManager.js 新增方法 (src/utils/LocalImageManager.js:2689-2768)
+
+新增 `updateProductImageUrlsByLocalPath(applyCode)` 方法：
+- 遍历产品的 originalImages、publishSkus.skuImages、senceImages
+- 对于每张有 localPath 的图片，更新 imageUrl 为：`https://openapi.sjlpj.cn:5002/publishoriginapath/${localPath}`
+- 保存更新后的索引数据
+- 返回更新的图片数量统计
+
+#### TodoList.jsx 调用新方法 (src/panels/TodoList.jsx:670-676)
+
+在 `doRejectProduct` 函数中，撤回成功后调用：
+```javascript
+// 🔄 根据 localPath 更新所有图片的 imageUrl
+const updateUrlResult = await localImageManager.updateProductImageUrlsByLocalPath(item.applyCode)
+if (updateUrlResult.success) {
+  console.log(`✅ 已更新 ${updateUrlResult.updateCount} 张图片的 imageUrl`)
+} else {
+  console.warn(`⚠️ 更新图片 URL 失败: ${updateUrlResult.error}`)
+}
+```
+
+**修复效果**：
+- 撤回产品时自动同步更新所有图片的 imageUrl
+- 确保 imageUrl 与 localPath 保持一致
+- 避免图片URL错误导致的显示或上传问题
+- 提供详细的日志记录，便于调试和监控
+
+---
+
+## ✅ 优化文件选择器默认显示所有图片格式 (2025-01-31)
+
+### 完成情况：移除文件类型限制，让 Windows 系统默认显示所有图片格式
+
+**问题描述**：
+- 在 SKU 和场景图区域点击"添加图片"时
+- Windows 11 系统下文件选择器默认只显示 PNG 格式
+- 用户需要手动在下拉菜单中切换到 JPG 或"所有支持的格式"
+- 降低了用户体验和操作效率
+
+**根本原因**：
+- `getFileForOpening()` 使用 `types: ['png', 'jpg', 'jpeg']` 限制文件类型
+- Windows 系统会将数组中第一个元素（png）作为默认过滤器
+- 用户无法一次性看到所有支持的图片格式
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:2401-2409)
+
+移除 `types` 参数限制，让文件选择器默认显示所有文件：
+
+```javascript
+// 显示文件选择对话框 - 默认显示所有文件（格式验证在代码中进行），尝试定位到产品文件夹
+const fileOptions = {
+  allowMultiple: true
+  // 移除 types 限制，让 Windows 系统默认显示所有图片格式
+  // 格式验证由 isValidImageFormat() 函数在代码中完成
+};
+if (initialFolder) {
+  fileOptions.initialLocation = initialFolder;
+}
+```
+
+**格式验证保障**：
+- `LocalImageManager.js:51` 的 `isValidImageFormat()` 函数会验证文件格式
+- 仅允许 PNG、JPG、JPEG 格式，其他格式会被拒绝
+- 用户选择错误格式时会收到清晰的错误提示
+
+**修复效果**：
+- Windows 用户可以直接看到所有图片文件（PNG、JPG、JPEG）
+- 无需手动切换文件类型过滤器
+- 保留格式验证，确保安全性
+- 提升用户体验和操作流畅度
+
+---
+
+## ✅ 批量同步按钮仅在第一个SKU时显示 (2025-01-30)
+
+### 完成情况：限制批量同步按钮仅在 skuIndex 为 0 时显示
+
+**需求描述**：
+- 批量同步按钮（"批量同步"、"同步 (N)"、"取消"）应该只在第一个 SKU 组中显示
+- 其他 SKU 组不显示批量同步相关按钮
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:4457-4476)
+
+在批量同步按钮的渲染条件中添加 `skuIndex === 0` 的判断：
+
+```javascript
+{/* 批量同步 skuIndex为0时才显示*/}
+{(sku.skuIndex || skuIndex) === 0 && (
+  !batchSyncMode ? (
+    <button className="batch-sync-to-ps-btn" onClick={handleStartBatchSync}>
+      批量同步
+    </button>
+  ) : (
+    <div className="batch-sync-controls">
+      <button
+        className="sync-btn"
+        disabled={selectedImages.size === 0 || syncingBatch}
+        onClick={handleExecuteSync}
+      >
+        同步 ({selectedImages.size})
+      </button>
+      <button className="cancel-btn" onClick={handleCancelBatchSync}>
+        取消
+      </button>
+    </div>
+  )
+)}
+```
+
+**修复效果**：
+- 批量同步按钮仅在第一个 SKU 组显示
+- 避免界面混乱，UI 更加清晰
+- 保持批量同步功能的一致性
+
+---
+
+## ✅ 修复SKU和场景图"一键删除"后滚动位置丢失的问题 (2025-01-30)
+
+### 完成情况：修复了一键删除图片后页面滚动位置回到顶部的问题
+
+**问题描述**：
+- 在SKU图或场景图中点击"一键删除"按钮删除图片后
+- 页面滚动位置会回到顶部，而不是停留在原来的位置
+- 单张图片删除时滚动位置正常保持
+
+**根本原因**：
+- `executeBatchDelete()` 函数在批量删除前没有保存当前滚动位置
+- 删除完成后调用 `initializeImageData()` 重新加载数据，导致界面重新渲染，滚动位置丢失
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:1900-1905)
+
+在 `executeBatchDelete()` 函数开始时添加滚动位置保存逻辑：
+
+```javascript
+// 保存当前滚动位置（在删除前保存）
+if (contentRef.current) {
+  const currentScrollPosition = contentRef.current.scrollTop;
+  setSavedScrollPosition(currentScrollPosition);
+  console.log('💾 [executeBatchDelete] 保存滚动位置:', currentScrollPosition);
+}
+```
+
+**修复效果**：
+- 一键删除图片后，页面滚动位置正确保持在原位置
+- 与单张图片删除的行为保持一致
+- 提升用户体验，避免需要重新滚动查找
+
+---
+
+## ✅ 提交审核API添加chineseName和chinesePackageList参数 (2025-01-30)
+
+### 完成情况：在提交审核接口调用中添加产品中文名称和中文包装信息
+
+**需求描述**：
+- 点击"提交审核"按钮时，调用 `/api/publish/submit_product_image` 接口
+- 在请求参数中添加 `chineseName`（中文名称）和 `chinesePackageList`（中文包装列表）字段
+
+**技术实现**：
+
+#### ProductDetail.jsx 修改 (src/components/ProductDetail.jsx:1557-1562)
+
+在 `submitForReview()` 函数的 payload 对象中添加两个字段：
+
+```javascript
+const payload = {
+  userId: userId,
+  userCode: userCode,
+  applyCode: currentProduct.applyCode,
+  chineseName: currentProduct.chineseName,           // 新增：产品中文名称
+  chinesePackageList: currentProduct.chinesePackageList, // 新增：中文包装信息
+
+  // 原始图片 - 只包含imageUrl
+  originalImages: (currentProduct.originalImages || []).map(img => ({
+    imageUrl: img.imageUrl
+  })),
+  // ...
+};
+```
+
+**修改效果**：
+- 提交审核时，API请求会包含产品的中文名称和包装信息
+- 数据来源于 `currentProduct` 对象中已存在的字段
+- 与其他产品信息一起提交给后端进行审核
+
+---
+
+## ✅ 修复场景图翻译同意后索引文件不更新的bug (2025-01-30)
+
+### 完成情况：修复了场景图翻译流程中索引文件无法更新的问题
+
+**问题描述**：
+- 在产品详情页的场景图中上传图片后，点击预览→翻译→对比预览→同意
+- 索引文件中对应的图片信息没有更新（imageUrl、localPath等字段未更新为翻译后的值）
+- SKU图的相同流程正常工作
+
+**根本原因**：
+- `LocalImageManager.getImageInfo()` 方法在返回场景图信息时，缺少 `imageType: 'scene'` 标识字段
+- 导致 `ProductDetail.jsx` 中的 `handleApplyTranslation()` 函数无法识别场景图类型
+- 无法进入场景图的索引更新分支，从而导致索引文件未更新
+
+**技术实现**：
+
+#### LocalImageManager.js 修改 (src/utils/LocalImageManager.js:1171-1175)
+
+在 `getImageInfo()` 方法返回场景图信息时，添加 `imageType: 'scene'` 字段：
+
+```javascript
+if (found) {
+  return {
+    ...found,
+    applyCode: product.applyCode,
+    imageType: 'scene'  // 新增：标识为场景图类型
+  };
+}
+```
+
+**修复效果**：
+- 场景图翻译同意后，索引文件正确更新
+- 图片URL更新为翻译后的URL（带-f后缀）
+- localPath正确保存翻译后的图片路径
+- 与SKU图的行为保持一致
+
+---
+
+## ✅ SKU图和场景图新增"一键删除"功能 (2025-01-30)
+
+### 完成情况：为SKU图片和场景图片添加了一键删除整组图片的功能
+
+**需求描述**：
+- 在每个SKU的header中添加"一键删除"按钮，可以删除该SKU的所有图片
+- 在场景图片的section-header中添加"一键删除"按钮，可以删除所有场景图片
+- 点击一键删除按钮后，显示确认对话框，提示将要删除的图片数量
+- 支持"不再询问"选项，记住用户的选择
+- 删除操作仅从列表中移除图片，本地文件保留
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+
+- **添加状态管理** (第279行)：
+  ```javascript
+  const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息
+  ```
+
+- **添加批量删除核心函数** (第1645-1778行)：
+  - `handleConfirmDeleteGroup(type, skuIndex)` - 确认一键删除整个组
+  - `handleCancelDeleteGroup()` - 取消批量删除
+  - `executeBatchDelete(type, skuIndex, images)` - 执行批量删除
+  - `handleExecuteDeleteGroup()` - 处理批量删除确认对话框的删除操作
+
+- **在SKU header中添加"一键删除"按钮** (第3684-3716行)：
+  ```jsx
+  <div className="sku-actions">
+    {skuIndex === 0 && virtualizedImageGroups.skus.length > 1 && (
+      <div className="sku-batch-actions">
+        {/* 批量同步按钮 */}
+      </div>
+    )}
+    {sku.images.length > 0 && (
+      <button
+        className="delete-all-btn"
+        onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+        title={`一键删除${sku.skuTitle}的所有图片`}
+      >
+        一键删除
+      </button>
+    )}
+  </div>
+  ```
+
+- **在场景图片header中添加"一键删除"按钮** (第3809-3820行)：
+  ```jsx
+  <div className="section-header">
+    <h3>场景图片 ({virtualizedImageGroups.scenes.length})</h3>
+    {virtualizedImageGroups.scenes.length > 0 && (
+      <button
+        className="delete-all-btn"
+        onClick={() => handleConfirmDeleteGroup('scene')}
+        title="一键删除所有场景图片"
+      >
+        一键删除
+      </button>
+    )}
+  </div>
+  ```
+
+- **添加批量删除确认对话框** (第3576-3642行)：
+  ```jsx
+  {deletingGroup && (
+    <div className="error-banner" style={{ background: '#fff3cd', borderColor: '#ffeaa7', color: '#856404' }}>
+      <div style={{ flex: 1 }}>
+        <div className="error-text" style={{ marginBottom: '6px' }}>
+          确定要删除 <strong>{deletingGroup.title}</strong> 的全部 <strong>{deletingGroup.count}</strong> 张图片吗？
+        </div>
+        <div className="error-text" style={{ fontSize: '10px', marginBottom: '6px', color: '#856404' }}>
+          （仅从列表中移除，本地文件保留）
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+          <input
+            type="checkbox"
+            id="dontAskAgainBatch"
+            checked={dontAskAgain}
+            onChange={(e) => setDontAskAgain(e.target.checked)}
+            style={{ width: '12px', height: '12px', cursor: 'pointer' }}
+          />
+          <label htmlFor="dontAskAgainBatch" style={{ fontSize: '10px', color: '#856404', cursor: 'pointer', userSelect: 'none' }}>
+            不再询问，直接删除
+          </label>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <button onClick={handleExecuteDeleteGroup}>确定删除</button>
+        <button onClick={handleCancelDeleteGroup}>取消</button>
+      </div>
+    </div>
+  )}
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+
+- **更新 .sku-actions 样式** (第567-573行)：
+  ```css
+  .section-actions,
+  .sku-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  ```
+
+- **添加 .delete-all-btn 样式** (第2478-2509行)：
+  ```css
+  .delete-all-btn {
+    padding: 6px 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    min-width: 70px;
+    justify-content: center;
+    flex-shrink: 0;
+    background: white;
+    color: #dc3545;
+    border-color: #fbb6ce;
+  }
+
+  .delete-all-btn:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: white;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .delete-all-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(220, 53, 69, 0.2);
+  }
+  ```
+
+**功能特点**：
+- 每个SKU独立显示"一键删除"按钮，只有当SKU有图片时才显示
+- 场景图片区域独立显示"一键删除"按钮，只有当有场景图片时才显示
+- 批量删除使用逐个删除策略，确保数据一致性
+- 删除过程中使用索引0删除策略，因为数组会动态缩短
+- 复用现有的删除确认设置，支持"不再询问"功能
+- 删除失败时会重新加载数据，保持UI和数据层的一致性
+- 使用红色作为按钮主题色，强调危险操作的警示性
+- 按钮样式与现有按钮风格保持一致，紧凑设计
+
+**测试要点**：
+- [ ] 测试删除单个SKU的所有图片
+- [ ] 测试删除所有场景图片
+- [ ] 测试删除确认对话框的显示和取消
+- [ ] 测试"不再询问"选项的保存和应用
+- [ ] 测试删除后的数据同步和UI更新
+- [ ] 测试没有图片时按钮的隐藏
+- [ ] 测试批量删除部分失败的错误处理
+
+---
+
+## ✅ SKU图和场景图新增"批量同步到PS"功能 (2025-01-30)
+
+### 完成情况：为SKU图片和场景图片添加了批量同步到Photoshop的功能
+
+**需求描述**：
+- 在每个SKU的header中添加"批量同步到PS"按钮，可以将该SKU的所有图片批量打开到PS
+- 在场景图片的section-header中添加"批量同步到PS"按钮，可以将所有场景图片批量打开到PS
+- 点击批量同步按钮后，自动分批将图片打开到PS（每批3张）
+- 同步过程中显示"同步中..."状态，禁用按钮防止重复点击
+- 自动将已完成状态的图片重置为编辑中状态
+- 批量同步完成后显示成功/失败结果
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+
+- **添加状态管理** (第280行)：
+  ```javascript
+  const [syncingGroupToPS, setSyncingGroupToPS] = useState(null); // 正在批量同步到PS的组信息
+  ```
+
+- **添加批量同步核心函数** (第1781-1903行)：
+  ```javascript
+  const handleBatchSyncGroupToPS = async (type, skuIndex = null) => {
+    // 获取要同步的图片列表
+    let images = [];
+    let groupTitle = '';
+
+    if (type === 'sku' && skuIndex !== null) {
+      const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+      if (sku) {
+        images = sku.images;
+        groupTitle = sku.skuTitle;
+      }
+    } else if (type === 'scene') {
+      images = virtualizedImageGroups.scenes;
+      groupTitle = '场景图片';
+    }
+
+    // 分批处理（每批3张）
+    const BATCH_SIZE = 3;
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < images.length; i += BATCH_SIZE) {
+      const batch = images.slice(i, i + BATCH_SIZE);
+
+      // 并发处理当前批次
+      const batchPromises = batch.map(async (image) => {
+        // 检查并重置已完成状态的图片
+        const imageInfo = localImageManager.getImageInfo(image.id) || localImageManager.getImageInfo(image.imageUrl);
+        if (imageInfo && imageInfo.status === 'completed') {
+          await localImageManager.resetImageToEditing(image.id);
+        }
+
+        // 使用placeImageInPS打开图片
+        const psImageInfo = { imageId: image.id, url: image.imageUrl, type: 'smart' };
+        const documentId = await placeImageInPS(psImageInfo, { directOpen: true });
+
+        // 更新图片状态为编辑中
+        await localImageManager.setImageStatus(image.id, 'editing');
+        setEditingImages(prev => new Set([...prev, image.id]));
+        updateImageStatusInState(image.id, 'editing');
+      });
+
+      await Promise.allSettled(batchPromises);
+
+      // 批次间延迟500ms
+      if (i + BATCH_SIZE < images.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // 刷新数据并显示结果
+    await initializeImageData();
+  };
+  ```
+
+- **在SKU header中添加"批量同步到PS"按钮** (第3900-3920行)：
+  ```jsx
+  {sku.images.length > 0 && (
+    <>
+      <button
+        className="batch-sync-to-ps-btn"
+        onClick={() => handleBatchSyncGroupToPS('sku', sku.skuIndex || skuIndex)}
+        disabled={syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)}
+        title={`批量同步${sku.skuTitle}的所有图片到PS`}
+      >
+        {syncingGroupToPS?.type === 'sku' && syncingGroupToPS?.skuIndex === (sku.skuIndex || skuIndex)
+          ? '同步中...'
+          : '批量同步到PS'}
+      </button>
+      <button className="delete-all-btn" onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}>
+        一键删除
+      </button>
+    </>
+  )}
+  ```
+
+- **在场景图片header中添加"批量同步到PS"按钮** (第4016-4034行)：
+  ```jsx
+  {virtualizedImageGroups.scenes.length > 0 && (
+    <div className="section-actions">
+      <button
+        className="batch-sync-to-ps-btn"
+        onClick={() => handleBatchSyncGroupToPS('scene')}
+        disabled={syncingGroupToPS?.type === 'scene'}
+        title="批量同步所有场景图片到PS"
+      >
+        {syncingGroupToPS?.type === 'scene' ? '同步中...' : '批量同步到PS'}
+      </button>
+      <button className="delete-all-btn" onClick={() => handleConfirmDeleteGroup('scene')}>
+        一键删除
+      </button>
+    </div>
+  )}
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+
+- **添加 .batch-sync-to-ps-btn 样式** (第2478-2517行)：
+  ```css
+  .batch-sync-to-ps-btn {
+    padding: 6px 12px;
+    height: 24px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    min-width: 100px;
+    justify-content: center;
+    flex-shrink: 0;
+    background: white;
+    color: #2196f3;
+    border-color: #bbdefb;
+  }
+
+  .batch-sync-to-ps-btn:hover:not(:disabled) {
+    background: #2196f3;
+    border-color: #2196f3;
+    color: white;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+    transform: translateY(-1px);
+  }
+
+  .batch-sync-to-ps-btn:disabled {
+    background: #e3f2fd;
+    border-color: #bbdefb;
+    color: #90caf9;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  ```
+
+**功能特点**：
+- 每个SKU和场景图片组都有独立的"批量同步到PS"按钮
+- 使用分批处理策略（每批3张），避免PS过载
+- 批次间延迟500ms，给PS缓冲时间
+- 自动检测并重置已完成状态的图片为编辑中
+- 同步过程中显示"同步中..."文本并禁用按钮
+- 按钮使用蓝色主题，与同步操作的语义一致
+- 完整的错误处理和结果反馈
+- 同步完成后自动刷新数据显示最新状态
+
+**测试要点**：
+- [ ] 测试批量同步单个SKU的所有图片
+- [ ] 测试批量同步所有场景图片
+- [ ] 测试同步过程中的状态反馈
+- [ ] 测试已完成图片的状态重置
+- [ ] 测试大量图片的分批处理
+- [ ] 测试同步过程中的错误处理
+- [ ] 测试按钮的禁用和启用状态
+- [ ] 测试同步完成后的数据刷新
+
+---
+
+## ✅ 为产品编号添加复制功能 (2025-01-29)
+
+### 完成情况：在产品详情页和待处理产品列表页中为产品编号添加了复制功能
+
+**需求描述**：
+- 在产品详情页（ProductDetail.jsx）的产品编号后面添加"复制"按钮
+- 在待处理产品列表页（TodoList.jsx）的产品卡片编号后面添加"复制"按钮
+- 点击复制按钮后，将产品编号（applyCode）复制到剪贴板
+- 复制成功/失败后显示 Toast 提示
+
+**技术实现**：
+
+#### 1. ProductDetail.jsx 修改 (src/components/ProductDetail.jsx)
+- **添加复制处理函数** (第1601-1620行)：
+  ```javascript
+  const handleCopyProductCode = async () => {
+    try {
+      await navigator.clipboard.writeText(currentProduct.applyCode);
+      setToast({
+        open: true,
+        message: '产品编号已复制',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('复制产品编号失败:', error);
+      setToast({
+        open: true,
+        message: '复制失败: ' + error.message,
+        type: 'error'
+      });
+    }
+  };
+  ```
+
+- **修改产品编号显示区域** (第3247-3252行)：
+  ```jsx
+  <div className="product-code">
+    <span>编号: {currentProduct.applyCode}</span>
+    <button className="copy-code-btn" onClick={handleCopyProductCode}>
+      复制
+    </button>
+  </div>
+  ```
+
+#### 2. ProductDetail.css 修改 (src/components/ProductDetail.css)
+- **修改 .product-code 样式** (第103-110行)：
+  ```css
+  .product-code {
+    font-size: 10px;
+    color: #999;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  ```
+
+- **添加 .copy-code-btn 样式** (第112-136行)：
+  ```css
+  .copy-code-btn {
+    padding: 2px 6px;
+    height: 16px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+    color: #666;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    flex-shrink: 0;
+  }
+
+  .copy-code-btn:hover {
+    background: #f5f5f5;
+    border-color: #999;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+  ```
+
+#### 3. TodoList.jsx 修改 (src/panels/TodoList.jsx)
+- **添加 Toast 状态管理** (第47-49行)：
+  ```javascript
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState('info')
+  ```
+
+- **添加复制处理函数** (第1081-1092行)：
+  ```javascript
+  const handleCopyProductCode = async (applyCode) => {
+    try {
+      await navigator.clipboard.writeText(applyCode);
+      setToastMessage('产品编号已复制');
+      setToastType('success');
+    } catch (error) {
+      console.error('复制产品编号失败:', error);
+      setToastMessage('复制失败: ' + error.message);
+      setToastType('error');
+    }
+  }
+  ```
+
+- **修改产品卡片编号显示区域** (第1277-1286行)：
+  ```jsx
+  <div className='product-id'>
+    <span className='id-label'>编号</span>
+    <span className='id-value'>{item.applyCode}</span>
+    <button
+      className='copy-product-code-btn'
+      onClick={() => handleCopyProductCode(item.applyCode)}
+    >
+      复制
+    </button>
+  </div>
+  ```
+
+- **添加 Toast 组件** (第1206-1214行)：
+  ```jsx
+  <Toast
+    open={!!toastMessage}
+    type={toastType}
+    message={toastMessage}
+    duration={2000}
+    onClose={() => setToastMessage('')}
+    position="top"
+  />
+  ```
+
+#### 4. TodoList.css 修改 (src/panels/TodoList.css)
+- **修改 .product-id 样式** (第340-344行)：
+  ```css
+  .product-id {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  ```
+
+- **添加 .copy-product-code-btn 样式** (第359-383行)：
+  ```css
+  .copy-product-code-btn {
+    padding: 2px 6px;
+    height: 16px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+    color: #666;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    flex-shrink: 0;
+  }
+
+  .copy-product-code-btn:hover {
+    background: #f5f5f5;
+    border-color: #999;
+    color: #333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+  }
+  ```
+
+**核心特性**：
+- ✅ 使用 `navigator.clipboard.writeText()` API 实现复制
+- ✅ 复制成功显示绿色 Toast 提示："产品编号已复制"
+- ✅ 复制失败显示红色 Toast 提示，包含错误信息
+- ✅ 按钮样式与项目整体风格保持一致（10px字体，紧凑布局）
+- ✅ hover 效果提供良好的视觉反馈
+- ✅ 按钮紧跟在产品编号后面，flex 布局确保对齐
+
+**用户体验优化**：
+- 按钮文字清晰："复制"
+- Toast 提示时长 2 秒（ProductDetail 使用默认值）
+- 按钮尺寸紧凑（16px高度），不占用过多空间
+- hover 时有明显的视觉变化（背景色、边框色、阴影、位移）
+
+**测试场景**：
+1. ✅ ProductDetail页面：点击产品编号后的"复制"按钮
+2. ✅ TodoList页面：点击产品卡片中编号后的"复制"按钮
+3. ✅ 复制成功后检查剪贴板内容
+4. ✅ Toast 提示正常显示并自动关闭
+
+
+## ⏰ 实现每2小时自动同步功能 (2025-01-28)
+
+### ✅ 已完成：将自动同步改为每2小时执行一次
+- **问题**：当前自动同步仅在工作日中午12:00-13:00执行一次，同步频率不够
+- **用户期望**：每2小时自动执行一次同步（上次同步已完成）
+- **解决方案**：修改AutoSyncManager的同步策略，从"每日一次"改为"每2小时一次"
+- **技术实现**：
+  ```javascript
+  // 修改前：每天中午12点执行一次（仅工作日）
+  shouldSync(date) {
+    if (!this.isEnabled) return false;
+    if (!this.isWorkday(date)) return false;      // ❌ 移除
+    if (!this.isLunchTime(date)) return false;    // ❌ 移除
+    if (this.isSyncedToday(date)) return false;   // ❌ 移除
+    return true;
+  }
+
+  // 修改后：每2小时执行一次（任何时间）
+  shouldSync(date) {
+    if (!this.isEnabled) return false;
+    if (this.isSyncInProgress) return false;      // ✅ 新增：防止并发
+    if (!this.hasElapsed2Hours(date)) return false; // ✅ 新增：2小时间隔
+    return true;
+  }
+
+  // 新增方法：检查是否已过2小时
+  hasElapsed2Hours(date) {
+    if (!this.lastSyncDate) return true;
+    const twoHoursInMs = 2 * 60 * 60 * 1000;
+    const elapsed = date.getTime() - this.lastSyncDate.getTime();
+    return elapsed >= twoHoursInMs;
+  }
+  ```
+- **核心改动**：
+  - ✅ 添加 `isSyncInProgress` 状态标志，防止并发同步
+  - ✅ 添加 `hasElapsed2Hours()` 方法判断是否已过2小时
+  - ✅ 修改 `shouldSync()` 逻辑：移除工作日/时间段/每日一次检查
+  - ✅ 修改 `checkAndSync()` 在同步前后设置/清除状态标志
+  - ✅ 修改 `getNextSyncInfo()` 计算下次同步时间（上次时间+2小时）
+  - ✅ 标记 `isWorkday()`、`isLunchTime()`、`isSyncedToday()` 为废弃
+- **同步策略对比**：
+  | 项目 | 修改前 | 修改后 |
+  |------|--------|--------|
+  | 执行时间 | 工作日中午12:00-13:00 | 任何时间 |
+  | 执行频率 | 每天一次 | 每2小时一次 |
+  | 并发控制 | 无 | isSyncInProgress 标志 |
+  | 时间判断 | 按天（isSyncedToday） | 按2小时（hasElapsed2Hours） |
+  | 工作日限制 | 是（周一到周五） | 否（任何时间） |
+- **用户体验改进**：
+  - ✅ 自动同步更频繁，图片更新更及时
+  - ✅ 不受工作日和时间段限制，7x24自动同步
+  - ✅ 防止并发同步，避免资源浪费
+  - ✅ 同步完成后精确等待2小时再执行下次同步
+- **修改文件**：`src/utils/AutoSyncManager.js`
+- **构建结果**：✅ 构建成功，无错误
+
+## 🎨 同步按钮改为状态显示 + 简化状态文字 (2025-01-28)
+
+### ✅ 已完成：将同步按钮改为纯状态显示，简化状态文字
+- **问题1**：同步按钮可以点击，但自动同步时按钮状态没有同步
+- **问题2**：状态文字过于冗长，如"正在同步 12/3232 张图片..."
+- **用户期望**：按钮改为纯状态显示（不可点击），状态文字简化为"同步中 12/3232"
+- **解决方案**：
+  1. 移除按钮 onClick 事件，设置为永久 disabled
+  2. 修改空闲时显示文字为"就绪"
+  3. 简化所有同步状态文字格式
+- **技术实现**：
+  ```jsx
+  // 修改前：可点击的按钮，详细状态
+  <button
+    onClick={handleManualSync}
+    disabled={isSyncing}
+  >
+    {isSyncing ? (syncStatus || '同步中') : '同步'}
+  </button>
+
+  // executeSync 中的状态设置：
+  setSyncStatus(`正在收集图片信息 ${current}/${total}...`)
+  setSyncStatus(`正在同步 ${current}/${total} 张图片...`)
+
+  // 修改后：纯状态显示，简化文字
+  <button disabled={true}>
+    {isSyncing ? (syncStatus || '同步中') : '就绪'}
+  </button>
+
+  // executeSync 中的状态设置：
+  setSyncStatus(`收集中 ${current}/${total}`)
+  setSyncStatus(`同步中 ${current}/${total}`)
+  ```
+- **核心改动**：
+  - ✅ 移除按钮 onClick 事件处理器
+  - ✅ 设置按钮为永久 disabled（`disabled={true}`）
+  - ✅ 修改空闲状态显示："同步" → "就绪"
+  - ✅ 简化收集状态："正在收集图片信息 1/10..." → "收集中 1/10"
+  - ✅ 简化下载状态："正在同步 12/3232 张图片..." → "同步中 12/3232"
+- **用户体验改进**：
+  - ✅ 按钮作为纯状态指示器，不再响应点击
+  - ✅ 自动同步时按钮状态正确同步
+  - ✅ 状态文字更简洁，节省空间
+  - ✅ 实时显示精确的进度数字
+- **修改文件**：`src/panels/TodoList.jsx`
+- **构建结果**：✅ 构建成功，无错误
+
+## 📊 图片收集阶段进度显示 (2025-01-28)
+
+### ✅ 已完成：添加图片收集阶段的进度显示
+- **问题**：同步时"正在收集图片信息"只显示文字，没有显示进度
+- **用户期望**：显示如"正在收集图片信息 1/3..."的进度信息
+- **解决方案**：为 collectProductImages 函数添加可选的 onProgress 回调参数
+- **技术实现**：
+  ```javascript
+  // 修改前：collectProductImages 没有进度回调
+  const collectProductImages = useCallback(async (productList) => {
+    for (const product of productsToSync) {
+      // 处理产品...
+    }
+  }, [loginInfo, parseProductImages])
+
+  // 修改后：添加进度回调参数
+  const collectProductImages = useCallback(async (productList, onProgress) => {
+    for (let i = 0; i < productsToSync.length; i++) {
+      const product = productsToSync[i]
+      // 报告进度
+      if (onProgress) {
+        onProgress(i + 1, productsToSync.length, product.applyCode)
+      }
+      // 处理产品...
+    }
+  }, [loginInfo, parseProductImages])
+
+  // executeSync 中调用时传入进度回调
+  const allImages = await collectProductImages(productList, (current, total, applyCode) => {
+    setSyncStatus(`正在收集图片信息 ${current}/${total}...`)
+  }) || []
+  ```
+- **核心改动**：
+  - ✅ 修改 collectProductImages 函数签名，添加可选的 onProgress 参数
+  - ✅ 在处理每个产品时调用进度回调，报告当前进度
+  - ✅ executeSync 中传入进度回调，实时更新按钮状态
+  - ✅ 同步按钮实时显示："正在收集图片信息 1/10..." → "正在收集图片信息 2/10..."
+- **用户体验改进**：
+  - ✅ 用户可以实时看到图片收集的进度
+  - ✅ 进度显示准确（当前/总数）
+  - ✅ 不影响现有功能，完全向后兼容
+- **修改文件**：`src/panels/TodoList.jsx` (collectProductImages 函数, executeSync 函数)
+- **构建结果**：✅ 构建成功，无错误
+
+## 🎨 同步状态显示优化：直接显示在按钮中 (2025-01-28)
+
+### ✅ 已完成：移除同步状态浮层，将状态信息直接显示在按钮中
+- **问题**：同步过程中会显示浮层（包括居中弹窗和顶部状态栏），影响用户操作
+- **用户期望**：不要任何浮层，将状态信息直接显示在"同步"按钮中
+- **解决方案**：完全移除 sync-status 浮层元素，将 syncStatus 直接显示为按钮文字
+- **技术实现**：
+  ```jsx
+  // 修改前：显示浮层 + 按钮固定文字
+  {isSyncing && (
+    <div className="sync-status">
+      <div className="sync-text">{syncStatus}</div>
+    </div>
+  )}
+  <button>{isSyncing ? '同步中' : '同步'}</button>
+
+  // 修改后：按钮动态显示状态
+  <button>
+    {isSyncing ? (syncStatus || '同步中') : '同步'}
+  </button>
+  ```
+- **核心改动**：
+  - ✅ 删除 sync-status 浮层元素（TodoList.jsx）
+  - ✅ 删除 sync-status 相关CSS样式（TodoList.css）
+  - ✅ 修改按钮文字逻辑，直接显示 syncStatus
+  - ✅ 调整按钮样式，增加 max-width 和文字省略号支持
+- **用户体验改进**：
+  - ✅ 完全没有任何浮层或弹窗
+  - ✅ 按钮直接显示："正在获取产品列表..." / "正在同步 5/10 张图片..."
+  - ✅ 状态信息简洁直观，不影响界面布局
+  - ✅ 用户可以随时看到同步进度
+- **修改文件**：
+  - `src/panels/TodoList.jsx` (删除浮层，修改按钮文字)
+  - `src/panels/TodoList.css` (删除样式，调整按钮样式)
+- **构建结果**：✅ 构建成功，无错误
+
+## 🎨 同步功能优化：改为后台静默同步 (2025-01-28)
+
+### ✅ 已完成：移除同步弹窗，改为后台静默下载
+- **问题**：点击"同步"按钮会弹出"产品图片下载"对话框，影响用户操作
+- **用户期望**：点击同步后在后台静默下载，不要弹窗阻碍操作
+- **解决方案**：修改executeSync函数，直接调用下载API，不显示ImageDownloader组件
+- **技术实现**：
+  ```javascript
+  // 修改前：显示弹窗下载
+  setShowImageDownloader(true)
+  setIsManualSync(syncType === 'manual')
+
+  // 修改后：后台静默下载
+  const results = await localImageManager.downloadProductImages(
+    allImages,
+    onProgressCallback,  // 更新同步状态
+    onErrorCallback      // 收集错误
+  )
+  setSuccessMsg(`同步完成: 成功${results.success}张...`)
+  ```
+- **核心改动**：
+  - ✅ 移除`setShowImageDownloader(true)`，不显示弹窗
+  - ✅ 直接调用`localImageManager.downloadProductImages`后台下载
+  - ✅ 使用进度回调更新同步状态（按钮显示"同步中"）
+  - ✅ 下载完成后用Toast显示结果
+- **用户体验改进**：
+  - ✅ 点击同步后不会弹出模态对话框
+  - ✅ 按钮显示"同步中"状态，提供清晰反馈
+  - ✅ 用户可以继续操作其他功能（查看产品、搜索等）
+  - ✅ 同步完成后顶部Toast提示结果
+- **修改文件**：`src/panels/TodoList.jsx` (executeSync函数)
+- **构建结果**：✅ 构建成功，无错误
+
 ## 🚀 同步按钮增量优化 (2025-01-28)
 
 ### ✅ 已完成：实现真正的增量同步
@@ -3585,3 +4583,298 @@ sku中的第一个颜色款式class="sku-header"元素改为左右布局。右�
 4、其他逻辑保持不变，不要改动现有逻辑，需要复用现有代码和逻辑
 think harder
 
+
+
+---
+
+## 2025-10-17 禁用提交审核后的数据清理功能
+
+**需求**: 提交审核API成功后，不删除产品数据和本地图片文件，保留数据便于调试和验证
+
+**问题分析**:
+- 当前逻辑在提交审核成功后会自动删除产品数据和本地图片
+- 这导致无法重复测试提交流程，不利于开发调试
+- 虽然注释说"清理功能已禁用"，但实际代码仍在执行删除操作
+
+**修改内容**:
+1. **注释删除逻辑** - 注释掉 `localImageManager.removeProduct()` 调用
+2. **保留其他功能** - 保持关闭详情页和通知父组件的逻辑不变
+3. **更新注释说明** - 修改函数注释，明确说明这是"保留模式"
+4. **更新日志消息** - 清晰说明产品数据和图片不会被删除
+
+**修改文件**:
+- `src/components/ProductDetail.jsx:1646-1686` - `handleSubmitSuccess` 函数
+
+**修改前**:
+```javascript
+const handleSubmitSuccess = async (successMessage) => {
+  try {
+    console.log('🎉 提交成功:', successMessage);
+    console.log('🚧 [本地测试模式] 清理功能已禁用，保留产品数据和本地图片');
+    
+    // TODO: 本地测试完成后取消下面的注释
+    console.log('🧹 开始清理产品数据...');
+    
+    // 实际上在执行删除
+    const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+    // ...
+  }
+}
+```
+
+**修改后**:
+```javascript
+/**
+ * 处理提交成功后的操作
+ * 保留模式 - 产品数据和本地图片文件不会被删除
+ */
+const handleSubmitSuccess = async (successMessage) => {
+  try {
+    console.log('🎉 提交成功:', successMessage);
+    console.log('💾 保留模式 - 产品数据和本地图片不会被删除');
+    
+    // 数据清理功能已禁用 - 保留产品数据和本地图片文件
+    // const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+    
+    // 1. 关闭产品详情页
+    setTimeout(() => { if (onClose) onClose(); }, 1500);
+    
+    // 2. 触发父组件提交回调
+    if (onSubmit) onSubmit(currentProduct);
+  }
+}
+```
+
+**实现效果**:
+- ✅ 提交审核成功后，产品数据保留在 `index.json` 中
+- ✅ 本地图片文件不会被删除
+- ✅ 详情页仍会在1.5秒后自动关闭
+- ✅ 父组件仍会收到提交成功的通知
+- ✅ 可以重复测试提交流程而不丢失数据
+- ✅ 便于开发调试和验证功能
+
+**后续说明**:
+如需恢复自动清理功能，取消注释 `localImageManager.removeProduct()` 调用即可。
+
+
+
+---
+
+## 2025-10-17 产品详情页新增驳回功能
+
+**需求**: 在产品详情页中，当图片状态status为3（待处理）时，顶部新增"驳回"按钮，点击调用驳回API，成功后关闭详情页并刷新产品列表
+
+**实现细节**:
+
+1. **添加状态管理** (`src/components/ProductDetail.jsx:307`)
+   ```javascript
+   const [isRejecting, setIsRejecting] = useState(false); // 驳回操作进行中
+   ```
+
+2. **添加驳回处理函数** (`src/components/ProductDetail.jsx:1697-1765`)
+   - 调用API: `POST /api/publish/reject_product_image`
+   - 参数: `{ userId, userCode, applyCode }`
+   - 成功时显示Toast提示，1.5秒后关闭详情页并触发父组件刷新
+   - 失败时显示Toast错误提示
+   ```javascript
+   const handleRejectProduct = async () => {
+     // 获取登录信息并调用驳回API
+     // 成功: 显示成功Toast，延迟关闭详情页，触发父组件刷新
+     // 失败: 显示错误Toast
+   }
+   ```
+
+3. **在header区域添加驳回按钮** (`src/components/ProductDetail.jsx:4037-4045`)
+   ```jsx
+   {currentProduct.status === 3 && (
+     <button
+       className={`reject-btn ${isRejecting ? 'rejecting' : ''}`}
+       onClick={handleRejectProduct}
+       disabled={isRejecting}
+     >
+       {isRejecting ? '驳回中...' : '驳回'}
+     </button>
+   )}
+   ```
+   - 仅当产品状态为3（待处理）时显示
+   - 位于批量同步按钮和提交审核按钮之间
+
+4. **修改TodoList刷新逻辑** (`src/panels/TodoList.jsx:1152-1189`)
+   - 修改 `handleProductDetailSubmit` 函数
+   - 驳回成功后重新调用 `get_product_list` API 刷新列表
+   - 显示成功消息"操作成功"
+   ```javascript
+   const handleProductDetailSubmit = async (productData) => {
+     // 关闭详情页
+     // 重新获取产品列表数据
+     const listRes = await get('/api/publish/get_product_list', {...})
+     setData(listDataClass?.publishProductInfos || [])
+   }
+   ```
+
+**实现效果**:
+- ✅ 状态为3时显示驳回按钮，其他状态不显示
+- ✅ 点击驳回按钮调用驳回API
+- ✅ 驳回中按钮显示"驳回中..."并禁用
+- ✅ 成功时显示Toast提示，1.5秒后关闭详情页
+- ✅ 成功后触发父组件重新获取产品列表数据
+- ✅ 失败时显示Toast错误提示（不使用alert）
+- ✅ 驳回成功后列表自动刷新
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 添加驳回状态、处理函数和按钮
+- `src/panels/TodoList.jsx` - 修改提交回调支持刷新列表
+
+**API调用**:
+- 端点: `POST /api/publish/reject_product_image`
+- 请求头: `Content-Type: application/json`
+- 请求体: `{ userId: number, userCode: string, applyCode: string }`
+- 响应: `{ statusCode: 200, message: string, dataClass: string }`
+
+
+**驳回后清理本地数据修改**:
+
+5. **驳回成功后清理本地数据和图片** (`src/components/ProductDetail.jsx:1730-1735`)
+   ```javascript
+   // 🧹 清理本地数据和图片文件
+   console.log('🧹 开始清理产品数据和本地图片...');
+   const removed = await localImageManager.removeProduct(currentProduct.applyCode);
+   if (removed) {
+     console.log('✅ 产品数据和本地图片已清理');
+   }
+   ```
+   - 在驳回API返回成功后立即执行清理
+   - 删除index.json中对应的产品数据
+   - 删除本地存储的产品图片文件（原图、SKU图、场景图）
+   - 与提交成功的行为不同：提交成功保留数据，驳回成功删除数据
+
+**实现效果**:
+- ✅ 驳回成功后自动清理index.json中的产品索引
+- ✅ 驳回成功后自动删除本地图片文件
+- ✅ 释放本地存储空间
+- ✅ 避免驳回产品残留在本地文件系统
+
+**行为差异**:
+- **提交审核成功**: 保留产品数据和本地图片（便于调试和重复测试）
+- **驳回产品成功**: 删除产品数据和本地图片（释放存储空间）
+
+
+---
+
+## 2025-10-17 移除图片hover信息提示
+
+**需求**: 移除鼠标hover到图片上时显示的图片信息tooltip（名称、尺寸、大小）
+
+**实现细节**:
+
+1. **移除JSX代码** (`src/components/ProductDetail.jsx:230-242`)
+   - 删除 `image-info-tooltip` 组件及其内容
+   - 移除显示图片名称、尺寸、大小的tooltip HTML结构
+
+**移除的代码**:
+```jsx
+{imageInfo && (
+  <div className={`image-info-tooltip ${hovered ? 'visible' : ''}`}>
+    <div className="tooltip-item">
+      名称: {imageUrl.split('/').pop().split('?')[0]}
+    </div>
+    <div className="tooltip-item">
+      尺寸: {imageInfo.width} x {imageInfo.height}
+    </div>
+    <div className="tooltip-item">
+      大小: {formatFileSize(imageInfo.fileSize)}
+    </div>
+  </div>
+)}
+```
+
+2. **移除CSS样式** (`src/components/ProductDetail.css:2704-2744`)
+   - 删除 `.image-info-tooltip` 样式
+   - 删除 `.image-info-tooltip.visible` 样式
+   - 删除 `.preview-image-container .image-info-tooltip` 样式
+   - 删除 `.tooltip-item` 相关样式
+
+**实现效果**:
+- ✅ 移除了图片hover时的信息tooltip
+- ✅ 清理了相关的CSS样式代码
+- ✅ 简化了UI交互，减少视觉干扰
+- ✅ 保留了其他hover效果（如双击提示等）
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 移除tooltip JSX代码
+- `src/components/ProductDetail.css` - 移除tooltip样式
+- `src/panels/TodoList.jsx` - 移除产品名称的title属性
+
+---
+
+## 2025-10-18 添加SKU图片完整性前端验证
+
+**需求**: 在用户点击"提交审核"按钮时，立即验证所有SKU是否都有图片，如果有缺失立即用Toast提示，避免等到后端API返回错误才发现
+
+**问题背景**:
+- 后端API `/api/publish/submit_product_image` 会验证所有SKU必须有图片
+- 如果某个SKU（如"粉色"）没有图片，后端返回错误：`产品图片不可为空属性：粉色`
+- 原实现需要等API调用失败后才能看到错误，用户体验不佳
+
+**实现细节**:
+
+1. **添加前端验证逻辑** (`src/components/ProductDetail.jsx:1552-1575`)
+   ```javascript
+   // ========== 前端验证：检查SKU图片完整性 ==========
+   const missingSkus = [];
+   (currentProduct.publishSkus || []).forEach(sku => {
+     const hasImages = sku.skuImages && sku.skuImages.length > 0 &&
+                      sku.skuImages.some(img => img.imageUrl);
+     if (!hasImages) {
+       const attrName = (sku.attrClasses || []).join('-') || `SKU${sku.skuIndex}`;
+       missingSkus.push(attrName);
+     }
+   });
+
+   if (missingSkus.length > 0) {
+     const errorMessage = `产品图片不可为空属性：${missingSkus.join('、')}`;
+     console.warn('⚠️ SKU图片验证失败:', errorMessage);
+     setToast({
+       open: true,
+       message: errorMessage,
+       type: 'error'
+     });
+     throw new Error(errorMessage);
+   }
+
+   console.log('✅ SKU图片验证通过');
+   ```
+
+**验证流程**:
+1. 遍历所有 `publishSkus`
+2. 检查每个SKU的 `skuImages` 是否为空或所有 `imageUrl` 为空
+3. 收集缺失图片的SKU属性名称（如"粉色"、"蓝色"）
+4. 如果有缺失，立即显示Toast错误提示
+5. 抛出异常中止提交流程，不调用后端API
+
+**实现效果**:
+- ✅ 点击"提交审核"时立即验证SKU图片完整性
+- ✅ 使用Toast显示友好的错误提示（符合UXP规范）
+- ✅ 错误信息格式与后端一致：`产品图片不可为空属性：粉色`
+- ✅ 支持多个SKU缺失：`产品图片不可为空属性：粉色、蓝色、黑色`
+- ✅ 验证通过后才调用后端API，减少无效请求
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - submitForReview函数添加前端验证
+
+**后续修复**:
+
+1. **移动验证时机** (ProductDetail.jsx:1190-1213)
+   - 将验证逻辑从 `submitForReview` 移到 `handleSubmitReview` 开头
+   - 确保用户点击"提交审核"按钮后立即验证，不需要等待图片上传
+   - 验证失败直接中止，不会进行后续的上传和API调用
+
+2. **修复[object Object]显示问题** (ProductDetail.jsx:1196-1200)
+   - 问题：`attrClasses` 是对象数组 `[{attrName: '颜色', attrValue: '粉色'}]`，直接 join 会显示 `[object Object]`
+   - 修复：先 map 提取 `attrValue`，再 join 成字符串
+   ```javascript
+   const attrName = (sku.attrClasses || [])
+     .map(attr => attr.attrValue || attr.attrName)
+     .join('-') || `SKU${sku.skuIndex}`;
+   ```
+   - 现在正确显示：`产品图片不可为空属性：粉色` 而不是 `产品图片不可为空属性：[object Object]`

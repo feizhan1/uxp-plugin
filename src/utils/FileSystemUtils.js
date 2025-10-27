@@ -1,6 +1,8 @@
 // FileSystemUtils.js - UXP文件系统工具类
 // 提供高级的文件操作、目录管理和存储优化功能
 
+import { storageLocationManager } from './StorageLocationManager.js';
+
 // 检测是否在UXP环境中
 const isUXPEnvironment = () => {
   try {
@@ -63,18 +65,19 @@ export class FileSystemUtils {
     }
 
     try {
-      console.log('正在初始化文件系统工具...');
+      console.log('🚀 [FileSystemUtils] 正在初始化文件系统工具...');
 
-      // 获取用户数据目录
-      const dataFolder = await fs.getDataFolder();
+      // 使用存储位置管理器获取用户选择的本地文件夹
+      const baseFolder = await storageLocationManager.getStorageFolder();
+      console.log('✅ [FileSystemUtils] 基础文件夹:', baseFolder.nativePath);
 
       // 创建插件专用数据目录
       try {
-        this.pluginDataFolder = await dataFolder.createFolder('tvcmall-plugin', { overwrite: false });
+        this.pluginDataFolder = await baseFolder.createFolder('tvcmall-plugin', { overwrite: false });
       } catch (error) {
         if (error.message.includes('exists')) {
           console.log('插件数据目录已存在，使用现有目录');
-          this.pluginDataFolder = await dataFolder.getEntry('tvcmall-plugin');
+          this.pluginDataFolder = await baseFolder.getEntry('tvcmall-plugin');
         } else {
           throw error;
         }
@@ -93,9 +96,10 @@ export class FileSystemUtils {
       }
 
       this.initialized = true;
-      console.log('✅ 文件系统工具初始化成功');
+      console.log('✅ [FileSystemUtils] 文件系统工具初始化成功');
+      console.log('📁 [FileSystemUtils] 插件数据目录:', this.pluginDataFolder.nativePath);
     } catch (error) {
-      console.error('❌ 文件系统工具初始化失败:', error);
+      console.error('❌ [FileSystemUtils] 文件系统工具初始化失败:', error);
       throw error;
     }
   }
