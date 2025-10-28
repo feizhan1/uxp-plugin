@@ -1374,6 +1374,11 @@ const TodoList = () => {
           {/* 右侧操作按钮 */}
           <div className="header-right">
             {/* 只在非搜索模式下显示同步状态按钮和筛选器 */}
+            <button
+              className="action-btn secondary"
+            >
+              版本号：2.1.0
+            </button>
             {!searchMode && (
               <>
                 <button
