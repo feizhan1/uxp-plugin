@@ -97,15 +97,15 @@ const TodoList = () => {
       senceImages.forEach((image, imageIndex) => {
         if (image.imageUrl) {
           productImages.push({
-            id: `${product.applyCode}_scene_${image.index || imageIndex}`,
+            id: `${product.applyCode}_scene_${image.index ?? imageIndex}`,
             url: image.imageUrl,
-            filename: `scene_${image.index || imageIndex}.jpg`,
+            filename: `scene_${image.index ?? imageIndex}.jpg`,
             applyCode: product.applyCode,
             productId: product.productId,
             productName: product.productName,
-            sortOrder: image.index || imageIndex,
+            sortOrder: image.index ?? imageIndex,
             imageType: 'scene',  // 🔧 修复：使用 imageType 字段，并修正拼写为 scene
-            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
+            sourceIndex: image.index ?? imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -118,16 +118,16 @@ const TodoList = () => {
           sku.skuImages.forEach((image, imageIndex) => {
             if (image.imageUrl) {
               productImages.push({
-                id: `${product.applyCode}_sku${sku.skuIndex || skuIndex}_${image.index || imageIndex}`,
+                id: `${product.applyCode}_sku${sku.skuIndex ?? skuIndex}_${image.index ?? imageIndex}`,
                 url: image.imageUrl,
-                filename: `sku${sku.skuIndex || skuIndex}_${image.index || imageIndex}.jpg`,
+                filename: `sku${sku.skuIndex ?? skuIndex}_${image.index ?? imageIndex}.jpg`,
                 applyCode: product.applyCode,
                 productId: product.productId,
                 productName: product.productName,
-                sortOrder: image.index || imageIndex,
+                sortOrder: image.index ?? imageIndex,
                 imageType: 'sku',  // 🔧 修复：使用 imageType 字段
-                skuIndex: sku.skuIndex || skuIndex,
-                sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
+                skuIndex: sku.skuIndex ?? skuIndex,
+                sourceIndex: image.index ?? imageIndex  // 🔧 添加 sourceIndex 字段
               })
             }
           })
@@ -141,15 +141,15 @@ const TodoList = () => {
         if (image.imageUrl || image.url) {
           const imageUrl = image.imageUrl || image.url
           productImages.push({
-            id: `${product.applyCode}_original_${image.index || imageIndex}`,
+            id: `${product.applyCode}_original_${image.index ?? imageIndex}`,
             url: imageUrl,
-            filename: `original_${image.index || imageIndex}.jpg`,
+            filename: `original_${image.index ?? imageIndex}.jpg`,
             applyCode: product.applyCode,
             productId: product.productId,
             productName: product.productName,
-            sortOrder: image.index || imageIndex,
+            sortOrder: image.index ?? imageIndex,
             imageType: 'original',  // 🔧 修复：使用 imageType 字段
-            sourceIndex: image.index || imageIndex  // 🔧 添加 sourceIndex 字段
+            sourceIndex: image.index ?? imageIndex  // 🔧 添加 sourceIndex 字段
           })
         }
       })
@@ -461,14 +461,14 @@ const TodoList = () => {
                     sku.skuImages.forEach((img, imgIndex) => {
                       if (img.imageUrl) {
                         imagesToDownload.push({
-                          id: `${product.applyCode}_sku${sku.skuIndex || skuIndex}_${imgIndex}`,
+                          id: `${product.applyCode}_sku${sku.skuIndex ?? skuIndex}_${imgIndex}`,
                           url: img.imageUrl,
                           imageUrl: img.imageUrl,  // 保留 imageUrl 字段给 downloadSingleImage 使用
-                          filename: `sku${sku.skuIndex || skuIndex}_${imgIndex}.jpg`,
+                          filename: `sku${sku.skuIndex ?? skuIndex}_${imgIndex}.jpg`,
                           applyCode: product.applyCode,
                           productId: product.productId,
                           imageType: 'sku',
-                          skuIndex: sku.skuIndex || skuIndex,
+                          skuIndex: sku.skuIndex ?? skuIndex,
                           sourceIndex: imgIndex
                         })
                       }
