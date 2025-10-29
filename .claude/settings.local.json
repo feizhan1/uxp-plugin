@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git commit:*)",
       "Bash(git add:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Read(//Users/feizhan/Desktop/ps/tvcmall-plugin/product-images/**)"
     ],
     "deny": [],
     "ask": []

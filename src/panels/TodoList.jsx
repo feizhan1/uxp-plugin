@@ -1061,6 +1061,8 @@ const TodoList = () => {
 
       // 🔄 同步产品状态到本地索引
       await localImageManager.initialize()
+      // 强制重新加载索引数据，确保内存与磁盘数据一致
+      await localImageManager.loadIndexData()
       let statusUpdateCount = 0
       for (const apiProduct of productList) {
         const localProduct = localImageManager.findProductByApplyCode(apiProduct.applyCode)
