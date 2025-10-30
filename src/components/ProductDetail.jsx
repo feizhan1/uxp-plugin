@@ -2226,7 +2226,9 @@ const ProductDetail = ({
               translatedImageUrl: translatedImageUrl,
               localPath: `${imageInfo.applyCode}/${fileName}`,
               fileSize: arrayBuffer.byteLength,
-              imageInfo: imageInfo
+              imageInfo: imageInfo,
+              imageType: image.type,  // 使用当前图片的实际类型
+              skuIndex: image.skuIndex  // 使用当前图片的 SKU 索引（如果是 SKU 图片）
             });
 
             console.log('✅ [批量翻译] 翻译结果已记录:', image.imageUrl);
@@ -2291,21 +2293,21 @@ const ProductDetail = ({
         let successCount = 0;
         for (let i = 0; i < translationResults.length; i++) {
           const result = translationResults[i];
-          const { originalImageUrl, translatedImageUrl, localPath, fileSize, imageInfo } = result;
+          const { originalImageUrl, translatedImageUrl, localPath, fileSize, imageType, skuIndex } = result;
           let targetImageInfo = null;
 
           console.log(`\n🔍 [批量翻译] [${i + 1}/${translationResults.length}] 处理图片:`);
           console.log(`   原始URL: ${originalImageUrl}`);
           console.log(`   翻译URL: ${translatedImageUrl}`);
-          console.log(`   图片类型: ${imageInfo.imageType}`);
-          console.log(`   SKU索引: ${imageInfo.skuIndex}`);
+          console.log(`   图片类型: ${imageType}`);
+          console.log(`   SKU索引: ${skuIndex}`);
 
-          if (imageInfo.imageType === 'scene') {
+          if (imageType === 'scene') {
             console.log(`   → 在场景图片中查找 (共${product.senceImages?.length || 0}张)`);
             targetImageInfo = product.senceImages?.find(img => img.imageUrl === originalImageUrl);
-          } else if (imageInfo.skuIndex !== undefined) {
-            console.log(`   → 在SKU图片中查找 (SKU索引: ${imageInfo.skuIndex})`);
-            const sku = product.publishSkus?.find(s => s.skuIndex === imageInfo.skuIndex);
+          } else if (skuIndex !== undefined) {
+            console.log(`   → 在SKU图片中查找 (SKU索引: ${skuIndex})`);
+            const sku = product.publishSkus?.find(s => s.skuIndex === skuIndex);
             if (sku) {
               console.log(`   → 找到SKU，包含${sku.skuImages?.length || 0}张图片`);
               if (sku.skuImages && sku.skuImages.length > 0) {
@@ -2313,7 +2315,7 @@ const ProductDetail = ({
               }
               targetImageInfo = sku.skuImages?.find(img => img.imageUrl === originalImageUrl);
             } else {
-              console.error(`   ❌ 未找到SKU (索引: ${imageInfo.skuIndex})`);
+              console.error(`   ❌ 未找到SKU (索引: ${skuIndex})`);
             }
           } else {
             console.log(`   → 在原始图片中查找 (共${product.originalImages?.length || 0}张)`);
