@@ -422,7 +422,7 @@ const ProductDetail = ({
       original: (optimizedImageGroups.original || []).slice(visibleRange.start, visibleRange.end),
       skus: (optimizedImageGroups.skus || []).map(sku => ({
         ...sku,
-        images: sku.images.slice(0, Math.min(sku.images.length, 20)) // 每个SKU最多显示20张图片
+        images: sku.images // 显示所有SKU图片
       })),
       scenes: (optimizedImageGroups.scenes || []).slice(visibleRange.start, visibleRange.end)
     };
