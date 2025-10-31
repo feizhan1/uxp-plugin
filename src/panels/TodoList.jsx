@@ -1513,7 +1513,10 @@ const TodoList = () => {
         {/* 只在非搜索模式下显示list-header */}
         {!searchMode && (
           <div className='list-header'>
-            <h2 className='list-title'>待处理产品列表 ({data.length})</h2>
+            <h2 className='list-title'>
+              {statusFilter === 3 ? '待处理产品列表' : '编辑审核中产品列表'}
+              ({data.filter(item => item.status === statusFilter).length})
+            </h2>
             <div className='list-subtitle'>点击"去处理"进入产品详情页面</div>
           </div>
         )}
