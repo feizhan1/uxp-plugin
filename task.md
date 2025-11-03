@@ -1,5 +1,76 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 修复单张翻译查找索引记录的Bug (2025-11-03)
+
+### 完成情况：修复单张翻译使用错误URL查找索引记录导致第二次翻译失败的问题
+
+**问题描述**：
+- 单张翻译在应用翻译结果时使用 `currentImage.imageUrl` 查找索引记录
+- 第一次翻译后，索引中的 `imageUrl` 被更新为翻译后的URL（包含-f后缀）
+- 页面刷新后，`currentImage.imageUrl` 就变成了翻译后的URL
+- 第二次翻译同一张图片时，用翻译后的URL查找，找不到索引记录，导致更新失败
+
+**根本原因**：
+- 单张翻译使用 `currentImage.imageUrl`（当前显示的URL）查找索引记录
+- 批量翻译使用 `originalImageUrl`（保存的原始URL）查找索引记录
+- 两者逻辑不一致
+
+**技术实现**：
+
+#### 1. 在 handleApplyTranslation 开始时保存原始URL (src/components/ProductDetail.jsx:3578-3579)
+
+```javascript
+const handleApplyTranslation = useCallback(async () => {
+  const currentImage = previewMode.imageList[previewMode.currentImageIndex];
+  if (!currentImage || !translatedImage) {
+    return;
+  }
+
+  // 保存原始URL，用于后续查找索引记录
+  const originalImageUrl = currentImage.imageUrl;  // ✅ 添加这行
+
+  try {
+    // ...
+```
+
+#### 2. 修改查找逻辑使用 originalImageUrl (src/components/ProductDetail.jsx:3642, 3651, 3661)
+
+**修改前：**
+```javascript
+// 场景图片
+targetImageInfo = product.senceImages?.find(img => img.imageUrl === currentImage.imageUrl);
+
+// SKU图片
+targetImageInfo = sku.skuImages?.find(img => img.imageUrl === currentImage.imageUrl);
+
+// 原始图片
+targetImageInfo = product.originalImages?.find(img => img.imageUrl === currentImage.imageUrl);
+```
+
+**修改后：**
+```javascript
+// 场景图片
+targetImageInfo = product.senceImages?.find(img => img.imageUrl === originalImageUrl);
+
+// SKU图片
+targetImageInfo = sku.skuImages?.find(img => img.imageUrl === originalImageUrl);
+
+// 原始图片
+targetImageInfo = product.originalImages?.find(img => img.imageUrl === originalImageUrl);
+```
+
+**修复效果**：
+- ✅ 第一次翻译：使用 `currentImage.imageUrl`（原始URL）保存到 `originalImageUrl`，能找到索引记录
+- ✅ 第二次翻译：使用 `currentImage.imageUrl`（翻译后的URL）保存到 `originalImageUrl`，仍能找到索引记录
+- ✅ 与批量翻译逻辑保持一致，都使用翻译前的URL查找
+- ✅ 支持多次翻译同一张图片
+
+**影响范围**：
+- ProductDetail.jsx：handleApplyTranslation 函数，4处代码修改
+- 不影响其他功能，只修复查找逻辑
+
+---
+
 ## ✅ 修改翻译功能为只使用本地图片 (2025-11-03)
 
 ### 完成情况：翻译功能改为只使用 localPath 本地图片，不再使用 imageUrl 远程URL

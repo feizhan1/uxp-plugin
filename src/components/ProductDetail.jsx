@@ -3575,6 +3575,9 @@ const ProductDetail = ({
       return;
     }
 
+    // 保存原始URL，用于后续查找索引记录
+    const originalImageUrl = currentImage.imageUrl;
+
     try {
       setIsApplyingTranslation(true);
       console.log('✅ [handleApplyTranslation] 开始应用翻译结果:', translatedImage);
@@ -3635,8 +3638,8 @@ const ProductDetail = ({
         // 场景图片
         console.log('🔍 [handleApplyTranslation] 在场景图片中查找...');
         targetImageInfo = product.senceImages?.find(img => {
-          console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
-          return img.imageUrl === currentImage.imageUrl;
+          console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
+          return img.imageUrl === originalImageUrl;
         });
       } else if (imageInfo.skuIndex !== undefined) {
         // SKU图片
@@ -3644,8 +3647,8 @@ const ProductDetail = ({
         const sku = product.publishSkus?.find(s => s.skuIndex === imageInfo.skuIndex);
         if (sku) {
           targetImageInfo = sku.skuImages?.find(img => {
-            console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
-            return img.imageUrl === currentImage.imageUrl;
+            console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
+            return img.imageUrl === originalImageUrl;
           });
         } else {
           console.warn('⚠️ [handleApplyTranslation] 未找到对应的SKU');
@@ -3654,8 +3657,8 @@ const ProductDetail = ({
         // 原始图片
         console.log('🔍 [handleApplyTranslation] 在原始图片中查找...');
         targetImageInfo = product.originalImages?.find(img => {
-          console.log('  比较:', img.imageUrl, '===', currentImage.imageUrl, '?', img.imageUrl === currentImage.imageUrl);
-          return img.imageUrl === currentImage.imageUrl;
+          console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
+          return img.imageUrl === originalImageUrl;
         });
       }
 
