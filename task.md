@@ -1,5 +1,113 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 修复 LocalImageManager 未设置 hasLocal 导致的数据不一致问题 (2025-11-03)
+
+### 完成情况：在所有图片操作中统一设置 hasLocal 字段，并添加自动修复逻辑
+
+**问题描述**：
+- LocalImageManager 在下载图片、添加本地图片等操作中从不设置 hasLocal 字段
+- 导致索引数据中出现有 localPath 但无 hasLocal 的情况
+- 只有 ProductDetail 组件在特定操作（翻译、手动添加）时才设置 hasLocal
+- hasLocal 字段设置不一致，影响UI判断和功能逻辑
+
+**根本原因**：
+- LocalImageManager 层只设置 localPath 和 status，不维护 hasLocal
+- hasLocal 设计为临时UI字段，但部分代码依赖其显式存在
+- 没有统一的同步机制保证 hasLocal 与 localPath 一致
+
+**技术实现**：
+
+#### 1. downloadSingleImage 方法添加 hasLocal: true (src/utils/LocalImageManager.js)
+
+修改了5处 Object.assign 调用：
+- 场景图片更新（第971行）
+- 场景图片新记录（第997行）
+- SKU图片更新（第1041行）
+- SKU图片新记录（第1088行）
+- 原始图片更新（第1122行）
+
+```javascript
+Object.assign(image, {
+  localPath: localFilename,
+  status: 'pending_edit',
+  timestamp: Date.now(),
+  fileSize: arrayBuffer.byteLength,
+  hasLocal: true  // ✅ 新增
+});
+```
+
+#### 2. addLocalImages 方法添加 hasLocal: true (src/utils/LocalImageManager.js:1786)
+
+```javascript
+const imageRecord = {
+  imageUrl: `local://${finalFilePath}`,
+  localPath: finalFilePath,
+  status: 'pending_edit',
+  timestamp: Date.now(),
+  fileSize: arrayBuffer.byteLength,
+  addedLocally: true,
+  hasLocal: true  // ✅ 新增
+};
+```
+
+#### 3. skipFailedImages 方法设置 hasLocal: false (src/utils/LocalImageManager.js:637)
+
+```javascript
+const failedImageData = {
+  imageUrl: url,
+  localPath: '',
+  status: 'download_failed',
+  timestamp: Date.now(),
+  error: error || '下载失败',
+  fileSize: 0,
+  hasLocal: false  // ✅ 新增
+};
+```
+
+#### 4. loadIndexData 方法添加自动修复逻辑 (src/utils/LocalImageManager.js:317-370)
+
+```javascript
+// 自动修复 hasLocal 字段
+let hasLocalFixedCount = 0;
+this.indexData.forEach(product => {
+  // 修复原始图片
+  if (product.originalImages) {
+    product.originalImages.forEach(img => {
+      if (img.localPath && img.hasLocal === undefined) {
+        img.hasLocal = true;
+        hasLocalFixedCount++;
+      } else if (!img.localPath && img.hasLocal === true) {
+        img.hasLocal = false;
+        hasLocalFixedCount++;
+      }
+    });
+  }
+
+  // 修复场景图片和SKU图片（相同逻辑）
+  // ...
+});
+
+if (hasLocalFixedCount > 0) {
+  console.log(`✅ [loadIndexData] 自动修复了 ${hasLocalFixedCount} 个图片的 hasLocal 字段`);
+  this.saveIndexData();
+}
+```
+
+**修复效果**：
+- ✅ 下载图片后自动设置 hasLocal: true
+- ✅ 添加本地图片后自动设置 hasLocal: true
+- ✅ 跳过失败图片时设置 hasLocal: false
+- ✅ 加载索引时自动修复所有缺失的 hasLocal 字段
+- ✅ 保证 hasLocal 与 localPath 的一致性
+- ✅ 首次加载插件时会自动修复所有历史数据
+
+**影响范围**：
+- LocalImageManager.js：4个方法修改，10+处代码修改
+- 不影响现有功能，只是补充缺失的字段设置
+- 向后兼容，自动修复历史数据
+
+---
+
 ## ✅ 根据状态动态显示产品列表标题和过滤数量 (2025-10-31)
 
 ### 完成情况：标题根据当前选中状态（待处理/编辑审核中）动态显示，数量显示过滤后的产品数

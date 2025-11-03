@@ -313,6 +313,61 @@ export class LocalImageManager {
             console.error('❌ [loadIndexData] 保存修复后的数据失败:', error);
           });
         }
+
+        // 自动修复 hasLocal 字段
+        let hasLocalFixedCount = 0;
+        this.indexData.forEach(product => {
+          // 修复原始图片
+          if (product.originalImages) {
+            product.originalImages.forEach(img => {
+              if (img.localPath && img.hasLocal === undefined) {
+                img.hasLocal = true;
+                hasLocalFixedCount++;
+              } else if (!img.localPath && img.hasLocal === true) {
+                img.hasLocal = false;
+                hasLocalFixedCount++;
+              }
+            });
+          }
+
+          // 修复场景图片
+          if (product.senceImages) {
+            product.senceImages.forEach(img => {
+              if (img.localPath && img.hasLocal === undefined) {
+                img.hasLocal = true;
+                hasLocalFixedCount++;
+              } else if (!img.localPath && img.hasLocal === true) {
+                img.hasLocal = false;
+                hasLocalFixedCount++;
+              }
+            });
+          }
+
+          // 修复SKU图片
+          if (product.publishSkus) {
+            product.publishSkus.forEach(sku => {
+              if (sku.skuImages) {
+                sku.skuImages.forEach(img => {
+                  if (img.localPath && img.hasLocal === undefined) {
+                    img.hasLocal = true;
+                    hasLocalFixedCount++;
+                  } else if (!img.localPath && img.hasLocal === true) {
+                    img.hasLocal = false;
+                    hasLocalFixedCount++;
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        if (hasLocalFixedCount > 0) {
+          console.log(`✅ [loadIndexData] 自动修复了 ${hasLocalFixedCount} 个图片的 hasLocal 字段`);
+          // 异步保存修复后的数据
+          this.saveIndexData().catch(error => {
+            console.error('❌ [loadIndexData] 保存 hasLocal 修复后的数据失败:', error);
+          });
+        }
       } else {
         console.log('📂 [loadIndexData] 未找到索引文件，创建新的索引');
         this.indexData = [];
@@ -633,7 +688,8 @@ export class LocalImageManager {
           status: 'download_failed', // 标记为下载失败
           timestamp: Date.now(),
           error: error || '下载失败',
-          fileSize: 0
+          fileSize: 0,
+          hasLocal: false
         };
 
         // 根据imageType和skuIndex判断图片类型，添加到相应位置
@@ -967,7 +1023,8 @@ export class LocalImageManager {
                 status: 'pending_edit',
                 timestamp: Date.now(),
                 fileSize: arrayBuffer.byteLength,
-                index: sourceIndex
+                index: sourceIndex,
+                hasLocal: true
               });
 
               console.log(`✅ [downloadSingleImage] 更新后的场景图片 ${idx + 1}:`, JSON.stringify(sceneImage));
@@ -992,7 +1049,8 @@ export class LocalImageManager {
               status: 'pending_edit',
               timestamp: Date.now(),
               fileSize: arrayBuffer.byteLength,
-              index: sourceIndex
+              index: sourceIndex,
+              hasLocal: true
             });
 
             console.log(`✅ [downloadSingleImage] 更新后的场景图片:`, JSON.stringify(sceneImage));
@@ -1035,7 +1093,8 @@ export class LocalImageManager {
                 status: 'pending_edit',
                 timestamp: Date.now(),
                 fileSize: arrayBuffer.byteLength,
-                index: sourceIndex
+                index: sourceIndex,
+                hasLocal: true
               });
 
               console.log(`✅ [downloadSingleImage] 更新后的SKU ${sku.skuIndex} 图片 ${idx + 1}:`, JSON.stringify(image));
@@ -1081,7 +1140,8 @@ export class LocalImageManager {
               status: 'pending_edit',
               timestamp: Date.now(),
               fileSize: arrayBuffer.byteLength,
-              index: sourceIndex
+              index: sourceIndex,
+              hasLocal: true
             });
 
             console.log(`✅ [downloadSingleImage] 更新后的SKU图片:`, JSON.stringify(skuImage));
@@ -1114,7 +1174,8 @@ export class LocalImageManager {
             localPath: localFilename,
             status: 'pending_edit',
             timestamp: Date.now(),
-            fileSize: arrayBuffer.byteLength
+            fileSize: arrayBuffer.byteLength,
+            hasLocal: true
           });
 
           console.log(`✅ [downloadSingleImage] 更新后的原始图片:`, JSON.stringify(originalImage));
@@ -1777,7 +1838,8 @@ export class LocalImageManager {
             status: 'pending_edit',
             timestamp: Date.now(),
             fileSize: arrayBuffer.byteLength,
-            addedLocally: true // 标记为本地添加的图片
+            addedLocally: true, // 标记为本地添加的图片
+            hasLocal: true
           };
 
           // 根据类型添加到对应数组
