@@ -3512,13 +3512,11 @@ const ProductDetail = ({
           console.log('✅ [单张翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
         } else {
           console.log('❌ [单张翻译] 本地图片不存在');
-          Toast.show('本地图片不存在，无法翻译', 'error');
           setIsTranslating(false);
           return;
         }
       } catch (error) {
         console.warn('❌ [单张翻译] 读取本地文件失败:', error);
-        Toast.show(`读取本地文件失败: ${error.message}`, 'error');
         setIsTranslating(false);
         return;
       }
