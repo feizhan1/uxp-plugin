@@ -2162,24 +2162,20 @@ const ProductDetail = ({
 
             // 1. 获取图片源（优先使用HTTPS URL）
             let imageSource = null;
-            if (image.imageUrl && image.imageUrl.startsWith('https://')) {
-              imageSource = image.imageUrl;
-              console.log('✅ [批量翻译] 使用图片URL:', imageSource);
-            } else if (image.hasLocal) {
-              try {
-                const localFile = await localImageManager.getLocalImageFile(image.id);
-                if (localFile) {
-                  const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
-                  imageSource = arrayBuffer;
-                  console.log('✅ [批量翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
-                }
-              } catch (error) {
-                console.warn('⚠️ [批量翻译] 读取本地文件失败:', error);
+            // 只使用本地文件
+            try {
+              const localFile = await localImageManager.getLocalImageFile(image.id);
+              if (localFile) {
+                const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
+                imageSource = arrayBuffer;
+                console.log('✅ [批量翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
+              } else {
+                console.log('⚠️ [批量翻译] 本地图片不存在，跳过:', image.id);
+                return; // 跳过该图片，返回
               }
-            }
-
-            if (!imageSource) {
-              throw new Error('无法获取图片源');
+            } catch (error) {
+              console.warn('⚠️ [批量翻译] 读取本地文件失败，跳过:', error);
+              return; // 跳过该图片，返回
             }
 
             // 2. 调用翻译API
@@ -3504,31 +3500,27 @@ const ProductDetail = ({
       setIsTranslating(true);
       console.log('🌐 [handleTranslateImage] 开始翻译图片:', currentImage.id);
 
-      // 获取图片的本地文件或URL
+      // 只使用本地文件
       let imageSource = null;
 
-      // 优先使用https URL（直接URL翻译更快）
-      if (currentImage.imageUrl && currentImage.imageUrl.startsWith('https://')) {
-        imageSource = currentImage.imageUrl;
-        console.log('✅ [handleTranslateImage] 使用图片URL:', imageSource);
-      }
-      // 如果是local:// URL或没有URL，则使用本地文件
-      else if (currentImage.hasLocal) {
-        try {
-          const localFile = await localImageManager.getLocalImageFile(currentImage.id);
-          if (localFile) {
-            // 读取文件为ArrayBuffer
-            const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
-            imageSource = arrayBuffer;
-            console.log('✅ [handleTranslateImage] 使用本地文件，大小:', arrayBuffer.byteLength);
-          }
-        } catch (error) {
-          console.warn('⚠️ [handleTranslateImage] 读取本地文件失败:', error);
+      try {
+        const localFile = await localImageManager.getLocalImageFile(currentImage.id);
+        if (localFile) {
+          // 读取文件为ArrayBuffer
+          const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
+          imageSource = arrayBuffer;
+          console.log('✅ [单张翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
+        } else {
+          console.log('❌ [单张翻译] 本地图片不存在');
+          Toast.show('本地图片不存在，无法翻译', 'error');
+          setIsTranslating(false);
+          return;
         }
-      }
-
-      if (!imageSource) {
-        throw new Error('无法获取图片源（既没有URL也没有本地文件）');
+      } catch (error) {
+        console.warn('❌ [单张翻译] 读取本地文件失败:', error);
+        Toast.show(`读取本地文件失败: ${error.message}`, 'error');
+        setIsTranslating(false);
+        return;
       }
 
       // 调用翻译API

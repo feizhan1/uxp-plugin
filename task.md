@@ -1,5 +1,101 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 修改翻译功能为只使用本地图片 (2025-11-03)
+
+### 完成情况：翻译功能改为只使用 localPath 本地图片，不再使用 imageUrl 远程URL
+
+**问题描述**：
+- 翻译功能优先使用 imageUrl (远程HTTPS URL)，备选使用 localPath
+- 用户期望翻译时只使用本地图片，不使用远程URL
+- 正常情况下本地图片都存在，无需判断和使用远程URL
+
+**技术实现**：
+
+#### 1. 修改一键翻译功能 (src/components/ProductDetail.jsx:2165-2179)
+
+**修改前：**
+```javascript
+// 优先使用 imageUrl
+if (image.imageUrl && image.imageUrl.startsWith('https://')) {
+  imageSource = image.imageUrl;
+}
+// 备选使用 localPath
+else if (image.hasLocal) {
+  const localFile = await localImageManager.getLocalImageFile(image.id);
+  imageSource = arrayBuffer;
+}
+```
+
+**修改后：**
+```javascript
+// 只使用本地文件
+try {
+  const localFile = await localImageManager.getLocalImageFile(image.id);
+  if (localFile) {
+    const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
+    imageSource = arrayBuffer;
+    console.log('✅ [批量翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
+  } else {
+    console.log('⚠️ [批量翻译] 本地图片不存在，跳过:', image.id);
+    return; // 跳过该图片
+  }
+} catch (error) {
+  console.warn('⚠️ [批量翻译] 读取本地文件失败，跳过:', error);
+  return; // 跳过该图片
+}
+```
+
+#### 2. 修改单张翻译功能 (src/components/ProductDetail.jsx:3503-3524)
+
+**修改前：**
+```javascript
+// 优先使用 imageUrl
+if (currentImage.imageUrl && currentImage.imageUrl.startsWith('https://')) {
+  imageSource = currentImage.imageUrl;
+}
+// 备选使用 localPath
+else if (currentImage.hasLocal) {
+  const localFile = await localImageManager.getLocalImageFile(currentImage.id);
+  imageSource = arrayBuffer;
+}
+```
+
+**修改后：**
+```javascript
+// 只使用本地文件
+try {
+  const localFile = await localImageManager.getLocalImageFile(currentImage.id);
+  if (localFile) {
+    const arrayBuffer = await localFile.read({ format: require('uxp').storage.formats.binary });
+    imageSource = arrayBuffer;
+    console.log('✅ [单张翻译] 使用本地文件，大小:', arrayBuffer.byteLength);
+  } else {
+    console.log('❌ [单张翻译] 本地图片不存在');
+    Toast.show('本地图片不存在，无法翻译', 'error');
+    setIsTranslating(false);
+    return;
+  }
+} catch (error) {
+  console.warn('❌ [单张翻译] 读取本地文件失败:', error);
+  Toast.show(`读取本地文件失败: ${error.message}`, 'error');
+  setIsTranslating(false);
+  return;
+}
+```
+
+**修改效果**：
+- ✅ 翻译时只使用本地图片 (localPath)，不再使用远程 URL
+- ✅ 简化了逻辑，移除了 imageUrl 和 hasLocal 的判断
+- ✅ 一键翻译：本地文件不存在时自动跳过，继续处理其他图片
+- ✅ 单张翻译：本地文件不存在时显示 Toast 提示并返回
+- ✅ 所有翻译操作都使用本地文件上传到翻译API，确保数据一致性
+
+**影响范围**：
+- ProductDetail.jsx：2个翻译函数修改
+- 不影响其他功能，只改变翻译时的图片源选择逻辑
+
+---
+
 ## ✅ 修复 LocalImageManager 未设置 hasLocal 导致的数据不一致问题 (2025-11-03)
 
 ### 完成情况：在所有图片操作中统一设置 hasLocal 字段，并添加自动修复逻辑
