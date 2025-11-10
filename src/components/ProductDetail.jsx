@@ -5,6 +5,7 @@ import { placeImageInPS, registerPSEventListeners, unregisterPSEventListeners, d
 import { post } from '../utils/http.js';
 import { translateImage } from '../utils/translateApi.js';
 import Toast from './Toast.jsx';
+import InputDialog from './InputDialog.jsx';
 import './ProductDetail.css';
 
 /**
@@ -316,6 +317,10 @@ const ProductDetail = ({
   const [dontAskAgain, setDontAskAgain] = useState(false); // 当前对话框中"不再询问"复选框状态
   const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息 {type: 'sku'|'scene', skuIndex: number, count: number, title: string}
   const [syncingGroupToPS, setSyncingGroupToPS] = useState(null); // 正在批量同步到PS的组信息 {type: 'sku'|'scene', skuIndex: number}
+
+  // 替换Sku和场景图相关状态
+  const [showReplaceDialog, setShowReplaceDialog] = useState(false); // 控制替换对话框显示
+  const [isReplacing, setIsReplacing] = useState(false); // 替换操作进行中状态
 
   // 图片预览模式状态管理
   const [previewMode, setPreviewMode] = useState({
@@ -1793,6 +1798,130 @@ const ProductDetail = ({
       });
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  /**
+   * 替换Sku和场景图
+   * 根据目标产品编号，匹配 attrValue 并替换 skuImages 和 senceImages
+   */
+  const handleReplaceImages = async (targetApplyCode) => {
+    try {
+      setIsReplacing(true);
+      setShowReplaceDialog(false);
+      console.log('🔄 开始替换图片:', {
+        当前产品: currentProduct.applyCode,
+        目标产品: targetApplyCode
+      });
+
+      // 从 LocalImageManager 获取目标产品数据
+      const targetProduct = localImageManager.findProductByApplyCode(targetApplyCode);
+
+      if (!targetProduct) {
+        throw new Error(`未找到目标产品: ${targetApplyCode}`);
+      }
+
+      console.log('✅ 找到目标产品:', targetProduct.applyCode);
+
+      // 验证目标产品是否有数据
+      const targetSkus = targetProduct.publishSkus || [];
+      const targetSenceImages = targetProduct.senceImages || [];
+
+      if (targetSkus.length === 0 && targetSenceImages.length === 0) {
+        throw new Error('目标产品没有可用的 SKU 或场景图片');
+      }
+
+      // 统计匹配结果
+      let matchedCount = 0;
+      let unmatchedCount = 0;
+
+      // 遍历当前产品的 publishSkus
+      const currentSkus = currentProduct.publishSkus || [];
+      const updatedSkus = currentSkus.map((currentSku) => {
+        const currentAttrs = currentSku.attrClasses || [];
+
+        // 在目标产品中查找匹配的 SKU
+        const matchedTargetSku = targetSkus.find((targetSku) => {
+          const targetAttrs = targetSku.attrClasses || [];
+
+          // 如果属性数量不同，直接不匹配
+          if (currentAttrs.length !== targetAttrs.length) {
+            return false;
+          }
+
+          // 检查所有属性值是否完全匹配
+          return currentAttrs.every((currentAttr) => {
+            return targetAttrs.some((targetAttr) =>
+              currentAttr.attrValue === targetAttr.attrValue
+            );
+          });
+        });
+
+        if (matchedTargetSku) {
+          matchedCount++;
+          console.log(`✅ SKU 匹配成功:`, {
+            当前SKU属性: currentAttrs.map(a => a.attrValue).join('+'),
+            替换为目标SKU图片数: matchedTargetSku.skuImages?.length || 0
+          });
+
+          // 替换 skuImages
+          return {
+            ...currentSku,
+            skuImages: matchedTargetSku.skuImages || []
+          };
+        } else {
+          unmatchedCount++;
+          console.log(`⚠️ SKU 未匹配:`, {
+            当前SKU属性: currentAttrs.map(a => a.attrValue).join('+')
+          });
+          return currentSku;
+        }
+      });
+
+      // 更新当前产品数据
+      const updatedProduct = {
+        ...currentProduct,
+        publishSkus: updatedSkus,
+        senceImages: targetSenceImages
+      };
+
+      // 更新 LocalImageManager 中的数据
+      const productIndex = localImageManager.indexData.findIndex(
+        p => p.applyCode === currentProduct.applyCode
+      );
+
+      if (productIndex !== -1) {
+        localImageManager.indexData[productIndex] = updatedProduct;
+        await localImageManager.saveIndexData();
+        console.log('✅ 数据已保存到 index.json');
+      }
+
+      // 更新组件状态，触发 UI 刷新
+      setCurrentProduct(updatedProduct);
+
+      // 显示成功提示
+      const message = `替换完成！匹配 ${matchedCount} 个SKU${unmatchedCount > 0 ? `，${unmatchedCount} 个SKU未匹配` : ''}，场景图片已替换`;
+      setToast({
+        open: true,
+        message: message,
+        type: 'success'
+      });
+
+      console.log('🎉 图片替换完成:', {
+        匹配SKU数: matchedCount,
+        未匹配SKU数: unmatchedCount,
+        场景图片数: targetSenceImages.length
+      });
+
+    } catch (error) {
+      console.error('❌ 替换图片失败:', error);
+      setToast({
+        open: true,
+        message: `替换失败: ${error.message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsReplacing(false);
     }
   };
 
@@ -4087,6 +4216,14 @@ const ProductDetail = ({
           >
             {getSyncButtonText()}
           </button>
+          <button
+            className={`sync-btn ${isReplacing ? 'syncing' : ''}`}
+            onClick={() => setShowReplaceDialog(true)}
+            disabled={isReplacing}
+            title="从另一个产品复制SKU和场景图片"
+          >
+            {isReplacing ? '替换中...' : '替换Sku和场景图'}
+          </button>
           {currentProduct.status === 3 && (
             <button
               className={`detail-reject-btn ${isRejecting ? 'rejecting' : ''}`}
@@ -4966,6 +5103,18 @@ const ProductDetail = ({
         type={toast.type}
         duration={3000}
         onClose={() => setToast({ ...toast, open: false })}
+      />
+
+      {/* 替换Sku和场景图对话框 */}
+      <InputDialog
+        open={showReplaceDialog}
+        title="替换Sku和场景图"
+        label="请输入目标产品编号"
+        placeholder="例如: test_2508180013"
+        confirmText="确定"
+        cancelText="取消"
+        onConfirm={handleReplaceImages}
+        onCancel={() => setShowReplaceDialog(false)}
       />
 
     </div>
