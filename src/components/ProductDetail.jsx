@@ -1977,6 +1977,10 @@ const ProductDetail = ({
       // 更新组件状态，触发 UI 刷新
       setCurrentProduct(updatedProduct);
 
+      // 刷新页面数据和图片显示
+      console.log('🔄 刷新页面以显示新的图片...');
+      await initializeImageData();
+
       // 显示成功提示
       let message = `替换完成！匹配 ${matchedCount} 个SKU`;
       if (unmatchedCount > 0) {
