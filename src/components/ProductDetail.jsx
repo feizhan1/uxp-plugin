@@ -8,6 +8,9 @@ import Toast from './Toast.jsx';
 import InputDialog from './InputDialog.jsx';
 import './ProductDetail.css';
 
+// UXP 文件系统模块
+const formats = require('uxp').storage.formats;
+
 /**
  * 本地图片组件 - 仅显示本地文件系统中的图片
  * 使用React.memo优化性能
@@ -1804,6 +1807,7 @@ const ProductDetail = ({
   /**
    * 替换Sku和场景图
    * 根据目标产品编号，匹配 attrValue 并替换 skuImages 和 senceImages
+   * 同时复制图片文件并更新路径中的产品编号
    */
   const handleReplaceImages = async (targetApplyCode) => {
     try {
@@ -1831,9 +1835,45 @@ const ProductDetail = ({
         throw new Error('目标产品没有可用的 SKU 或场景图片');
       }
 
-      // 统计匹配结果
+      const currentApplyCode = currentProduct.applyCode;
+
+      // 统计结果
       let matchedCount = 0;
       let unmatchedCount = 0;
+      const imagesToCopy = []; // 收集需要复制的文件信息
+
+      /**
+       * 辅助函数：转换图片路径和URL
+       */
+      const convertImagePath = (targetImage) => {
+        // 从 imageUrl 提取文件名
+        const urlObj = new URL(targetImage.imageUrl);
+        const originalFilename = urlObj.pathname.split('/').pop();
+
+        // 生成新的 localPath（替换产品编号）
+        const newLocalPath = `${currentApplyCode}/${originalFilename}`;
+
+        // 生成新的 imageUrl（替换产品编号）
+        const newImageUrl = targetImage.imageUrl.replace(
+          `/publishoriginapath/${targetApplyCode}/`,
+          `/publishoriginapath/${currentApplyCode}/`
+        );
+
+        // 记录需要复制的文件
+        imagesToCopy.push({
+          sourceLocalPath: targetImage.localPath,
+          targetLocalPath: newLocalPath,
+          sourceImageUrl: targetImage.imageUrl,
+          targetFileName: originalFilename
+        });
+
+        // 返回更新后的图片对象
+        return {
+          ...targetImage,
+          imageUrl: newImageUrl,
+          localPath: newLocalPath
+        };
+      };
 
       // 遍历当前产品的 publishSkus
       const currentSkus = currentProduct.publishSkus || [];
@@ -1864,10 +1904,12 @@ const ProductDetail = ({
             替换为目标SKU图片数: matchedTargetSku.skuImages?.length || 0
           });
 
-          // 替换 skuImages
+          // 替换 skuImages 并转换路径
+          const updatedSkuImages = (matchedTargetSku.skuImages || []).map(convertImagePath);
+
           return {
             ...currentSku,
-            skuImages: matchedTargetSku.skuImages || []
+            skuImages: updatedSkuImages
           };
         } else {
           unmatchedCount++;
@@ -1878,11 +1920,47 @@ const ProductDetail = ({
         }
       });
 
+      // 处理场景图片并转换路径
+      const updatedSenceImages = (targetSenceImages || []).map(convertImagePath);
+
+      // 执行文件复制
+      console.log(`📁 开始复制 ${imagesToCopy.length} 个文件...`);
+      let copiedCount = 0;
+      let copyFailedCount = 0;
+
+      for (const copyInfo of imagesToCopy) {
+        try {
+          console.log(`📋 复制文件: ${copyInfo.sourceLocalPath} -> ${copyInfo.targetLocalPath}`);
+
+          // 获取源文件
+          const sourceFile = await localImageManager.getFileByPath(copyInfo.sourceLocalPath);
+
+          // 读取源文件内容
+          const arrayBuffer = await sourceFile.read({ format: formats.binary });
+
+          // 获取或创建目标产品文件夹
+          const targetFolder = await localImageManager.getOrCreateProductFolder(currentApplyCode);
+
+          // 创建目标文件（覆盖已存在的文件）
+          const targetFile = await targetFolder.createFile(copyInfo.targetFileName, { overwrite: true });
+          await targetFile.write(arrayBuffer, { format: formats.binary });
+
+          copiedCount++;
+          console.log(`✅ 文件复制成功: ${copyInfo.targetFileName}`);
+        } catch (error) {
+          copyFailedCount++;
+          console.error(`❌ 文件复制失败: ${copyInfo.sourceLocalPath}`, error);
+          // 继续复制其他文件，不中断整个流程
+        }
+      }
+
+      console.log(`📊 文件复制完成: 成功 ${copiedCount}/${imagesToCopy.length}，失败 ${copyFailedCount}`);
+
       // 更新当前产品数据
       const updatedProduct = {
         ...currentProduct,
         publishSkus: updatedSkus,
-        senceImages: targetSenceImages
+        senceImages: updatedSenceImages
       };
 
       // 更新 LocalImageManager 中的数据
@@ -1900,17 +1978,30 @@ const ProductDetail = ({
       setCurrentProduct(updatedProduct);
 
       // 显示成功提示
-      const message = `替换完成！匹配 ${matchedCount} 个SKU${unmatchedCount > 0 ? `，${unmatchedCount} 个SKU未匹配` : ''}，场景图片已替换`;
+      let message = `替换完成！匹配 ${matchedCount} 个SKU`;
+      if (unmatchedCount > 0) {
+        message += `，${unmatchedCount} 个SKU未匹配`;
+      }
+      message += `，场景图片已替换`;
+      if (imagesToCopy.length > 0) {
+        message += `，复制 ${copiedCount}/${imagesToCopy.length} 个文件`;
+      }
+      if (copyFailedCount > 0) {
+        message += `（${copyFailedCount} 个失败）`;
+      }
+
       setToast({
         open: true,
         message: message,
-        type: 'success'
+        type: copyFailedCount > 0 ? 'warning' : 'success'
       });
 
       console.log('🎉 图片替换完成:', {
         匹配SKU数: matchedCount,
         未匹配SKU数: unmatchedCount,
-        场景图片数: targetSenceImages.length
+        场景图片数: updatedSenceImages.length,
+        文件复制成功: copiedCount,
+        文件复制失败: copyFailedCount
       });
 
     } catch (error) {
