@@ -4311,14 +4311,16 @@ const ProductDetail = ({
           >
             {getSyncButtonText()}
           </button>
-          <button
-            className={`sync-btn ${isReplacing ? 'syncing' : ''}`}
-            onClick={() => setShowReplaceDialog(true)}
-            disabled={isReplacing}
-            title="从另一个产品复制SKU和场景图片"
-          >
-            {isReplacing ? '替换中...' : '替换Sku和场景图'}
-          </button>
+          {currentProduct.status === 3 && (
+            <button
+              className={`sync-btn ${isReplacing ? 'syncing' : ''}`}
+              onClick={() => setShowReplaceDialog(true)}
+              disabled={isReplacing}
+              title="从另一个产品复制SKU和场景图片"
+            >
+              {isReplacing ? '替换中...' : '替换Sku和场景图'}
+            </button>
+          )}
           {currentProduct.status === 3 && (
             <button
               className={`detail-reject-btn ${isRejecting ? 'rejecting' : ''}`}
