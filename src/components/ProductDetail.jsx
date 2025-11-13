@@ -1875,6 +1875,21 @@ const ProductDetail = ({
         };
       };
 
+      /**
+       * 辅助函数：提取属性值中包含"色"的前缀部分
+       * @param {string} attrValue - 属性值，如 "红色/256G" 或 "红色"
+       * @returns {string} - 返回包含"色"的前缀，如 "红色"
+       */
+      const extractColorPrefix = (attrValue) => {
+        const colorIndex = attrValue.indexOf('色');
+        if (colorIndex !== -1) {
+          // 返回从开头到"色"（包括"色"）的部分
+          return attrValue.substring(0, colorIndex + 1);
+        }
+        // 如果没有"色"字符，返回原值
+        return attrValue;
+      };
+
       // 遍历当前产品的 publishSkus
       const currentSkus = currentProduct.publishSkus || [];
       const updatedSkus = currentSkus.map((currentSku) => {
@@ -1884,23 +1899,39 @@ const ProductDetail = ({
         const matchedTargetSku = targetSkus.find((targetSku) => {
           const targetAttrs = targetSku.attrClasses || [];
 
-          // 如果属性数量不同，直接不匹配
-          if (currentAttrs.length !== targetAttrs.length) {
-            return false;
-          }
+          // 提取当前SKU的颜色前缀
+          const currentColorPrefixes = currentAttrs.map(attr =>
+            extractColorPrefix(attr.attrValue)
+          );
 
-          // 检查所有属性值是否完全匹配
-          return currentAttrs.every((currentAttr) => {
-            return targetAttrs.some((targetAttr) =>
-              currentAttr.attrValue === targetAttr.attrValue
-            );
-          });
+          // 提取目标SKU的颜色前缀
+          const targetColorPrefixes = targetAttrs.map(attr =>
+            extractColorPrefix(attr.attrValue)
+          );
+
+          // 只要有任意一个颜色前缀匹配就算匹配
+          return currentColorPrefixes.some(currentPrefix =>
+            targetColorPrefixes.includes(currentPrefix)
+          );
         });
 
         if (matchedTargetSku) {
           matchedCount++;
+
+          // 提取匹配信息用于日志
+          const currentColorPrefixes = currentAttrs.map(attr =>
+            extractColorPrefix(attr.attrValue)
+          );
+          const targetAttrs = matchedTargetSku.attrClasses || [];
+          const targetColorPrefixes = targetAttrs.map(attr =>
+            extractColorPrefix(attr.attrValue)
+          );
+
           console.log(`✅ SKU 匹配成功:`, {
             当前SKU属性: currentAttrs.map(a => a.attrValue).join('+'),
+            当前颜色前缀: currentColorPrefixes.join('+'),
+            目标SKU属性: targetAttrs.map(a => a.attrValue).join('+'),
+            目标颜色前缀: targetColorPrefixes.join('+'),
             替换为目标SKU图片数: matchedTargetSku.skuImages?.length || 0
           });
 
