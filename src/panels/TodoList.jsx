@@ -578,6 +578,19 @@ const TodoList = () => {
     setError(null)
 
     try {
+      // 新增埋点
+      const params = {
+        applyCode: item.applyCode,
+        userId: loginInfo.data.UserId,
+        userCode: loginInfo.data.UserCode,
+      }
+      const addLogRes = await get('/api/publish/get_product_add_log', {
+        params
+      })
+      const {statusCode, message} = addLogRes || {}
+      if(statusCode !== 200) {
+        throw new Error(message || '新增埋点失败')
+      }
       // 确保LocalImageManager已初始化
       await localImageManager.initialize()
 
@@ -1379,7 +1392,7 @@ const TodoList = () => {
             <button
               className="action-btn secondary"
             >
-              版本号：2.9.0
+              版本号：3.0.0
             </button>
             {!searchMode && (
               <>
