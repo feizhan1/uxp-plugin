@@ -775,6 +775,103 @@ const TodoList = () => {
     setError(null)
   }
 
+  // 删除已上架产品
+  const doDeleteProduct = async () => {
+    if (!loginInfo?.success) {
+      setError('请先登录')
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      // 调用API获取已上架产品列表
+      console.log('🔍 [doDeleteProduct] 开始获取已上架产品列表...')
+      const res = await get('/api/publish/get_product_upshelf_list', {
+        params: {
+          userId: loginInfo.data.UserId,
+          userCode: loginInfo.data.UserCode,
+          currentDays: 365 // 默认查询最近365天
+        }
+      })
+
+      const { statusCode, dataClass } = res || {}
+      if (statusCode !== 200) {
+        throw new Error(res.message || '获取已上架产品列表失败')
+      }
+
+      const applyCodes = dataClass?.applyCodes || []
+      console.log(`📋 [doDeleteProduct] 获取到 ${applyCodes.length} 个已上架产品编号:`, applyCodes)
+
+      if (applyCodes.length === 0) {
+        setSuccessMsg('没有已上架产品需要删除')
+        return
+      }
+
+      // 初始化LocalImageManager
+      await localImageManager.initialize()
+
+      // 遍历本地索引，删除匹配的产品
+      let deletedCount = 0
+      let failedCount = 0
+      const errors = []
+
+      for (const applyCode of applyCodes) {
+        try {
+          // 检查产品是否存在于本地索引
+          const localProduct = localImageManager.findProductByApplyCode(applyCode)
+          if (localProduct) {
+            console.log(`🗑️ [doDeleteProduct] 正在删除产品: ${applyCode}`)
+            await localImageManager.removeProduct(applyCode)
+            deletedCount++
+            console.log(`✅ [doDeleteProduct] 产品删除成功: ${applyCode}`)
+          } else {
+            console.log(`⏭️ [doDeleteProduct] 产品不在本地索引中，跳过: ${applyCode}`)
+          }
+        } catch (error) {
+          failedCount++
+          errors.push({ applyCode, error: error.message })
+          console.error(`❌ [doDeleteProduct] 删除产品失败: ${applyCode}`, error)
+        }
+      }
+
+      // 重新获取产品列表以更新UI
+      try {
+        const listRes = await get('/api/publish/get_product_list', {
+          params: { userId: loginInfo.data.UserId, userCode: loginInfo.data.UserCode },
+        })
+        const { statusCode: listStatusCode, dataClass: listDataClass } = listRes || {}
+        if (listStatusCode === 200) {
+          setData(listDataClass?.publishProductInfos || [])
+        }
+      } catch (refreshErr) {
+        console.warn('重新获取产品列表失败：', refreshErr)
+      }
+
+      // 显示结果消息
+      if (deletedCount > 0) {
+        const message = failedCount > 0
+          ? `删除完成：成功${deletedCount}个，失败${failedCount}个`
+          : `成功删除${deletedCount}个已上架产品`
+        setSuccessMsg(message)
+      } else {
+        setSuccessMsg('本地没有需要删除的已上架产品')
+      }
+
+      console.log(`📊 [doDeleteProduct] 删除统计: 成功=${deletedCount}, 失败=${failedCount}`)
+      if (errors.length > 0) {
+        console.error('删除失败的产品:', errors)
+      }
+
+    } catch (error) {
+      console.error('❌ [doDeleteProduct] 删除已上架产品失败:', error)
+      setError(`删除失败: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // 确认退出登录
   const handleLogout = () => {
     try {
@@ -1424,6 +1521,14 @@ const TodoList = () => {
               title="本地文件管理"
             >
               文件
+            </button>
+            {/* 删除已上架产品 */}
+            <button
+              className="action-btn secondary"
+              onClick={doDeleteProduct}
+              title="删除已上架产品"
+            >
+              删除已上架产品
             </button>
             {/* 只在非搜索模式下显示已登录徽章 */}
             {!searchMode && (

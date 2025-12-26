@@ -1,5 +1,126 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 实现删除已上架产品功能 (2025-12-26)
+
+### 完成情况：实现了"删除已上架产品"功能按钮
+
+**功能需求**：
+- 点击"删除已上架产品"按钮
+- 调用API `/api/publish/get_product_upshelf_list` 获取已上架产品列表
+- 遍历本地index.json，删除已上架的产品数据和对应文件夹
+- 不影响其他现有逻辑
+
+**技术实现**：
+
+#### 1. 实现 doDeleteProduct 函数 (src/panels/TodoList.jsx:778-873)
+
+```javascript
+const doDeleteProduct = async () => {
+  if (!loginInfo?.success) {
+    setError('请先登录')
+    return
+  }
+
+  try {
+    setLoading(true)
+    setError(null)
+
+    // 调用API获取已上架产品列表
+    const res = await get('/api/publish/get_product_upshelf_list', {
+      params: {
+        userId: loginInfo.data.UserId,
+        userCode: loginInfo.data.UserCode,
+        currentDays: 365 // 默认查询最近365天
+      }
+    })
+
+    const { statusCode, dataClass } = res || {}
+    if (statusCode !== 200) {
+      throw new Error(res.message || '获取已上架产品列表失败')
+    }
+
+    const applyCodes = dataClass?.applyCodes || []
+
+    if (applyCodes.length === 0) {
+      setSuccessMsg('没有已上架产品需要删除')
+      return
+    }
+
+    // 初始化LocalImageManager
+    await localImageManager.initialize()
+
+    // 遍历本地索引，删除匹配的产品
+    let deletedCount = 0
+    let failedCount = 0
+    const errors = []
+
+    for (const applyCode of applyCodes) {
+      try {
+        const localProduct = localImageManager.findProductByApplyCode(applyCode)
+        if (localProduct) {
+          await localImageManager.removeProduct(applyCode)
+          deletedCount++
+        }
+      } catch (error) {
+        failedCount++
+        errors.push({ applyCode, error: error.message })
+      }
+    }
+
+    // 重新获取产品列表以更新UI
+    const listRes = await get('/api/publish/get_product_list', {
+      params: { userId: loginInfo.data.UserId, userCode: loginInfo.data.UserCode },
+    })
+    if (listRes.statusCode === 200) {
+      setData(listRes.dataClass?.publishProductInfos || [])
+    }
+
+    // 显示结果消息
+    if (deletedCount > 0) {
+      const message = failedCount > 0
+        ? `删除完成：成功${deletedCount}个，失败${failedCount}个`
+        : `成功删除${deletedCount}个已上架产品`
+      setSuccessMsg(message)
+    } else {
+      setSuccessMsg('本地没有需要删除的已上架产品')
+    }
+  } catch (error) {
+    setError(`删除失败: ${error.message}`)
+  } finally {
+    setLoading(false)
+  }
+}
+```
+
+#### 2. 更新按钮调用 (src/panels/TodoList.jsx:1528)
+
+**修改前：**
+```javascript
+onClick={() => doDeleteProduct(true)}
+```
+
+**修改后：**
+```javascript
+onClick={doDeleteProduct}
+```
+
+**实现说明**：
+1. 调用API获取已上架产品的applyCode列表
+2. 遍历每个applyCode，如果在本地索引中存在，调用`localImageManager.removeProduct()`删除
+3. `removeProduct`方法会自动：
+   - 删除产品的所有本地图片文件（原始图片、SKU图片、场景图片）
+   - 从index.json中移除产品记录
+   - 保存更新后的索引文件
+4. 删除完成后刷新产品列表UI
+5. 显示删除结果统计
+
+**测试验证**：
+- ✅ 功能实现完成
+- ✅ 代码构建成功
+- ⏸️ 等待手动测试验证
+
+---
+
 ## ✅ 修复单张翻译查找索引记录的Bug (2025-11-03)
 
 ### 完成情况：修复单张翻译使用错误URL查找索引记录导致第二次翻译失败的问题
