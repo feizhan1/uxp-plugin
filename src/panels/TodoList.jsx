@@ -801,7 +801,9 @@ const TodoList = () => {
         throw new Error(res.message || '获取已上架产品列表失败')
       }
 
-      const applyCodes = dataClass?.applyCodes || []
+      // const applyCodes = dataClass?.applyCodes || []
+      console.log('dataClass', dataClass)
+      const applyCodes = ['test_2508160028']
       console.log(`📋 [doDeleteProduct] 获取到 ${applyCodes.length} 个已上架产品编号:`, applyCodes)
 
       if (applyCodes.length === 0) {

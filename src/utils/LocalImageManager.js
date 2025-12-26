@@ -3066,6 +3066,27 @@ export class LocalImageManager {
         }
       }
 
+      // 删除产品文件夹
+      try {
+        const productFolder = await this.imageFolder.getEntry(applyCode);
+        if (productFolder && productFolder.isFolder) {
+          await productFolder.delete();
+          console.log(`🗑️ [removeProduct] 已删除产品文件夹: ${applyCode}`);
+
+          // 从缓存中移除
+          if (this.productFolderCache.has(applyCode)) {
+            this.productFolderCache.delete(applyCode);
+            console.log(`🗂️ [removeProduct] 已从缓存中移除文件夹: ${applyCode}`);
+          }
+        }
+      } catch (error) {
+        if (error.message.includes('Could not find an entry')) {
+          console.log(`📝 [removeProduct] 产品文件夹已不存在，跳过: ${applyCode}`);
+        } else {
+          console.warn(`⚠️ [removeProduct] 删除产品文件夹时出错 ${applyCode}:`, error.message);
+        }
+      }
+
       // 从索引数据中移除产品
       this.indexData.splice(productIndex, 1);
 
