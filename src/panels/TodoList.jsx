@@ -818,6 +818,7 @@ const TodoList = () => {
       let deletedCount = 0
       let failedCount = 0
       const errors = []
+      const deletedApplyCodes = [] // 记录成功删除的产品编号
 
       for (const applyCode of applyCodes) {
         try {
@@ -827,6 +828,7 @@ const TodoList = () => {
             console.log(`🗑️ [doDeleteProduct] 正在删除产品: ${applyCode}`)
             await localImageManager.removeProduct(applyCode)
             deletedCount++
+            deletedApplyCodes.push(applyCode) // 记录成功删除的产品
             console.log(`✅ [doDeleteProduct] 产品删除成功: ${applyCode}`)
           } else {
             console.log(`⏭️ [doDeleteProduct] 产品不在本地索引中，跳过: ${applyCode}`)
@@ -838,17 +840,15 @@ const TodoList = () => {
         }
       }
 
-      // 重新获取产品列表以更新UI
-      try {
-        const listRes = await get('/api/publish/get_product_list', {
-          params: { userId: loginInfo.data.UserId, userCode: loginInfo.data.UserCode },
+      // 从UI列表中移除已删除的产品
+      if (deletedApplyCodes.length > 0) {
+        setData(prevData => {
+          const updatedData = prevData.filter(product =>
+            !deletedApplyCodes.includes(product.applyCode)
+          )
+          console.log(`🔄 [doDeleteProduct] UI已更新，移除了 ${deletedApplyCodes.length} 个产品`)
+          return updatedData
         })
-        const { statusCode: listStatusCode, dataClass: listDataClass } = listRes || {}
-        if (listStatusCode === 200) {
-          setData(listDataClass?.publishProductInfos || [])
-        }
-      } catch (refreshErr) {
-        console.warn('重新获取产品列表失败：', refreshErr)
       }
 
       // 显示结果消息
