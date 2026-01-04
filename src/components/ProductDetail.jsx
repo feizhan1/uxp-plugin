@@ -3677,20 +3677,69 @@ const ProductDetail = ({
 
   /**
    * 单击图片打开预览模式
+   * 需要结合图片类型/skuIndex定位，避免同一imageId在不同分组中冲突
    */
-  const handleImageClick = useCallback((imageId, imageUrl) => {
-    const imageIndex = getAllImages.findIndex(img => img.id === imageId);
-    if (imageIndex === -1) {
-      console.warn('⚠️ [handleImageClick] 未找到图片索引:', imageId);
+  const handleImageClick = useCallback((imageData) => {
+    if (!imageData) {
+      console.warn('⚠️ [handleImageClick] imageData 为空，无法打开预览');
       return;
     }
 
-    console.log(`🖼️ [handleImageClick] 打开图片预览: ${imageId} (索引: ${imageIndex})`);
+    const {
+      id: imageId,
+      type,
+      category,
+      skuIndex,
+      index,
+      categoryIndex
+    } = imageData;
+
+    const targetType = category || type || (skuIndex !== undefined ? 'sku' : 'original');
+
+    // 优先按照类型 + skuIndex + index 精确匹配，避免命中其它区域的同名图片
+    const preciseIndex = getAllImages.findIndex(img => {
+      if (img.id !== imageId) return false;
+
+      const candidateType = img.category || img.type || (img.skuIndex !== undefined ? 'sku' : 'original');
+      if (targetType && candidateType && candidateType !== targetType) return false;
+
+      if (targetType === 'sku' && skuIndex !== undefined) {
+        if (img.skuIndex !== undefined && img.skuIndex !== skuIndex) return false;
+      }
+
+      if (typeof index === 'number' && typeof img.index === 'number' && img.index !== index) {
+        return false;
+      }
+
+      if (typeof categoryIndex === 'number' &&
+          typeof img.categoryIndex === 'number' &&
+          img.categoryIndex !== categoryIndex) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const finalIndex = preciseIndex !== -1
+      ? preciseIndex
+      : getAllImages.findIndex(img => img.id === imageId);
+
+    if (finalIndex === -1) {
+      console.warn('⚠️ [handleImageClick] 未找到图片索引:', {
+        imageId,
+        targetType,
+        skuIndex,
+        index
+      });
+      return;
+    }
+
+    console.log(`🖼️ [handleImageClick] 打开图片预览: ${imageId} (索引: ${finalIndex}, 类型: ${targetType}, skuIndex: ${skuIndex})`);
 
     setPreviewMode({
       isOpen: true,
       currentImageId: imageId,
-      currentImageIndex: imageIndex,
+      currentImageIndex: finalIndex,
       imageList: getAllImages
     });
   }, [getAllImages]);
@@ -3832,6 +3881,7 @@ const ProductDetail = ({
 
     // 保存原始URL，用于后续查找索引记录
     const originalImageUrl = currentImage.imageUrl;
+    const currentImageType = currentImage.type || currentImage.category || (currentImage.skuIndex !== undefined ? 'sku' : 'original');
 
     try {
       setIsApplyingTranslation(true);
@@ -3846,25 +3896,26 @@ const ProductDetail = ({
       const arrayBuffer = await response.arrayBuffer();
       console.log('✅ [handleApplyTranslation] 图片下载成功, 大小:', arrayBuffer.byteLength);
 
-      // 2. 获取当前图片的信息
-      const imageInfo = localImageManager.getImageInfo(currentImage.id);
-      if (!imageInfo) {
-        throw new Error('未找到图片信息');
-      }
-      console.log('📝 [handleApplyTranslation] 图片信息:', imageInfo);
+      // 2. 直接使用当前图片的信息（currentImage已包含完整的type、skuIndex等信息）
+      console.log('📝 [handleApplyTranslation] 当前图片信息:', {
+        id: currentImage.id.substring(0, 50) + '...',
+        type: currentImageType,
+        skuIndex: currentImage.skuIndex,
+        imageUrl: currentImage.imageUrl?.substring(0, 50) + '...'
+      });
 
       // 3. 保存图片到本地（使用翻译后的URL生成文件名）
-      const productFolder = await localImageManager.getOrCreateProductFolder(imageInfo.applyCode);
+      const productFolder = await localImageManager.getOrCreateProductFolder(currentProduct.applyCode);
 
       // 从翻译后的URL生成文件名（包含-f后缀）
       const localFilePath = localImageManager.generateLocalFilename({
         imageUrl: translatedImage, // 使用翻译后的URL
-        applyCode: imageInfo.applyCode
+        applyCode: currentProduct.applyCode
       });
       const fileName = localFilePath.split('/')[1];
 
       console.log('💾 [handleApplyTranslation] 从翻译URL生成文件名:', fileName);
-      console.log('💾 [handleApplyTranslation] 完整localPath:', `${imageInfo.applyCode}/${fileName}`);
+      console.log('💾 [handleApplyTranslation] 完整localPath:', `${currentProduct.applyCode}/${fileName}`);
 
       const fs = require('uxp').storage.localFileSystem;
       const formats = require('uxp').storage.formats;
@@ -3875,53 +3926,55 @@ const ProductDetail = ({
       console.log('✅ [handleApplyTranslation] 文件已写入, 大小:', arrayBuffer.byteLength, '字节');
       console.log('📂 [handleApplyTranslation] 文件保存路径:', localFile.nativePath);
 
-      // 4. 更新索引中的图片URL
+      // 4. 更新索引中的图片URL（直接使用currentImage的type和skuIndex）
       console.log('📝 [handleApplyTranslation] 更新索引数据...');
-      console.log('📝 [handleApplyTranslation] imageInfo:', JSON.stringify(imageInfo, null, 2));
-      console.log('📝 [handleApplyTranslation] currentImage:', JSON.stringify(currentImage, null, 2));
+      console.log('📝 [handleApplyTranslation] 图片类型:', currentImageType, ', skuIndex:', currentImage.skuIndex);
 
-      const product = localImageManager.getOrCreateProduct(imageInfo.applyCode);
+      const product = localImageManager.getOrCreateProduct(currentProduct.applyCode);
       console.log('📝 [handleApplyTranslation] product结构:', {
         originalImagesCount: product.originalImages?.length || 0,
         senceImagesCount: product.senceImages?.length || 0,
         publishSkusCount: product.publishSkus?.length || 0
       });
 
-      // 根据imageInfo找到对应的图片记录并更新
+      // 根据currentImage的type找到对应的图片记录并更新
       let targetImageInfo = null;
-      if (imageInfo.imageType === 'scene') {
+      if (currentImageType === 'scene') {
         // 场景图片
         console.log('🔍 [handleApplyTranslation] 在场景图片中查找...');
         targetImageInfo = product.senceImages?.find(img => {
           console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
           return img.imageUrl === originalImageUrl;
         });
-      } else if (imageInfo.skuIndex !== undefined) {
-        // SKU图片
-        console.log('🔍 [handleApplyTranslation] 在SKU图片中查找, skuIndex:', imageInfo.skuIndex);
-        const sku = product.publishSkus?.find(s => s.skuIndex === imageInfo.skuIndex);
+      } else if (currentImageType === 'sku' && currentImage.skuIndex !== undefined) {
+        // SKU图片 - 必须同时满足type为'sku'且skuIndex存在
+        console.log('🔍 [handleApplyTranslation] 在SKU图片中查找, skuIndex:', currentImage.skuIndex);
+        const sku = product.publishSkus?.find(s => s.skuIndex === currentImage.skuIndex);
         if (sku) {
+          console.log('✅ [handleApplyTranslation] 找到SKU:', sku.skuIndex, ', skuImages数量:', sku.skuImages?.length || 0);
           targetImageInfo = sku.skuImages?.find(img => {
             console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
             return img.imageUrl === originalImageUrl;
           });
         } else {
-          console.warn('⚠️ [handleApplyTranslation] 未找到对应的SKU');
+          console.warn('⚠️ [handleApplyTranslation] 未找到对应的SKU, skuIndex:', currentImage.skuIndex);
         }
-      } else {
+      } else if (currentImageType === 'original') {
         // 原始图片
         console.log('🔍 [handleApplyTranslation] 在原始图片中查找...');
         targetImageInfo = product.originalImages?.find(img => {
           console.log('  比较:', img.imageUrl, '===', originalImageUrl, '?', img.imageUrl === originalImageUrl);
           return img.imageUrl === originalImageUrl;
         });
+      } else {
+        console.error('❌ [handleApplyTranslation] 未知的图片类型:', currentImageType);
       }
 
       console.log('🔍 [handleApplyTranslation] 查找结果 targetImageInfo:', targetImageInfo ? '找到' : '未找到');
 
       if (targetImageInfo) {
         // 更新图片信息：保存本地路径并更新状态
-        const localPath = `${imageInfo.applyCode}/${fileName}`;
+        const localPath = `${currentProduct.applyCode}/${fileName}`;
         targetImageInfo.imageUrl = translatedImage; // 远程URL（翻译后的）
         targetImageInfo.localPath = localPath; // 本地路径（包含-f后缀）
         targetImageInfo.hasLocal = true; // 标记已有本地文件
@@ -3929,6 +3982,8 @@ const ProductDetail = ({
         targetImageInfo.timestamp = Date.now();
         targetImageInfo.fileSize = arrayBuffer.byteLength;
         console.log('✅ [handleApplyTranslation] 索引数据已更新:', {
+          imageType: currentImageType,
+          skuIndex: currentImage.skuIndex,
           imageUrl: targetImageInfo.imageUrl,
           localPath: targetImageInfo.localPath,
           hasLocal: targetImageInfo.hasLocal,
@@ -3949,7 +4004,12 @@ const ProductDetail = ({
       setComparePosition(50);
 
       // 7. 关闭预览弹窗
-      setPreviewMode({ active: false, imageList: [], currentImageIndex: 0 });
+      setPreviewMode({
+        isOpen: false,
+        currentImageId: null,
+        currentImageIndex: 0,
+        imageList: []
+      });
 
       // 8. 显示成功提示
       setToast({
@@ -4115,10 +4175,20 @@ const ProductDetail = ({
   /**
    * 智能鼠标点击检测 - 左键预览，右键在PS中打开
    */
-  const handleSmartMouseClick = useCallback((event, imageId, imageUrl) => {
+  const handleSmartMouseClick = useCallback((event, imageData) => {
+    if (!imageData) {
+      console.warn('⚠️ [handleSmartMouseClick] 未提供图片数据，忽略点击事件');
+      return;
+    }
+
+    const imageId = imageData.id || '';
+    const imageUrl = imageData.imageUrl;
+
     console.log(`🖱️ [handleSmartMouseClick] 点击事件触发:`, {
       eventType: event.type,
-      imageId: imageId.substring(0, 50) + '...',
+      imageId: imageId ? imageId.substring(0, 50) + '...' : 'N/A',
+      imageType: imageData?.type || imageData?.category,
+      skuIndex: imageData?.skuIndex,
       isDragging: dragState.isDragging,
       draggedImageId: dragState.draggedImageId ? dragState.draggedImageId.substring(0, 50) + '...' : null
     });
@@ -4146,12 +4216,12 @@ const ProductDetail = ({
     // 根据事件类型判断操作
     if (event.type === 'click') {
       // 左键点击 - 打开预览
-      console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId.substring(0, 50)}...`);
-      handleImageClick(imageId, imageUrl);
+      console.log(`👈 [handleSmartMouseClick] 左键预览: ${imageId ? imageId.substring(0, 50) : 'N/A'}...`);
+      handleImageClick(imageData);
 
     } else if (event.type === 'contextmenu') {
       // 右键上下文菜单 - 在PS中打开
-      console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId.substring(0, 50)}...`);
+      console.log(`👉 [handleSmartMouseClick] 右键在PS中打开: ${imageId ? imageId.substring(0, 50) : 'N/A'}...`);
       handleOpenImageInPS(imageId, imageUrl);
 
     } else {
@@ -4672,8 +4742,8 @@ const ProductDetail = ({
                         hasLocal={image.hasLocal}
                         needsRefresh={refreshingImages.has(image.id)}
                         onRefreshComplete={() => handleImageRefreshComplete(image.id)}
-                        onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                        onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onClick={(e) => handleSmartMouseClick(e, image)}
+                        onContextMenu={(e) => handleSmartMouseClick(e, image)}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -4825,8 +4895,8 @@ const ProductDetail = ({
                           hasLocal={image.hasLocal}
                           needsRefresh={refreshingImages.has(image.id)}
                           onRefreshComplete={() => handleImageRefreshComplete(image.id)}
-                          onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                          onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                          onClick={(e) => handleSmartMouseClick(e, image)}
+                          onContextMenu={(e) => handleSmartMouseClick(e, image)}
                           isOpening={openingImageId === image.id}
                           isSyncing={syncingImages.has(image.id)}
                           isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}
@@ -4948,8 +5018,8 @@ const ProductDetail = ({
                         hasLocal={image.hasLocal}
                         needsRefresh={refreshingImages.has(image.id)}
                         onRefreshComplete={() => handleImageRefreshComplete(image.id)}
-                        onClick={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
-                        onContextMenu={(e) => handleSmartMouseClick(e, image.id, image.imageUrl)}
+                        onClick={(e) => handleSmartMouseClick(e, image)}
+                        onContextMenu={(e) => handleSmartMouseClick(e, image)}
                         isOpening={openingImageId === image.id}
                         isSyncing={syncingImages.has(image.id)}
                         isRecentlyUpdated={recentlyUpdatedImages.has(image.id)}

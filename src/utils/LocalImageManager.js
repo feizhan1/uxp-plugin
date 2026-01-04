@@ -1660,6 +1660,109 @@ export class LocalImageManager {
   }
 
   /**
+   * 精确获取图片信息（支持多条件匹配）
+   * 用于解决拖拽后图片ID冲突的问题
+   *
+   * @param {string} imageId 图片ID（通常是imageUrl）
+   * @param {Object} options 可选的精确查找条件
+   * @param {string} options.imageType 图片类型：'original', 'sku', 'scene'
+   * @param {number} options.skuIndex SKU索引（仅sku类型需要）
+   * @param {number} options.index 图片在数组中的索引
+   * @param {string} options.applyCode 产品申请码
+   * @returns {Object|null} 图片信息
+   */
+  getImageInfoPrecise(imageId, options = {}) {
+    const { imageType, skuIndex, index, applyCode } = options;
+
+    console.log('🔍 [getImageInfoPrecise] 精确查找图片:', {
+      imageId: imageId?.substring(0, 50) + '...',
+      imageType,
+      skuIndex,
+      index,
+      applyCode
+    });
+
+    // 如果指定了applyCode，只在该产品中查找
+    const productsToSearch = applyCode
+      ? this.indexData.filter(p => p.applyCode === applyCode)
+      : this.indexData;
+
+    for (const product of productsToSearch) {
+      // 如果指定了imageType，只在对应类型中查找
+      if (!imageType || imageType === 'original') {
+        if (product.originalImages) {
+          const found = product.originalImages.find((img, idx) => {
+            const urlMatch = img.imageUrl === imageId || img.localPath === imageId;
+            const indexMatch = index === undefined || idx === index;
+            const typeMatch = !imageType || imageType === 'original';
+            return urlMatch && indexMatch && typeMatch;
+          });
+          if (found) {
+            console.log('✅ [getImageInfoPrecise] 在原始图片中找到匹配');
+            return {
+              ...found,
+              applyCode: product.applyCode,
+              imageType: 'original'
+            };
+          }
+        }
+      }
+
+      // 查找SKU图片
+      if (!imageType || imageType === 'sku') {
+        if (product.publishSkus) {
+          for (const sku of product.publishSkus) {
+            // 如果指定了skuIndex，只在该SKU中查找
+            if (skuIndex !== undefined && sku.skuIndex !== skuIndex) {
+              continue;
+            }
+
+            if (sku.skuImages) {
+              const found = sku.skuImages.find((img, idx) => {
+                const urlMatch = img.imageUrl === imageId || img.localPath === imageId;
+                const indexMatch = index === undefined || idx === index;
+                return urlMatch && indexMatch;
+              });
+              if (found) {
+                console.log('✅ [getImageInfoPrecise] 在SKU图片中找到匹配, skuIndex:', sku.skuIndex);
+                return {
+                  ...found,
+                  applyCode: product.applyCode,
+                  skuIndex: sku.skuIndex,
+                  imageType: 'sku'
+                };
+              }
+            }
+          }
+        }
+      }
+
+      // 查找场景图片
+      if (!imageType || imageType === 'scene') {
+        if (product.senceImages) {
+          const found = product.senceImages.find((img, idx) => {
+            const urlMatch = img.imageUrl === imageId || img.localPath === imageId;
+            const indexMatch = index === undefined || idx === index;
+            const typeMatch = !imageType || imageType === 'scene';
+            return urlMatch && indexMatch && typeMatch;
+          });
+          if (found) {
+            console.log('✅ [getImageInfoPrecise] 在场景图片中找到匹配');
+            return {
+              ...found,
+              applyCode: product.applyCode,
+              imageType: 'scene'
+            };
+          }
+        }
+      }
+    }
+
+    console.warn('⚠️ [getImageInfoPrecise] 未找到匹配的图片');
+    return null;
+  }
+
+  /**
    * 添加本地图片到产品
    * @param {string} applyCode 产品申请码
    * @param {File} file 图片文件

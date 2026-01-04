@@ -1491,7 +1491,7 @@ const TodoList = () => {
             <button
               className="action-btn secondary"
             >
-              版本号：3.1.0
+              版本号：3.2.0
             </button>
             {!searchMode && (
               <>
