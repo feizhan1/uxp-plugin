@@ -5042,13 +5042,13 @@ const ProductDetail = ({
                           </button>
                         </div>
                       ) : (
-                        // 正常模式：显示一键删除按钮
+                        // 正常模式：显示勾选删除按钮
                         <button
                           className="delete-all-btn"
                           onClick={() => handleEnterSelectDeleteMode('sku', sku.skuIndex || skuIndex)}
                           title="选择要删除的图片"
                         >
-                          一键删除
+                          勾选删除
                         </button>
                       )}
                     </>
@@ -5205,13 +5205,13 @@ const ProductDetail = ({
                       </button>
                     </div>
                   ) : (
-                    // 正常模式：显示一键删除按钮
+                    // 正常模式：显示勾选删除按钮
                     <button
                       className="delete-all-btn"
                       onClick={() => handleEnterSelectDeleteMode('scene', null)}
                       title="选择要删除的图片"
                     >
-                      一键删除
+                      勾选删除
                     </button>
                   )}
                 </div>
