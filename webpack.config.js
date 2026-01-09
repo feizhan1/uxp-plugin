@@ -60,7 +60,7 @@ module.exports = (env, argv) => {
 					terserOptions: {
 						compress: {
 							// 保留所有console语句用于生产环境调试
-							drop_console: true, // 保留console语句
+							drop_console: false, // 保留console语句
 							drop_debugger: true,
 							passes: 2,
 						},

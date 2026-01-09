@@ -4460,6 +4460,73 @@ export class LocalImageManager {
   }
 
   /**
+   * 根据localPath删除所有SKU中的匹配图片（跨SKU删除）
+   * @param {string} applyCode - 产品申请码
+   * @param {string} localPath - 本地路径（格式：applyCode_filename.jpg）
+   * @returns {Promise<{success: boolean, deletedCount: number}>} 删除结果
+   */
+  async deleteImageByLocalPathAcrossSkus(applyCode, localPath) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      console.log(`🗑️ [deleteImageByLocalPathAcrossSkus] 跨SKU删除图片: 产品=${applyCode}, localPath=${localPath}`);
+
+      // 查找产品
+      const product = this.findProductByApplyCode(applyCode);
+      if (!product) {
+        console.warn(`❌ 未找到产品: ${applyCode}`);
+        return { success: false, deletedCount: 0 };
+      }
+
+      let deletedCount = 0;
+
+      // 遍历所有SKU
+      if (product.publishSkus && Array.isArray(product.publishSkus)) {
+        product.publishSkus.forEach(sku => {
+          if (sku.skuImages && Array.isArray(sku.skuImages)) {
+            // 找到所有匹配的图片（倒序遍历以避免索引问题）
+            for (let i = sku.skuImages.length - 1; i >= 0; i--) {
+              const img = sku.skuImages[i];
+              if (img.localPath === localPath) {
+                console.log(`  🗑️ 删除 SKU${sku.skuIndex} 中的图片: index=${i}, url=${img.imageUrl}`);
+                sku.skuImages.splice(i, 1);
+                deletedCount++;
+              }
+            }
+
+            // 重新计算该SKU的图片索引
+            sku.skuImages.forEach((img, idx) => {
+              img.index = idx;
+            });
+
+            console.log(`  🔄 SKU${sku.skuIndex} 重新计算索引，剩余图片: ${sku.skuImages.length}`);
+          }
+        });
+      }
+
+      if (deletedCount === 0) {
+        console.warn(`❌ 未找到匹配的图片: localPath=${localPath}`);
+        return { success: false, deletedCount: 0 };
+      }
+
+      // 注意：仅从索引中移除记录，保留本地文件（与现有逻辑一致）
+      console.log(`📝 从索引中移除 ${deletedCount} 条图片记录，保留本地文件: ${localPath}`);
+
+      // 保存索引数据
+      await this.saveIndexData();
+
+      console.log(`✅ [deleteImageByLocalPathAcrossSkus] 跨SKU删除完成，共删除 ${deletedCount} 条记录`);
+      return { success: true, deletedCount };
+
+    } catch (error) {
+      console.error(`❌ [deleteImageByLocalPathAcrossSkus] 删除失败: ${error.message}`, error);
+      return { success: false, deletedCount: 0 };
+    }
+  }
+
+  /**
    * 删除图片（仅从索引中移除，保留本地文件）- 兼容旧版本
    * @param {string} imageUrl 图片URL
    * @param {string} applyCode 产品申请码

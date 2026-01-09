@@ -4232,13 +4232,65 @@ const ProductDetail = ({
   }, [dragState.isDragging, dragState.draggedImageId, handleImageClick, handleOpenImageInPS]);
 
   /**
-   * 执行删除图片的核心逻辑 - 性能优化版本
+   * 根据localPath从本地状态中移除所有匹配的SKU图片（跨SKU）
+   */
+  const removeImageFromStateByLocalPath = (localPath) => {
+    console.log(`🗑️ [removeImageFromStateByLocalPath] 从状态中移除SKU图片: localPath=${localPath}`);
+
+    setCurrentProduct(prevProduct => {
+      if (!prevProduct) return prevProduct;
+
+      const updatedProduct = { ...prevProduct };
+      let totalRemoved = 0;
+
+      // 仅从SKU图片中移除（不处理原始图片和场景图片）
+      if (updatedProduct.publishSkus) {
+        updatedProduct.publishSkus = updatedProduct.publishSkus.map(sku => {
+          const beforeCount = sku.skuImages ? sku.skuImages.length : 0;
+          const updatedSku = { ...sku };
+
+          if (updatedSku.skuImages) {
+            updatedSku.skuImages = updatedSku.skuImages.filter(img => {
+              return img.localPath !== localPath;
+            });
+
+            const removed = beforeCount - updatedSku.skuImages.length;
+            if (removed > 0) {
+              console.log(`  🗑️ 从SKU${sku.skuIndex}中移除 ${removed} 张`);
+              totalRemoved += removed;
+              // 重新计算索引
+              updatedSku.skuImages.forEach((img, idx) => {
+                img.index = idx;
+              });
+            }
+          }
+
+          return updatedSku;
+        });
+      }
+
+      console.log(`✅ [removeImageFromStateByLocalPath] 总共从状态中移除 ${totalRemoved} 张SKU图片`);
+      return updatedProduct;
+    });
+  };
+
+  /**
+   * 执行删除图片的核心逻辑 - 跨SKU删除版本
    */
   const executeDelete = async (imageToDelete) => {
     try {
       setError(null);
-      console.log('🗑️ [executeDelete] 开始优化删除图片:', {
+
+      // 验证localPath
+      if (!imageToDelete.localPath) {
+        console.warn('⚠️ [executeDelete] 图片缺少localPath，无法跨SKU删除:', imageToDelete);
+        setError('该图片尚未下载到本地，无法删除');
+        return;
+      }
+
+      console.log('🗑️ [executeDelete] 开始跨SKU删除图片:', {
         imageUrl: imageToDelete.imageUrl,
+        localPath: imageToDelete.localPath,
         type: imageToDelete.type,
         index: imageToDelete.index,
         skuIndex: imageToDelete.skuIndex
@@ -4252,23 +4304,21 @@ const ProductDetail = ({
       }
 
       // 先从本地状态中移除图片，提供即时视觉反馈
-      removeImageFromState(imageToDelete);
+      removeImageFromStateByLocalPath(imageToDelete.localPath);
 
       // 异步同步到LocalImageManager（不阻塞UI）
       try {
-        const success = await localImageManager.deleteImageByIndex(
+        const result = await localImageManager.deleteImageByLocalPathAcrossSkus(
           currentProduct.applyCode,
-          imageToDelete.type,
-          imageToDelete.type === 'sku' ? imageToDelete.imageUrl : imageToDelete.index,  // SKU使用imageUrl，其他使用index
-          imageToDelete.skuIndex
+          imageToDelete.localPath
         );
 
-        if (success) {
-          console.log('✅ [executeDelete] 数据同步成功');
+        if (result.success) {
+          console.log(`✅ [executeDelete] 跨SKU删除成功，共删除 ${result.deletedCount} 条记录`);
           // 通知父组件数据已更新
           onUpdate?.(currentProduct);
         } else {
-          console.error('❌ [executeDelete] 数据删除失败，需要重新加载数据');
+          console.error('❌ [executeDelete] 跨SKU删除失败，需要重新加载数据');
           setError('删除图片失败，正在重新加载数据');
           // 保存滚动位置
           if (contentRef.current) {
