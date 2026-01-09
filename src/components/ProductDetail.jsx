@@ -320,6 +320,11 @@ const ProductDetail = ({
   const [dontAskAgain, setDontAskAgain] = useState(false); // 当前对话框中"不再询问"复选框状态
   const [deletingGroup, setDeletingGroup] = useState(null); // 正在删除的组信息 {type: 'sku'|'scene', skuIndex: number, count: number, title: string}
   const [syncingGroupToPS, setSyncingGroupToPS] = useState(null); // 正在批量同步到PS的组信息 {type: 'sku'|'scene', skuIndex: number}
+  const [selectDeleteMode, setSelectDeleteMode] = useState({
+    active: false,      // 是否激活勾选删除模式
+    type: null,         // 'sku' | 'scene'
+    skuIndex: null      // 哪个SKU处于勾选删除模式
+  }); // 勾选删除模式状态
 
   // 替换Sku和场景图相关状态
   const [showReplaceDialog, setShowReplaceDialog] = useState(false); // 控制替换对话框显示
@@ -2233,6 +2238,147 @@ const ProductDetail = ({
       setError(`批量删除操作失败: ${error.message}`);
     } finally {
       setDeletingGroup(null);
+    }
+  };
+
+  /**
+   * 进入勾选删除模式
+   */
+  const handleEnterSelectDeleteMode = (type, skuIndex) => {
+    console.log(`🎯 [handleEnterSelectDeleteMode] 进入勾选删除模式: type=${type}, skuIndex=${skuIndex}`);
+
+    setSelectDeleteMode({
+      active: true,
+      type: type,
+      skuIndex: skuIndex
+    });
+
+    // 清空之前的选中状态
+    setSelectedImages(new Set());
+  };
+
+  /**
+   * 取消勾选删除模式，回到初始状态
+   */
+  const handleCancelSelectDelete = () => {
+    console.log('❌ [handleCancelSelectDelete] 取消勾选删除');
+
+    setSelectDeleteMode({
+      active: false,
+      type: null,
+      skuIndex: null
+    });
+
+    // 清空选中的图片
+    setSelectedImages(new Set());
+  };
+
+  /**
+   * 确认删除选中的图片
+   */
+  const handleConfirmSelectDelete = async (type, skuIndex) => {
+    if (selectedImages.size === 0) {
+      console.warn('⚠️ [handleConfirmSelectDelete] 没有选中任何图片');
+      return;
+    }
+
+    console.log(`🗑️ [handleConfirmSelectDelete] 删除选中的图片: ${selectedImages.size} 张`);
+
+    try {
+      // 保存滚动位置
+      if (contentRef.current) {
+        const currentScrollPosition = contentRef.current.scrollTop;
+        setSavedScrollPosition(currentScrollPosition);
+      }
+
+      // 获取要删除的图片列表
+      let imagesToDelete = [];
+
+      if (type === 'sku' && skuIndex !== null) {
+        const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+        if (sku) {
+          imagesToDelete = sku.images.filter(img => selectedImages.has(img.id));
+        }
+      } else if (type === 'scene') {
+        imagesToDelete = virtualizedImageGroups.scenes.filter(img => selectedImages.has(img.id));
+      }
+
+      console.log(`📝 [handleConfirmSelectDelete] 找到 ${imagesToDelete.length} 张要删除的图片`);
+
+      // 逐个删除图片
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < imagesToDelete.length; i++) {
+        const image = imagesToDelete[i];
+        try {
+          // 使用现有的跨SKU删除方法（如果有localPath）
+          if (image.localPath) {
+            const result = await localImageManager.deleteImageByLocalPathAcrossSkus(
+              currentProduct.applyCode,
+              image.localPath
+            );
+
+            if (result.success) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          } else {
+            // 如果没有localPath，使用原有的删除方法
+            const success = await localImageManager.deleteImageByIndex(
+              currentProduct.applyCode,
+              type,
+              type === 'sku' ? image.imageUrl : image.index,
+              skuIndex
+            );
+
+            if (success) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          }
+        } catch (error) {
+          console.error(`❌ [handleConfirmSelectDelete] 删除图片失败:`, error);
+          failCount++;
+        }
+      }
+
+      console.log(`✅ [handleConfirmSelectDelete] 删除完成: 成功 ${successCount}/${imagesToDelete.length}`);
+
+      // 退出勾选删除模式
+      setSelectDeleteMode({
+        active: false,
+        type: null,
+        skuIndex: null
+      });
+      setSelectedImages(new Set());
+
+      // 重新加载数据以保持一致性
+      await initializeImageData();
+
+      // 通知父组件
+      if (successCount > 0) {
+        onUpdate?.(currentProduct);
+      }
+
+      // 显示结果
+      if (failCount > 0) {
+        setError(`部分图片删除失败: ${failCount}/${imagesToDelete.length} 张失败`);
+      }
+
+    } catch (error) {
+      console.error('❌ [handleConfirmSelectDelete] 删除失败:', error);
+      setError(`删除失败: ${error.message}`);
+
+      // 发生错误时也要退出勾选删除模式
+      setSelectDeleteMode({
+        active: false,
+        type: null,
+        skuIndex: null
+      });
+      setSelectedImages(new Set());
     }
   };
 
@@ -4875,13 +5021,36 @@ const ProductDetail = ({
                           ? '翻译中...'
                           : '一键翻译'}
                       </button>
-                      <button
-                        className="delete-all-btn"
-                        onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
-                        title={`一键删除${sku.skuTitle}的所有图片`}
-                      >
-                        一键删除
-                      </button>
+                      {/* 一键删除 / 勾选删除按钮组 */}
+                      {selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === (sku.skuIndex || skuIndex) ? (
+                        // 勾选删除模式：显示取消和确定按钮
+                        <div className="select-delete-actions">
+                          <button
+                            className="cancel-select-btn"
+                            onClick={() => handleCancelSelectDelete()}
+                            title="取消勾选删除"
+                          >
+                            取消
+                          </button>
+                          <button
+                            className="confirm-select-delete-btn"
+                            onClick={() => handleConfirmSelectDelete('sku', sku.skuIndex || skuIndex)}
+                            title={`删除选中的 ${selectedImages.size} 张图片`}
+                            disabled={selectedImages.size === 0}
+                          >
+                            确定 ({selectedImages.size})
+                          </button>
+                        </div>
+                      ) : (
+                        // 正常模式：显示一键删除按钮
+                        <button
+                          className="delete-all-btn"
+                          onClick={() => handleEnterSelectDeleteMode('sku', sku.skuIndex || skuIndex)}
+                          title="选择要删除的图片"
+                        >
+                          一键删除
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -4916,8 +5085,9 @@ const ProductDetail = ({
                           {getStatusText(image.localStatus)}
                         </div>
                         <div className="image-actions-top">
-                          {/* 批量同步模式下的勾选框（仅第一个SKU） */}
-                          {batchSyncMode && skuIndex === 0 && (
+                          {/* 勾选框 - 批量同步模式或勾选删除模式 */}
+                          {((batchSyncMode && skuIndex === 0) ||
+                            (selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex)) && (
                             <div className="image-checkbox">
                               <input
                                 type="checkbox"
@@ -4927,15 +5097,19 @@ const ProductDetail = ({
                               />
                             </div>
                           )}
-                          <div
-                            className={`top-delete-btn ${batchSyncMode && skuIndex === 0 ? 'disabled' : ''}`}
-                            onClick={batchSyncMode && skuIndex === 0 ? undefined : () => handleConfirmDelete(image)}
-                            title={batchSyncMode && skuIndex === 0 ? "批量同步模式下不可删除" : "删除图片"}
-                            role="button"
-                            tabIndex="0"
-                          >
-                            ×
-                          </div>
+                          {/* 单张图片删除按钮 - 非批量同步模式且非勾选删除模式时显示 */}
+                          {!(batchSyncMode && skuIndex === 0) &&
+                           !(selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex) && (
+                            <div
+                              className="top-delete-btn"
+                              onClick={() => handleConfirmDelete(image)}
+                              title="删除图片"
+                              role="button"
+                              tabIndex="0"
+                            >
+                              ×
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="image-preview">
@@ -5010,13 +5184,36 @@ const ProductDetail = ({
                   >
                     {translatingGroup?.type === 'scene' ? '翻译中...' : '一键翻译'}
                   </button>
-                  <button
-                    className="delete-all-btn"
-                    onClick={() => handleConfirmDeleteGroup('scene')}
-                    title="一键删除所有场景图片"
-                  >
-                    一键删除
-                  </button>
+                  {/* 一键删除 / 勾选删除按钮组 */}
+                  {selectDeleteMode.active && selectDeleteMode.type === 'scene' ? (
+                    // 勾选删除模式：显示取消和确定按钮
+                    <div className="select-delete-actions">
+                      <button
+                        className="cancel-select-btn"
+                        onClick={() => handleCancelSelectDelete()}
+                        title="取消勾选删除"
+                      >
+                        取消
+                      </button>
+                      <button
+                        className="confirm-select-delete-btn"
+                        onClick={() => handleConfirmSelectDelete('scene', null)}
+                        title={`删除选中的 ${selectedImages.size} 张图片`}
+                        disabled={selectedImages.size === 0}
+                      >
+                        确定 ({selectedImages.size})
+                      </button>
+                    </div>
+                  ) : (
+                    // 正常模式：显示一键删除按钮
+                    <button
+                      className="delete-all-btn"
+                      onClick={() => handleEnterSelectDeleteMode('scene', null)}
+                      title="选择要删除的图片"
+                    >
+                      一键删除
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -5050,15 +5247,29 @@ const ProductDetail = ({
                         {getStatusText(image.localStatus)}
                       </div>
                       <div className="image-actions-top">
-                        <div
-                          className="top-delete-btn"
-                          onClick={() => handleConfirmDelete(image)}
-                          title="删除图片"
-                          role="button"
-                          tabIndex="0"
-                        >
-                          x
-                        </div>
+                        {/* 勾选框 - 勾选删除模式 */}
+                        {selectDeleteMode.active && selectDeleteMode.type === 'scene' && (
+                          <div className="image-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedImages.has(image.id)}
+                              onChange={() => handleToggleImageSelection(image.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        )}
+                        {/* 单张图片删除按钮 - 非勾选删除模式时显示 */}
+                        {!(selectDeleteMode.active && selectDeleteMode.type === 'scene') && (
+                          <div
+                            className="top-delete-btn"
+                            onClick={() => handleConfirmDelete(image)}
+                            title="删除图片"
+                            role="button"
+                            tabIndex="0"
+                          >
+                            ×
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="image-preview">
