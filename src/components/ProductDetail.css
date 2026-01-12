@@ -195,7 +195,7 @@
 }
 
 .sync-btn, .submit-btn, .detail-reject-btn {
-  padding: 6px;
+  padding: 6px 0px;
   height: 24px;
   border: 1px solid #ddd;
   border-radius: 4px;

@@ -1073,7 +1073,7 @@ const ProductDetail = ({
     const pendingCount = getAllPendingEditImages().length;
     if (pendingCount === 0) return '批量同步到PS';
 
-    return `批量同步到PS (${pendingCount}张待编辑)`;
+    return `批量到PS (${pendingCount}张)`;
   }, [isSyncing, getAllPendingEditImages]);
 
   /**
@@ -2301,6 +2301,14 @@ const ProductDetail = ({
         }
       } else if (type === 'scene') {
         imagesToDelete = virtualizedImageGroups.scenes.filter(img => selectedImages.has(img.id));
+      } else if (type === 'global') {
+        // 全局模式：收集所有选中的图片
+        const allSkuImages = virtualizedImageGroups.skus.flatMap(sku => sku.images);
+        const allSceneImages = virtualizedImageGroups.scenes;
+        imagesToDelete = [...allSkuImages, ...allSceneImages].filter(
+          img => selectedImages.has(img.id)
+        );
+        console.log(`🌐 [handleConfirmSelectDelete] 全局删除模式，从所有 SKU 和场景图中收集图片`);
       }
 
       console.log(`📝 [handleConfirmSelectDelete] 找到 ${imagesToDelete.length} 张要删除的图片`);
@@ -3738,6 +3746,12 @@ const ProductDetail = ({
       }
     } else if (type === 'scene') {
       currentImages = virtualizedImageGroups.scenes;
+    } else if (type === 'global') {
+      // 全局模式：收集所有图片
+      const allSkuImages = virtualizedImageGroups.skus.flatMap(sku => sku.images);
+      const allSceneImages = virtualizedImageGroups.scenes;
+      currentImages = [...allSkuImages, ...allSceneImages];
+      console.log(`🌐 [全选] 全局模式，收集所有 SKU 和场景图片，共 ${currentImages.length} 张`);
     }
 
     const allImageIds = currentImages.map(img => img.id);
@@ -4634,6 +4648,7 @@ const ProductDetail = ({
               大
             </div>
           </div>
+          {/* 勾选删除按钮 */}
           <button
             className={`sync-btn ${isSyncing ? 'syncing' : ''} ${getSyncButtonDisabled() ? 'disabled' : ''}`}
             onClick={handleBatchSyncToPS}
@@ -4668,6 +4683,47 @@ const ProductDetail = ({
               disabled={isSubmitting}
             >
               {isSubmitting ? '提交中...' : '提交审核'}
+            </button>
+          )}
+          {/* 全局勾选删除按钮组 */}
+          {selectDeleteMode.active && selectDeleteMode.type === 'global' ? (
+            <div className="select-delete-actions">
+              <button
+                className="cancel-select-btn"
+                onClick={() => handleCancelSelectDelete()}
+                title="取消勾选删除"
+              >
+                取消
+              </button>
+              <label className="select-all-checkbox">
+                <input
+                  type="checkbox"
+                  checked={(() => {
+                    const allSkuImages = virtualizedImageGroups.skus.flatMap(sku => sku.images);
+                    const allSceneImages = virtualizedImageGroups.scenes;
+                    const allImages = [...allSkuImages, ...allSceneImages];
+                    return allImages.length > 0 && allImages.every(img => selectedImages.has(img.id));
+                  })()}
+                  onChange={() => handleToggleSelectAll('global')}
+                />
+                <span>全选</span>
+              </label>
+              <button
+                className="confirm-select-delete-btn"
+                onClick={() => handleConfirmSelectDelete('global', null)}
+                title={`删除选中的 ${selectedImages.size} 张图片`}
+                disabled={selectedImages.size === 0}
+              >
+                确定 ({selectedImages.size})
+              </button>
+            </div>
+          ) : (
+            <button
+              className="delete-all-btn"
+              onClick={() => handleEnterSelectDeleteMode('global', null)}
+              title="全局勾选删除"
+            >
+              勾选删除
             </button>
           )}
         </div>
@@ -5127,9 +5183,10 @@ const ProductDetail = ({
                           {getStatusText(image.localStatus)}
                         </div>
                         <div className="image-actions-top">
-                          {/* 勾选框 - 批量同步模式或勾选删除模式 */}
+                          {/* 勾选框 - 批量同步模式或勾选删除模式或全局勾选删除模式 */}
                           {((batchSyncMode && skuIndex === 0) ||
-                            (selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex)) && (
+                            (selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex) ||
+                            (selectDeleteMode.active && selectDeleteMode.type === 'global')) && (
                             <div className="image-checkbox">
                               <input
                                 type="checkbox"
@@ -5297,8 +5354,8 @@ const ProductDetail = ({
                         {getStatusText(image.localStatus)}
                       </div>
                       <div className="image-actions-top">
-                        {/* 勾选框 - 勾选删除模式 */}
-                        {selectDeleteMode.active && selectDeleteMode.type === 'scene' && (
+                        {/* 勾选框 - 勾选删除模式或全局勾选删除模式 */}
+                        {selectDeleteMode.active && (selectDeleteMode.type === 'scene' || selectDeleteMode.type === 'global') && (
                           <div className="image-checkbox">
                             <input
                               type="checkbox"
