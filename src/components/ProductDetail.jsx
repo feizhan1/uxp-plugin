@@ -3726,6 +3726,40 @@ const ProductDetail = ({
   };
 
   /**
+   * 全选/全不选当前区域的图片
+   */
+  const handleToggleSelectAll = (type, skuIndex = null) => {
+    // 获取当前区域的所有图片
+    let currentImages = [];
+    if (type === 'sku' && skuIndex !== null) {
+      const sku = virtualizedImageGroups.skus.find(s => (s.skuIndex || 0) === skuIndex);
+      if (sku) {
+        currentImages = sku.images;
+      }
+    } else if (type === 'scene') {
+      currentImages = virtualizedImageGroups.scenes;
+    }
+
+    const allImageIds = currentImages.map(img => img.id);
+    const allSelected = allImageIds.every(id => selectedImages.has(id));
+
+    setSelectedImages(prev => {
+      const newSet = new Set(prev);
+      if (allSelected) {
+        // 全部已选中，则全部取消选中
+        allImageIds.forEach(id => newSet.delete(id));
+        console.log(`☐ [全选] 取消选中所有图片，共 ${allImageIds.length} 张`);
+      } else {
+        // 未全部选中，则全部选中
+        allImageIds.forEach(id => newSet.add(id));
+        console.log(`☑ [全选] 选中所有图片，共 ${allImageIds.length} 张`);
+      }
+      console.log(`📋 [全选] 当前选中图片数量: ${newSet.size}`);
+      return newSet;
+    });
+  };
+
+  /**
    * 执行批量同步操作
    */
   const handleExecuteSync = async () => {
@@ -5032,6 +5066,14 @@ const ProductDetail = ({
                           >
                             取消
                           </button>
+                          <label className="select-all-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={sku.images.length > 0 && sku.images.every(img => selectedImages.has(img.id))}
+                              onChange={() => handleToggleSelectAll('sku', sku.skuIndex || skuIndex)}
+                            />
+                            <span>全选</span>
+                          </label>
                           <button
                             className="confirm-select-delete-btn"
                             onClick={() => handleConfirmSelectDelete('sku', sku.skuIndex || skuIndex)}
@@ -5195,6 +5237,14 @@ const ProductDetail = ({
                       >
                         取消
                       </button>
+                      <label className="select-all-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={virtualizedImageGroups.scenes.length > 0 && virtualizedImageGroups.scenes.every(img => selectedImages.has(img.id))}
+                          onChange={() => handleToggleSelectAll('scene', null)}
+                        />
+                        <span>全选</span>
+                      </label>
                       <button
                         className="confirm-select-delete-btn"
                         onClick={() => handleConfirmSelectDelete('scene', null)}
