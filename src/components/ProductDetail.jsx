@@ -2329,7 +2329,7 @@ const ProductDetail = ({
             const success = await localImageManager.deleteImageByIndex(
               currentProduct.applyCode,
               type,
-              type === 'sku' ? image.imageUrl : image.index,
+              type === 'sku' ? image.imageUrl : (image.imageUrl || image.index),
               skuIndex
             );
 

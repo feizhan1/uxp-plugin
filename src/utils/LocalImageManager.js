@@ -4422,17 +4422,24 @@ export class LocalImageManager {
           }
         }
       } else if (imageType === 'scene') {
-        if (product.senceImages && imageIndex >= 0 && imageIndex < product.senceImages.length) {
-          imageInfo = product.senceImages[imageIndex];
-          product.senceImages.splice(imageIndex, 1);
-          deletedSuccessfully = true;
-          console.log(`✅ [deleteImageByIndex] 从场景图片索引中移除: 索引=${imageIndex}`);
+        if (product.senceImages) {
+          // 使用 findIndex 精确查找，支持 imageUrl 或 index
+          const index = typeof imageIndex === 'number'
+            ? product.senceImages.findIndex(img => img.index === imageIndex)
+            : product.senceImages.findIndex(img => img.imageUrl === imageIndex);
 
-          // 重新计算所有图片的index字段
-          product.senceImages.forEach((img, idx) => {
-            img.index = idx;
-          });
-          console.log(`🔄 [deleteImageByIndex] 已重新计算场景图片索引，当前数量: ${product.senceImages.length}`);
+          if (index >= 0) {
+            imageInfo = product.senceImages[index];
+            product.senceImages.splice(index, 1);
+            deletedSuccessfully = true;
+            console.log(`✅ [deleteImageByIndex] 从场景图片索引中移除: 索引=${imageIndex}`);
+
+            // 重新计算所有图片的index字段
+            product.senceImages.forEach((img, idx) => {
+              img.index = idx;
+            });
+            console.log(`🔄 [deleteImageByIndex] 已重新计算场景图片索引，当前数量: ${product.senceImages.length}`);
+          }
         }
       }
 
@@ -4504,6 +4511,26 @@ export class LocalImageManager {
             console.log(`  🔄 SKU${sku.skuIndex} 重新计算索引，剩余图片: ${sku.skuImages.length}`);
           }
         });
+      }
+
+      // 遍历场景图片
+      if (product.senceImages && Array.isArray(product.senceImages)) {
+        // 倒序遍历避免索引问题
+        for (let i = product.senceImages.length - 1; i >= 0; i--) {
+          const img = product.senceImages[i];
+          if (img.localPath === localPath) {
+            console.log(`  🗑️ 删除场景图片: index=${i}, url=${img.imageUrl}`);
+            product.senceImages.splice(i, 1);
+            deletedCount++;
+          }
+        }
+
+        // 重新计算场景图片索引
+        product.senceImages.forEach((img, idx) => {
+          img.index = idx;
+        });
+
+        console.log(`  🔄 场景图片重新计算索引，剩余图片: ${product.senceImages.length}`);
       }
 
       if (deletedCount === 0) {
