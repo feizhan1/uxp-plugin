@@ -179,6 +179,16 @@
   line-height: 1.4;
 }
 
+.product-meta-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.product-meta-row .product-package-info {
+  margin-top: 0;
+}
+
 .header-right {
   display: flex;
   justify-content: flex-end;

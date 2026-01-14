@@ -4605,23 +4605,27 @@ const ProductDetail = ({
                 </span>
               </div>
             )}
-            {currentProduct.devPurchaserName && (
-              <div className="product-package-info">
-                <span className="package-label">产品开发: </span>
-                <span className="package-value">{currentProduct.devPurchaserName}</span>
-              </div>
-            )}
-            {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
-              <div className="product-package-info">
-                <span className="package-label">适用品牌: </span>
-                <span className="package-value">
-                  {currentProduct.applyBrandList.map((brand, index) => (
-                    <span key={brand.applyBrandId || index}>
-                      {brand.applyBrandName}
-                      {index < currentProduct.applyBrandList.length - 1 ? ' / ' : ''}
+            {(currentProduct.devPurchaserName || (currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0)) && (
+              <div className="product-meta-row">
+                {currentProduct.devPurchaserName && (
+                  <div className="product-package-info">
+                    <span className="package-label">产品开发: </span>
+                    <span className="package-value">{currentProduct.devPurchaserName}</span>
+                  </div>
+                )}
+                {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
+                  <div className="product-package-info">
+                    <span className="package-label">适用品牌: </span>
+                    <span className="package-value">
+                      {currentProduct.applyBrandList.map((brand, index) => (
+                        <span key={brand.applyBrandId || index}>
+                          {brand.applyBrandName}
+                          {index < currentProduct.applyBrandList.length - 1 ? ' / ' : ''}
+                        </span>
+                      ))}
                     </span>
-                  ))}
-                </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
