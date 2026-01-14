@@ -179,6 +179,27 @@
   line-height: 1.4;
 }
 
+.product-brand-info {
+  font-size: 10px;
+  color: #666;
+  margin-top: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.brand-label {
+  font-size: 10px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.brand-value {
+  font-size: 10px;
+  color: #666;
+  line-height: 1.4;
+}
+
 .header-right {
   display: flex;
   justify-content: flex-end;

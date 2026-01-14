@@ -4605,6 +4605,19 @@ const ProductDetail = ({
                 </span>
               </div>
             )}
+            {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
+              <div className="product-brand-info">
+                <span className="brand-label">适用品牌: </span>
+                <span className="brand-value">
+                  {currentProduct.applyBrandList.map((brand, index) => (
+                    <span key={brand.applyBrandId || index}>
+                      {brand.applyBrandName}
+                      {index < currentProduct.applyBrandList.length - 1 ? ' / ' : ''}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className="header-right">
