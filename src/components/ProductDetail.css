@@ -179,22 +179,28 @@
   line-height: 1.4;
 }
 
-.product-brand-info {
+.product-meta-info {
   font-size: 10px;
-  color: #666;
   margin-top: 4px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.brand-label {
+.meta-label {
   font-size: 10px;
   color: #999;
   flex-shrink: 0;
 }
 
-.brand-value {
+.meta-value {
   font-size: 10px;
   color: #666;
   line-height: 1.4;

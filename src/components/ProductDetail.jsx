@@ -4605,19 +4605,28 @@ const ProductDetail = ({
                 </span>
               </div>
             )}
-            {/* 产品开发 */}
-            <span>产品开发: {currentProduct.devPurchaserName}</span>
-            {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
-              <div className="product-brand-info">
-                <span className="brand-label">适用品牌: </span>
-                <span className="brand-value">
-                  {currentProduct.applyBrandList.map((brand, index) => (
-                    <span key={brand.applyBrandId || index}>
-                      {brand.applyBrandName}
-                      {index < currentProduct.applyBrandList.length - 1 ? ' / ' : ''}
+            {/* 产品开发和适用品牌 */}
+            {(currentProduct.devPurchaserName || (currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0)) && (
+              <div className="product-meta-info">
+                {currentProduct.devPurchaserName && (
+                  <div className="meta-item">
+                    <span className="meta-label">产品开发: </span>
+                    <span className="meta-value">{currentProduct.devPurchaserName}</span>
+                  </div>
+                )}
+                {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
+                  <div className="meta-item">
+                    <span className="meta-label">适用品牌: </span>
+                    <span className="meta-value">
+                      {currentProduct.applyBrandList.map((brand, index) => (
+                        <span key={brand.applyBrandId || index}>
+                          {brand.applyBrandName}
+                          {index < currentProduct.applyBrandList.length - 1 ? ' / ' : ''}
+                        </span>
+                      ))}
                     </span>
-                  ))}
-                </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
