@@ -4605,6 +4605,8 @@ const ProductDetail = ({
                 </span>
               </div>
             )}
+            {/* 产品开发 */}
+            <span>产品开发: {currentProduct.devPurchaserName}</span>
             {currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0 && (
               <div className="product-brand-info">
                 <span className="brand-label">适用品牌: </span>

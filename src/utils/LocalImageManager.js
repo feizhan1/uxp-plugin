@@ -1588,6 +1588,8 @@ export class LocalImageManager {
         applyCode: applyCode,
         chineseName: productData.chineseName || '',
         chinesePackageList: productData.chinesePackageList || [],
+        applyBrandList: productData.applyBrandList || [],
+        devPurchaserName: productData.devPurchaserName || '',
         status: productData.status || 3,
         originalImages: [],
         publishSkus: [],
@@ -1599,7 +1601,31 @@ export class LocalImageManager {
       console.log(`📦 [getOrCreateProduct] 创建新产品: ${applyCode}`, {
         chineseName: product.chineseName,
         chinesePackageList: product.chinesePackageList,
+        applyBrandList: product.applyBrandList,
+        devPurchaserName: product.devPurchaserName,
         status: product.status
+      });
+    } else {
+      // 更新已存在产品的元数据字段
+      if (productData.chineseName !== undefined) {
+        product.chineseName = productData.chineseName;
+      }
+      if (productData.chinesePackageList !== undefined) {
+        product.chinesePackageList = productData.chinesePackageList;
+      }
+      if (productData.applyBrandList !== undefined) {
+        product.applyBrandList = productData.applyBrandList;
+      }
+      if (productData.devPurchaserName !== undefined) {
+        product.devPurchaserName = productData.devPurchaserName;
+      }
+      if (productData.status !== undefined) {
+        product.status = productData.status;
+      }
+      console.log(`🔄 [getOrCreateProduct] 更新产品元数据: ${applyCode}`, {
+        chineseName: product.chineseName,
+        devPurchaserName: product.devPurchaserName,
+        applyBrandList: product.applyBrandList
       });
     }
     return product;
