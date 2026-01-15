@@ -4717,8 +4717,8 @@ export class LocalImageManager {
       // 遍历所有图片类型进行修复
       for (const { array, type } of imageArrays) {
         for (const img of array) {
-          // 只修复状态为not_downloaded但文件已存在的情况
-          if (img.status === 'not_downloaded' && img.imageUrl) {
+          // 修复所有缺少localPath但本地文件存在的情况
+          if (!img.localPath && img.imageUrl) {
             try {
               // 从URL提取文件名
               const urlObj = new URL(img.imageUrl);
@@ -4730,6 +4730,7 @@ export class LocalImageManager {
               if (localFile && !localFile.isFolder) {
                 // 文件存在，读取文件大小并修复索引数据
                 const arrayBuffer = await localFile.read();
+                const oldStatus = img.status;
 
                 img.status = 'pending_edit';
                 img.localPath = `${product.applyCode}/${filename}`;
@@ -4737,7 +4738,12 @@ export class LocalImageManager {
                 img.hasLocal = true;
                 img.timestamp = Date.now();
 
-                console.log(`✅ [repairIndexData] 修复 [${type}]: ${filename}`);
+                console.log(`✅ [repairIndexData] 修复 [${type}]: ${filename}`, {
+                  oldStatus,
+                  newStatus: 'pending_edit',
+                  fileSize: arrayBuffer.byteLength,
+                  localPath: img.localPath
+                });
                 repairedCount++;
               }
             } catch (error) {
