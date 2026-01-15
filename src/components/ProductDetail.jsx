@@ -296,6 +296,7 @@ const ProductDetail = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false); // 驳回操作进行中
+  const [isRepairing, setIsRepairing] = useState(false); // 修复索引进行中
   const [deletingImage, setDeletingImage] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null); // 批量上传进度 {current: 0, total: 0}
   const [uploadStats, setUploadStats] = useState(null); // 上传统计信息
@@ -1806,6 +1807,46 @@ const ProductDetail = ({
       });
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  /**
+   * 修复当前产品的索引数据
+   */
+  const handleRepairIndex = async () => {
+    try {
+      setIsRepairing(true);
+      setToast({
+        open: true,
+        message: '正在扫描和修复索引数据...',
+        type: 'info'
+      });
+
+      // 调用修复方法
+      const repairedCount = await localImageManager.repairIndexData();
+
+      if (repairedCount > 0) {
+        setToast({
+          open: true,
+          message: `修复完成！共修复 ${repairedCount} 张图片的索引数据，请重新打开产品查看更新`,
+          type: 'success'
+        });
+      } else {
+        setToast({
+          open: true,
+          message: '未发现需要修复的数据，索引状态正常',
+          type: 'info'
+        });
+      }
+    } catch (error) {
+      console.error('修复索引数据失败:', error);
+      setToast({
+        open: true,
+        message: `修复失败: ${error.message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsRepairing(false);
     }
   };
 
@@ -4608,7 +4649,7 @@ const ProductDetail = ({
             {(currentProduct.devPurchaserName || (currentProduct.applyBrandList && currentProduct.applyBrandList.length > 0)) && (
               <div className="product-meta-row">
                 {currentProduct.devPurchaserName && (
-                  <div className="product-package-info">
+                  <div className="product-package-info" style={{ marginRight: '10px' }}>
                     <span className="package-label">产品开发: </span>
                     <span className="package-value">{currentProduct.devPurchaserName}</span>
                   </div>
@@ -4671,7 +4712,15 @@ const ProductDetail = ({
               大
             </div>
           </div>
-          {/* 勾选删除按钮 */}
+          {/* 一致性修复 */}
+          <button
+            className={`sync-btn ${isRepairing ? 'syncing' : ''}`}
+            onClick={handleRepairIndex}
+            disabled={isRepairing}
+            title="扫描本地文件并修复索引不一致"
+          >
+            {isRepairing ? '修复中...' : '修复索引'}
+          </button>
           <button
             className={`sync-btn ${isSyncing ? 'syncing' : ''} ${getSyncButtonDisabled() ? 'disabled' : ''}`}
             onClick={handleBatchSyncToPS}
