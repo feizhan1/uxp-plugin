@@ -4728,8 +4728,8 @@ export class LocalImageManager {
               const localFile = fileMap.get(filename);
 
               if (localFile && !localFile.isFolder) {
-                // 文件存在，读取文件大小并修复索引数据
-                const arrayBuffer = await localFile.read();
+                // 文件存在，读取文件大小并修复索引数据（以二进制格式读取图片文件）
+                const arrayBuffer = await localFile.read({ format: formats.binary });
                 const oldStatus = img.status;
 
                 img.status = 'pending_edit';
