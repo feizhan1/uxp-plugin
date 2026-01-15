@@ -40,6 +40,7 @@ const TodoList = () => {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
   const [showStorageSetupDialog, setShowStorageSetupDialog] = useState(false)
+  const [isRepairing, setIsRepairing] = useState(false)
 
   // 搜索功能相关状态
   const [searchMode, setSearchMode] = useState(false) // 是否处于搜索模式
@@ -1331,6 +1332,37 @@ const TodoList = () => {
     setError(`同步失败: ${error.message}`)
   }
 
+  /**
+   * 修复索引数据
+   */
+  const handleRepairIndex = async () => {
+    try {
+      setIsRepairing(true)
+      setToastMessage('正在扫描和修复索引数据...')
+      setToastType('info')
+
+      // 调用修复方法
+      const repairedCount = await localImageManager.repairIndexData()
+
+      if (repairedCount > 0) {
+        setToastMessage(`修复完成！共修复 ${repairedCount} 张图片的索引数据`)
+        setToastType('success')
+
+        // 刷新数据列表
+        await executeSync('manual')
+      } else {
+        setToastMessage('未发现需要修复的数据，索引状态正常')
+        setToastType('info')
+      }
+    } catch (error) {
+      console.error('修复索引数据失败:', error)
+      setToastMessage(`修复失败: ${error.message}`)
+      setToastType('error')
+    } finally {
+      setIsRepairing(false)
+    }
+  }
+
   // ProductDetail 关闭回调
   const handleProductDetailClose = () => {
     setShowProductDetail(false)
@@ -1491,7 +1523,7 @@ const TodoList = () => {
             <button
               className="action-btn secondary"
             >
-              版本号：3.5.1
+              版本号：3.5.2
             </button>
             {!searchMode && (
               <>
@@ -1515,6 +1547,14 @@ const TodoList = () => {
                     <option value={4}>编辑审核中</option>
                   </select>
                 )}
+                <button
+                  className={`action-btn ${isRepairing ? 'syncing' : 'secondary'}`}
+                  onClick={handleRepairIndex}
+                  disabled={isRepairing || !loginInfo}
+                  title="扫描本地文件并修复索引不一致"
+                >
+                  {isRepairing ? '修复中...' : '修复索引'}
+                </button>
               </>
             )}
             <button

@@ -4672,6 +4672,94 @@ export class LocalImageManager {
     }
   }
 
+  /**
+   * 扫描本地文件夹，修复index.json中的状态不一致
+   * 使用场景：图片已下载到本地但索引未更新
+   * @returns {Promise<number>} 修复的图片数量
+   */
+  async repairIndexData() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    console.log('🔧 [repairIndexData] 开始扫描本地文件系统...');
+
+    let repairedCount = 0;
+    const entries = await this.imageFolder.getEntries();
+
+    for (const product of this.indexData) {
+      // 查找产品文件夹
+      const productFolder = entries.find(
+        entry => entry.isFolder && entry.name === product.applyCode
+      );
+
+      if (!productFolder) {
+        console.log(`⏭️  [repairIndexData] 跳过产品 ${product.applyCode}：文件夹不存在`);
+        continue;
+      }
+
+      // 获取产品文件夹中的所有文件
+      const files = await productFolder.getEntries();
+      const fileMap = new Map(files.map(f => [f.name, f]));
+
+      console.log(`🔍 [repairIndexData] 检查产品 ${product.applyCode}，本地文件数: ${fileMap.size}`);
+
+      // 收集所有需要检查的图片数组
+      const imageArrays = [
+        { array: product.originalImages || [], type: 'original' },
+        { array: product.senceImages || [], type: 'scene' },
+        ...((product.publishSkus || []).map(sku => ({
+          array: sku.skuImages || [],
+          type: `sku-${sku.skuIndex}`
+        })))
+      ];
+
+      // 遍历所有图片类型进行修复
+      for (const { array, type } of imageArrays) {
+        for (const img of array) {
+          // 只修复状态为not_downloaded但文件已存在的情况
+          if (img.status === 'not_downloaded' && img.imageUrl) {
+            try {
+              // 从URL提取文件名
+              const urlObj = new URL(img.imageUrl);
+              const filename = urlObj.pathname.split('/').pop();
+
+              // 检查文件是否存在
+              const localFile = fileMap.get(filename);
+
+              if (localFile && !localFile.isFolder) {
+                // 文件存在，读取文件大小并修复索引数据
+                const arrayBuffer = await localFile.read();
+
+                img.status = 'pending_edit';
+                img.localPath = `${product.applyCode}/${filename}`;
+                img.fileSize = arrayBuffer.byteLength;
+                img.hasLocal = true;
+                img.timestamp = Date.now();
+
+                console.log(`✅ [repairIndexData] 修复 [${type}]: ${filename}`);
+                repairedCount++;
+              }
+            } catch (error) {
+              console.warn(`⚠️ [repairIndexData] 处理图片失败: ${img.imageUrl}`, error);
+              // 继续处理其他图片
+            }
+          }
+        }
+      }
+    }
+
+    // 如果有修复，保存索引数据
+    if (repairedCount > 0) {
+      await this.saveIndexData();
+      console.log(`✅ [repairIndexData] 修复完成，共修复 ${repairedCount} 条记录`);
+    } else {
+      console.log('✅ [repairIndexData] 未发现需要修复的数据');
+    }
+
+    return repairedCount;
+  }
+
 }
 
 // 创建单例实例
