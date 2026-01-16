@@ -2119,9 +2119,9 @@ const ProductDetail = ({
   };
 
   /**
-   * 一键删除所有场景图片
+   * 一键删除所有场景图片（直接删除，无需确认）
    */
-  const handleDeleteAllScenes = () => {
+  const handleDeleteAllScenes = async () => {
     console.log('🗑️ [handleDeleteAllScenes] 准备删除所有场景图片');
 
     const allSceneImages = virtualizedImageGroups.scenes || [];
@@ -2138,14 +2138,8 @@ const ProductDetail = ({
 
     console.log(`🗑️ [handleDeleteAllScenes] 将删除 ${allSceneImages.length} 张场景图片`);
 
-    // 设置删除确认对话框
-    setDeletingGroup({
-      type: 'scene',
-      skuIndex: null,
-      count: allSceneImages.length,
-      title: '场景图片',
-      images: allSceneImages
-    });
+    // 直接执行批量删除，无需确认
+    await executeBatchDelete('scene', null, allSceneImages);
   };
 
   /**
