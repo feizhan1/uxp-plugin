@@ -2119,6 +2119,36 @@ const ProductDetail = ({
   };
 
   /**
+   * 一键删除所有场景图片
+   */
+  const handleDeleteAllScenes = () => {
+    console.log('🗑️ [handleDeleteAllScenes] 准备删除所有场景图片');
+
+    const allSceneImages = virtualizedImageGroups.scenes || [];
+
+    if (allSceneImages.length === 0) {
+      console.warn('⚠️ [handleDeleteAllScenes] 没有场景图片可删除');
+      setToast({
+        open: true,
+        message: '没有场景图片可删除',
+        type: 'warning'
+      });
+      return;
+    }
+
+    console.log(`🗑️ [handleDeleteAllScenes] 将删除 ${allSceneImages.length} 张场景图片`);
+
+    // 设置删除确认对话框
+    setDeletingGroup({
+      type: 'scene',
+      skuIndex: null,
+      count: allSceneImages.length,
+      title: '场景图片',
+      images: allSceneImages
+    });
+  };
+
+  /**
    * 确认删除图片
    */
   const handleConfirmDelete = async (image) => {
@@ -5355,7 +5385,16 @@ const ProductDetail = ({
                   >
                     {translatingGroup?.type === 'scene' ? '翻译中...' : '一键翻译'}
                   </button>
-                  {/* 一键删除 / 勾选删除按钮组 */}
+                  {/* 一键删除所有场景图片 */}
+                  <button
+                    className="delete-all-btn"
+                    onClick={handleDeleteAllScenes}
+                    disabled={virtualizedImageGroups.scenes.length === 0}
+                    title="删除该场景的所有图片"
+                  >
+                    一键删除
+                  </button>
+                  {/* 勾选删除按钮组 */}
                   {selectDeleteMode.active && selectDeleteMode.type === 'scene' ? (
                     // 勾选删除模式：显示取消和确定按钮
                     <div className="select-delete-actions">
