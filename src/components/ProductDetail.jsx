@@ -2239,20 +2239,36 @@ const ProductDetail = ({
           // 从本地状态中移除图片
           removeImageFromState(image);
 
-          // 同步到LocalImageManager
-          const success = await localImageManager.deleteImageByIndex(
-            currentProduct.applyCode,
-            type,
-            type === 'sku' ? image.imageUrl : 0, // SKU使用imageUrl精确定位，其他类型使用索引0（数组会动态缩短）
-            skuIndex
-          );
+          // 使用localPath删除（如果有）
+          if (image.localPath) {
+            const result = await localImageManager.deleteImageByLocalPathAcrossSkus(
+              currentProduct.applyCode,
+              image.localPath
+            );
 
-          if (success) {
-            successCount++;
-            console.log(`✅ [executeBatchDelete] 成功删除第 ${i + 1}/${images.length} 张图片`);
+            if (result.success) {
+              successCount++;
+              console.log(`✅ [executeBatchDelete] 成功删除第 ${i + 1}/${images.length} 张图片`);
+            } else {
+              failCount++;
+              console.error(`❌ [executeBatchDelete] 删除第 ${i + 1}/${images.length} 张图片失败`);
+            }
           } else {
-            failCount++;
-            console.error(`❌ [executeBatchDelete] 删除第 ${i + 1}/${images.length} 张图片失败`);
+            // 备用方法：使用index删除
+            const success = await localImageManager.deleteImageByIndex(
+              currentProduct.applyCode,
+              type,
+              type === 'sku' ? image.imageUrl : (image.imageUrl || image.index),
+              skuIndex
+            );
+
+            if (success) {
+              successCount++;
+              console.log(`✅ [executeBatchDelete] 成功删除第 ${i + 1}/${images.length} 张图片`);
+            } else {
+              failCount++;
+              console.error(`❌ [executeBatchDelete] 删除第 ${i + 1}/${images.length} 张图片失败`);
+            }
           }
         } catch (error) {
           failCount++;
