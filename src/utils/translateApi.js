@@ -11,7 +11,7 @@ const API_CONFIG = {
   LOGIN_URL: 'https://www.xiangjifanyi.com/open/user/login',
   URL_TRANSLATE_URL: 'https://api.tosoiot.com/',
   FILE_TRANSLATE_URL: 'https://api2.tosoiot.com/',
-  IMG_TRANS_KEY: '7073216605',  // 固定的翻译密钥
+  IMG_TRANS_KEY: '8584395901',  // 固定的翻译密钥
   USER_KEY: '2860042962',  // 固定的用户密钥
   PHONE: '13534271656',
   PASSWD: 'TVC2024'
