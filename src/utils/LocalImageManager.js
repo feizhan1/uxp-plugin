@@ -100,9 +100,20 @@ export class LocalImageManager {
         // 加载索引数据
         await this.loadIndexData();
 
+        // 🔥 自动修复索引数据：检测文件系统与索引的一致性
+        console.log('🔧 [LocalImageManager] 执行自动索引修复...');
+        // 临时标记为已初始化，以便 repairIndexData 可以执行
+        this.initialized = true;
+        const repairedCount = await this.repairIndexData();
+        if (repairedCount > 0) {
+          console.log(`✅ [LocalImageManager] 自动修复了 ${repairedCount} 条索引记录`);
+        } else {
+          console.log('✅ [LocalImageManager] 索引数据完整，无需修复');
+        }
+      } else {
+        this.initialized = true;
       }
 
-      this.initialized = true;
       console.log('✅ [LocalImageManager] 本地图片管理器初始化成功');
     } catch (error) {
       console.error('❌ [LocalImageManager] 本地图片管理器初始化失败:', error);
@@ -4764,6 +4775,76 @@ export class LocalImageManager {
     }
 
     return repairedCount;
+  }
+
+  /**
+   * 验证产品是否完全同步（索引 + 文件系统）
+   * @param {string} applyCode - 产品申请码
+   * @returns {Promise<boolean>} - 是否完全同步
+   */
+  async isProductFullySynced(applyCode) {
+    // 1. 检查索引中是否有记录
+    const product = this.findProductByApplyCode(applyCode);
+    if (!product) {
+      console.log(`📊 [isProductFullySynced] ${applyCode}: 索引中无记录 → false`);
+      return false;
+    }
+
+    // 2. 检查产品文件夹是否存在
+    try {
+      const entries = await this.imageFolder.getEntries();
+      const productFolder = entries.find(
+        entry => entry.isFolder && entry.name === applyCode
+      );
+
+      if (!productFolder) {
+        console.log(`📊 [isProductFullySynced] ${applyCode}: 文件夹不存在 → false`);
+        return false;
+      }
+
+      // 3. 收集所有图片
+      const allImages = [
+        ...(product.originalImages || []),
+        ...(product.senceImages || []),
+        ...((product.publishSkus || []).flatMap(sku => sku.skuImages || []))
+      ];
+
+      // 如果索引中没有任何图片记录，认为未同步
+      if (allImages.length === 0) {
+        console.log(`📊 [isProductFullySynced] ${applyCode}: 索引中无图片记录 → false`);
+        return false;
+      }
+
+      // 4. 抽查前3张有localPath的图片是否真实存在
+      const imagesToCheck = allImages
+        .filter(img => img.localPath)
+        .slice(0, Math.min(3, allImages.length));
+
+      if (imagesToCheck.length === 0) {
+        console.log(`📊 [isProductFullySynced] ${applyCode}: 无有效localPath → false`);
+        return false;
+      }
+
+      for (const img of imagesToCheck) {
+        try {
+          const file = await this.getFileByPath(img.localPath);
+          if (!file) {
+            console.log(`📊 [isProductFullySynced] ${applyCode}: 文件缺失 ${img.localPath} → false`);
+            return false;
+          }
+        } catch (error) {
+          console.log(`📊 [isProductFullySynced] ${applyCode}: 文件访问失败 ${img.localPath} → false`);
+          return false;
+        }
+      }
+
+      console.log(`📊 [isProductFullySynced] ${applyCode}: 完全同步 → true`);
+      return true;
+
+    } catch (error) {
+      console.error(`❌ [isProductFullySynced] ${applyCode}: 验证失败`, error);
+      return false;
+    }
   }
 
 }

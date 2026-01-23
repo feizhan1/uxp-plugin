@@ -1038,25 +1038,29 @@ const TodoList = () => {
     // 确保LocalImageManager已初始化
     await localImageManager.initialize()
 
-    // 过滤出需要同步的产品（本地索引中不存在的）
+    // 过滤出需要同步的产品（索引 + 文件系统完整性验证）
     const productsToSync = []
     const existingProducts = []
 
     for (const product of productList) {
-      const existingProduct = localImageManager.findProductByApplyCode(product.applyCode)
-      if (existingProduct) {
+      // 🔥 改进：使用完整性验证替代简单的索引检查
+      // 验证索引记录 + 文件夹存在性 + 关键图片文件存在性
+      const isFullySynced = await localImageManager.isProductFullySynced(product.applyCode)
+
+      if (isFullySynced) {
         existingProducts.push(product.applyCode)
       } else {
         productsToSync.push(product)
       }
     }
 
-    console.log(`📊 [collectProductImages] 同步统计:`, {
+    console.log(`📊 [collectProductImages] 完整性验证统计:`, {
       总产品数: productList.length,
-      已存在产品: existingProducts.length,
-      需同步产品: productsToSync.length,
-      已存在的产品编号: existingProducts,
-      需同步的产品编号: productsToSync.map(p => p.applyCode)
+      完全同步: existingProducts.length,
+      需重新同步: productsToSync.length,
+      已同步产品: existingProducts,
+      需同步产品: productsToSync.map(p => p.applyCode),
+      验证方式: '索引 + 文件系统完整性'
     })
 
     if (productsToSync.length === 0) {

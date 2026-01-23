@@ -1,5 +1,107 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 改进"就绪"按钮同步逻辑的完整性验证 (2026-01-23)
+
+### 完成情况：实现了索引 + 文件系统双重验证机制
+
+**问题背景**：
+- 原有同步逻辑仅检查索引是否存在记录，不验证文件系统的完整性
+- 当产品文件夹被删除时，索引仍显示已同步，导致不会重新获取图片信息
+- 修复索引功能需要手动触发，没有自动修复机制
+
+**改进方案（方案C - 组合方案）**：
+
+#### 1. 新增 isProductFullySynced 方法 (src/utils/LocalImageManager.js:4769-4837)
+
+实现完整性验证，包括：
+- ✅ 检查索引中是否有记录
+- ✅ 检查产品文件夹是否存在
+- ✅ 检查索引中是否有图片记录
+- ✅ 抽查前3张图片文件是否真实存在
+
+```javascript
+async isProductFullySynced(applyCode) {
+  const product = this.findProductByApplyCode(applyCode);
+  if (!product) return false;
+
+  // 检查文件夹存在性
+  const entries = await this.imageFolder.getEntries();
+  const productFolder = entries.find(entry => entry.isFolder && entry.name === applyCode);
+  if (!productFolder) return false;
+
+  // 收集所有图片并抽查文件存在性
+  const allImages = [
+    ...(product.originalImages || []),
+    ...(product.senceImages || []),
+    ...((product.publishSkus || []).flatMap(sku => sku.skuImages || []))
+  ];
+
+  if (allImages.length === 0) return false;
+
+  const imagesToCheck = allImages.filter(img => img.localPath).slice(0, 3);
+  for (const img of imagesToCheck) {
+    const file = await this.getFileByPath(img.localPath);
+    if (!file) return false;
+  }
+
+  return true;
+}
+```
+
+#### 2. 修改 initialize 方法，添加自动修复索引 (src/utils/LocalImageManager.js:82-122)
+
+在初始化时自动执行索引修复：
+```javascript
+async initialize(options = {}) {
+  // ... 原有初始化逻辑 ...
+
+  if (!options.forceCleanup) {
+    await this.loadIndexData();
+
+    // 🔥 自动修复索引数据
+    console.log('🔧 [LocalImageManager] 执行自动索引修复...');
+    this.initialized = true;
+    const repairedCount = await this.repairIndexData();
+    if (repairedCount > 0) {
+      console.log(`✅ [LocalImageManager] 自动修复了 ${repairedCount} 条索引记录`);
+    }
+  }
+}
+```
+
+#### 3. 优化 collectProductImages 增量同步判断 (src/panels/TodoList.jsx:1041-1064)
+
+使用完整性验证替代简单的索引检查：
+```javascript
+// 改进前：
+const existingProduct = localImageManager.findProductByApplyCode(product.applyCode)
+
+// 改进后：
+const isFullySynced = await localImageManager.isProductFullySynced(product.applyCode)
+
+console.log(`📊 [collectProductImages] 完整性验证统计:`, {
+  总产品数: productList.length,
+  完全同步: existingProducts.length,
+  需重新同步: productsToSync.length,
+  验证方式: '索引 + 文件系统完整性'
+})
+```
+
+**改进效果**：
+- ✅ 自动检测并修复文件夹被删除的情况
+- ✅ 初始化时自动修复索引数据，无需手动触发
+- ✅ 增量同步时验证文件系统完整性
+- ✅ 提供详细的验证日志，便于调试和监控
+- ✅ 提升数据完整性和可靠性
+
+**验证场景**：
+1. 正常同步 - 索引完整，文件存在 → 跳过
+2. 文件夹被删除 - 索引有记录但文件夹不存在 → 重新同步
+3. 部分图片缺失 - 索引有记录，文件夹存在但图片缺失 → 重新同步
+4. 索引损坏 - 文件存在但索引中缺少localPath → 自动修复
+
+---
+
 ## ✅ 实现删除已上架产品功能 (2025-12-26)
 
 ### 完成情况：实现了"删除已上架产品"功能按钮
