@@ -1,5 +1,77 @@
 # 本地文件系统图片管理方案实施任务清单
 
+## ✅ 添加撤回原因字段到撤回功能 (2026-02-05)
+
+### 完成情况：在撤回确认弹窗中添加原因输入字段，并传递给API
+
+**需求背景**：
+- 用户在撤回产品时需要填写撤回原因，方便后续追溯和统计
+- 撤回原因需要传递给后端API进行记录
+
+**实现方案**：
+
+#### 1. 修改 Confirm 组件支持自定义内容 (src/components/Confirm.jsx)
+- ✅ 添加 `children` 属性，支持在确认对话框中插入自定义内容
+- ✅ 使用 `confirm-content` 样式类包裹自定义内容
+
+```jsx
+const Confirm = ({
+  // ...其他props
+  children, // 添加children属性
+}) => {
+  return (
+    <div className="confirm-overlay">
+      <div className="confirm-dialog">
+        <div className="confirm-title">{title}</div>
+        <div className="confirm-message">{message}</div>
+        {children && <div className="confirm-content">{children}</div>}
+        {/* ...actions */}
+      </div>
+    </div>
+  )
+}
+```
+
+#### 2. 在 TodoList 中添加撤回原因状态 (src/panels/TodoList.jsx)
+- ✅ 添加 `rejectionReason` 状态，用于存储撤回原因
+- ✅ 在撤回确认弹窗中添加 textarea 输入框
+- ✅ 标记为必填项（显示红色星号）
+
+#### 3. 修改 doRejectProduct 函数传递原因到API (src/panels/TodoList.jsx:637-715)
+- ✅ 添加撤回原因的必填验证
+- ✅ 在API调用的params中添加 `rejectionReason` 字段
+- ✅ 完成后清空撤回原因
+- ✅ 取消操作时也清空撤回原因
+
+```javascript
+const doRejectProduct = async () => {
+  // 验证撤回原因
+  if (!rejectionReason.trim()) {
+    setError('请输入撤回原因')
+    return
+  }
+
+  const params = {
+    applyCode: item.applyCode,
+    userId: loginInfo?.data?.UserId || 0,
+    userCode: loginInfo?.data?.UserCode || 'string',
+    rejectionReason: rejectionReason.trim(), // 添加撤回原因
+  }
+
+  const res = await post('/api/publish/revoke_product_image', params, {
+    headers: { 'Content-Type': 'application/json' }
+  })
+  // ...
+}
+```
+
+**修改文件**：
+- src/components/Confirm.jsx
+- src/panels/TodoList.jsx
+
+**Git提交**：
+- ✅ git commit: "添加撤回原因字段(rejectionReason)到撤回确认弹窗和API调用"
+
 ## ✅ 改进"就绪"按钮同步逻辑的完整性验证 (2026-01-23)
 
 ### 完成情况：实现了索引 + 文件系统双重验证机制
@@ -5498,3 +5570,52 @@ const handleSubmitSuccess = async (successMessage) => {
      .join('-') || `SKU${sku.skuIndex}`;
    ```
    - 现在正确显示：`产品图片不可为空属性：粉色` 而不是 `产品图片不可为空属性：[object Object]`
+
+---
+
+## 2025-02-05 添加SKU图和场景图"一键删除"功能
+
+**需求**: 在SKU图和场景图区域的操作按钮组中，在"一键翻译"按钮后面添加"一键删除"按钮
+
+**实现细节**:
+
+1. **SKU图片区域添加"一键删除"按钮** (`src/components/ProductDetail.jsx:5188-5194`)
+   ```javascript
+   <button
+     className="delete-all-btn"
+     onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+     disabled={deletingGroup?.type === 'sku' && deletingGroup?.skuIndex === (sku.skuIndex || skuIndex)}
+     title={`一键删除${sku.skuTitle}的所有图片`}
+   >
+     一键删除
+   </button>
+   ```
+
+2. **场景图片区域添加"一键删除"按钮** (`src/components/ProductDetail.jsx:5360-5366`)
+   ```javascript
+   <button
+     className="delete-all-btn"
+     onClick={() => handleConfirmDeleteGroup('scene', null)}
+     disabled={deletingGroup?.type === 'scene'}
+     title="一键删除所有场景图片"
+   >
+     一键删除
+   </button>
+   ```
+
+**功能特性**:
+- ✅ 点击"一键删除"按钮触发删除该组所有图片
+- ✅ 使用已有的 `handleConfirmDeleteGroup` 函数，会显示确认对话框
+- ✅ 按钮使用红色样式（.delete-all-btn），与"勾选删除"按钮样式一致
+- ✅ 删除过程中按钮显示为禁用状态，防止重复点击
+- ✅ 删除操作会自动更新本地索引文件（通过 `executeBatchDelete` -> `localImageManager.deleteImageByIndex`）
+- ✅ SKU图片区域：每个SKU组都有独立的"一键删除"按钮，删除该SKU的所有图片
+- ✅ 场景图片区域：统一的"一键删除"按钮，删除所有场景图片
+
+**按钮布局**:
+```
+[批量同步到PS] [一键翻译] [一键删除] [勾选删除]
+```
+
+**修改文件**:
+- `src/components/ProductDetail.jsx` - 在两个区域添加"一键删除"按钮

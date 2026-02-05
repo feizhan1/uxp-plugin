@@ -5185,7 +5185,15 @@ const ProductDetail = ({
                           ? '翻译中...'
                           : '一键翻译'}
                       </button>
-                      {/* 一键删除 / 勾选删除按钮组 */}
+                      <button
+                        className="delete-all-btn"
+                        onClick={() => handleConfirmDeleteGroup('sku', sku.skuIndex || skuIndex)}
+                        disabled={deletingGroup?.type === 'sku' && deletingGroup?.skuIndex === (sku.skuIndex || skuIndex)}
+                        title={`一键删除${sku.skuTitle}的所有图片`}
+                      >
+                        一键删除
+                      </button>
+                      {/* 勾选删除按钮组 */}
                       {selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === (sku.skuIndex || skuIndex) ? (
                         // 勾选删除模式：显示取消和确定按钮
                         <div className="select-delete-actions">
@@ -5356,6 +5364,14 @@ const ProductDetail = ({
                     title="一键翻译所有场景图片"
                   >
                     {translatingGroup?.type === 'scene' ? '翻译中...' : '一键翻译'}
+                  </button>
+                  <button
+                    className="delete-all-btn"
+                    onClick={() => handleConfirmDeleteGroup('scene', null)}
+                    disabled={deletingGroup?.type === 'scene'}
+                    title="一键删除所有场景图片"
+                  >
+                    一键删除
                   </button>
                   {/* 勾选删除按钮组 */}
                   {selectDeleteMode.active && selectDeleteMode.type === 'scene' ? (

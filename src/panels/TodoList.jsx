@@ -1671,7 +1671,7 @@ const TodoList = () => {
         }}
         onConfirm={doRejectProduct}
       >
-        <div style={{ marginTop: '12px' }}>
+        <div style={{ margin: '12px' }}>
           <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px' }}>
             撤回原因<span style={{ color: '#ff4d4f' }}>*</span>
           </div>
