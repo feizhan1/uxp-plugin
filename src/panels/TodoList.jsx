@@ -55,6 +55,7 @@ const TodoList = () => {
   // 撤回确认对话框状态
   const [showRejectConfirm, setShowRejectConfirm] = useState(false)
   const [rejectingProduct, setRejectingProduct] = useState(null)
+  const [rejectionReason, setRejectionReason] = useState('') // 撤回原因
 
   // 状态筛选
   const [statusFilter, setStatusFilter] = useState(3) // 默认显示待处理（状态码3）
@@ -640,6 +641,12 @@ const TodoList = () => {
 
     const { item, index } = rejectingProduct
 
+    // 验证撤回原因
+    if (!rejectionReason.trim()) {
+      setError('请输入撤回原因')
+      return
+    }
+
     // 关闭确认对话框
     setShowRejectConfirm(false)
 
@@ -651,6 +658,7 @@ const TodoList = () => {
         applyCode: item.applyCode,
         userId: loginInfo?.data?.UserId || 0,
         userCode: loginInfo?.data?.UserCode || 'string',
+        rejectionReason: rejectionReason.trim(), // 添加撤回原因
       }
 
       console.log('撤回产品:', params)
@@ -711,6 +719,7 @@ const TodoList = () => {
       setOpenLoading(false)
       setOpenIngIndex(null)
       setRejectingProduct(null)
+      setRejectionReason('') // 清空撤回原因
     }
   }
 
@@ -1527,7 +1536,7 @@ const TodoList = () => {
             <button
               className="action-btn secondary"
             >
-              版本号：3.5.5
+              版本号：3.5.6
             </button>
             {!searchMode && (
               <>
@@ -1658,9 +1667,32 @@ const TodoList = () => {
         onCancel={() => {
           setShowRejectConfirm(false)
           setRejectingProduct(null)
+          setRejectionReason('') // 清空撤回原因
         }}
         onConfirm={doRejectProduct}
-      />
+      >
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px' }}>
+            撤回原因<span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <textarea
+            className="rejection-reason-input"
+            placeholder="请输入撤回原因"
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            rows={3}
+            style={{
+              width: '100%',
+              padding: '8px',
+              fontSize: '12px',
+              border: '1px solid #d9d9d9',
+              borderRadius: '4px',
+              resize: 'vertical',
+              fontFamily: 'inherit'
+            }}
+          />
+        </div>
+      </Confirm>
       {/* 产品列表 */}
       {/* 调试信息 - 开发期临时添加 */}
       {console.log('🎨 [render] 当前状态:', { loading, error: !!error, dataLength: data.length, data })}

@@ -13,6 +13,7 @@ const Confirm = ({
   cancelText = '取消',
   onConfirm,
   onCancel,
+  children, // 添加children属性，用于自定义内容
 }) => {
   if (!open) return null
 
@@ -21,6 +22,7 @@ const Confirm = ({
       <div className="confirm-dialog">
         <div className="confirm-title">{title}</div>
         <div className="confirm-message">{message}</div>
+        {children && <div className="confirm-content">{children}</div>}
         <div className="confirm-actions">
           <div
             className="action-btn secondary"
