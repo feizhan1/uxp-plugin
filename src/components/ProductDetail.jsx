@@ -5193,44 +5193,6 @@ const ProductDetail = ({
                       >
                         一键删除
                       </button>
-                      {/* 勾选删除按钮组 */}
-                      {selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === (sku.skuIndex || skuIndex) ? (
-                        // 勾选删除模式：显示取消和确定按钮
-                        <div className="select-delete-actions">
-                          <button
-                            className="cancel-select-btn"
-                            onClick={() => handleCancelSelectDelete()}
-                            title="取消勾选删除"
-                          >
-                            取消
-                          </button>
-                          <label className="select-all-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={sku.images.length > 0 && sku.images.every(img => selectedImages.has(img.id))}
-                              onChange={() => handleToggleSelectAll('sku', sku.skuIndex || skuIndex)}
-                            />
-                            <span>全选</span>
-                          </label>
-                          <button
-                            className="confirm-select-delete-btn"
-                            onClick={() => handleConfirmSelectDelete('sku', sku.skuIndex || skuIndex)}
-                            title={`删除选中的 ${selectedImages.size} 张图片`}
-                            disabled={selectedImages.size === 0}
-                          >
-                            确定 ({selectedImages.size})
-                          </button>
-                        </div>
-                      ) : (
-                        // 正常模式：显示勾选删除按钮
-                        <button
-                          className="delete-all-btn"
-                          onClick={() => handleEnterSelectDeleteMode('sku', sku.skuIndex || skuIndex)}
-                          title="选择要删除的图片"
-                        >
-                          勾选删除
-                        </button>
-                      )}
                     </>
                   )}
                 </div>
@@ -5265,9 +5227,8 @@ const ProductDetail = ({
                           {getStatusText(image.localStatus)}
                         </div>
                         <div className="image-actions-top">
-                          {/* 勾选框 - 批量同步模式或勾选删除模式或全局勾选删除模式 */}
+                          {/* 勾选框 - 批量同步模式或全局勾选删除模式 */}
                           {((batchSyncMode && skuIndex === 0) ||
-                            (selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex) ||
                             (selectDeleteMode.active && selectDeleteMode.type === 'global')) && (
                             <div className="image-checkbox">
                               <input
@@ -5278,9 +5239,9 @@ const ProductDetail = ({
                               />
                             </div>
                           )}
-                          {/* 单张图片删除按钮 - 非批量同步模式且非勾选删除模式时显示 */}
+                          {/* 单张图片删除按钮 - 非批量同步模式且非全局勾选删除模式时显示 */}
                           {!(batchSyncMode && skuIndex === 0) &&
-                           !(selectDeleteMode.active && selectDeleteMode.type === 'sku' && selectDeleteMode.skuIndex === skuIndex) && (
+                           !(selectDeleteMode.active && selectDeleteMode.type === 'global') && (
                             <div
                               className="top-delete-btn"
                               onClick={() => handleConfirmDelete(image)}
@@ -5373,44 +5334,6 @@ const ProductDetail = ({
                   >
                     一键删除
                   </button>
-                  {/* 勾选删除按钮组 */}
-                  {selectDeleteMode.active && selectDeleteMode.type === 'scene' ? (
-                    // 勾选删除模式：显示取消和确定按钮
-                    <div className="select-delete-actions">
-                      <button
-                        className="cancel-select-btn"
-                        onClick={() => handleCancelSelectDelete()}
-                        title="取消勾选删除"
-                      >
-                        取消
-                      </button>
-                      <label className="select-all-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={virtualizedImageGroups.scenes.length > 0 && virtualizedImageGroups.scenes.every(img => selectedImages.has(img.id))}
-                          onChange={() => handleToggleSelectAll('scene', null)}
-                        />
-                        <span>全选</span>
-                      </label>
-                      <button
-                        className="confirm-select-delete-btn"
-                        onClick={() => handleConfirmSelectDelete('scene', null)}
-                        title={`删除选中的 ${selectedImages.size} 张图片`}
-                        disabled={selectedImages.size === 0}
-                      >
-                        确定 ({selectedImages.size})
-                      </button>
-                    </div>
-                  ) : (
-                    // 正常模式：显示勾选删除按钮
-                    <button
-                      className="delete-all-btn"
-                      onClick={() => handleEnterSelectDeleteMode('scene', null)}
-                      title="选择要删除的图片"
-                    >
-                      勾选删除
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -5444,8 +5367,8 @@ const ProductDetail = ({
                         {getStatusText(image.localStatus)}
                       </div>
                       <div className="image-actions-top">
-                        {/* 勾选框 - 勾选删除模式或全局勾选删除模式 */}
-                        {selectDeleteMode.active && (selectDeleteMode.type === 'scene' || selectDeleteMode.type === 'global') && (
+                        {/* 勾选框 - 全局勾选删除模式 */}
+                        {selectDeleteMode.active && selectDeleteMode.type === 'global' && (
                           <div className="image-checkbox">
                             <input
                               type="checkbox"
@@ -5455,8 +5378,8 @@ const ProductDetail = ({
                             />
                           </div>
                         )}
-                        {/* 单张图片删除按钮 - 非勾选删除模式时显示 */}
-                        {!(selectDeleteMode.active && selectDeleteMode.type === 'scene') && (
+                        {/* 单张图片删除按钮 - 非全局勾选删除模式时显示 */}
+                        {!(selectDeleteMode.active && selectDeleteMode.type === 'global') && (
                           <div
                             className="top-delete-btn"
                             onClick={() => handleConfirmDelete(image)}
