@@ -4512,25 +4512,21 @@ const ProductDetail = ({
   };
 
   /**
-   * 执行删除图片的核心逻辑 - 跨SKU删除版本
+   * 执行删除图片的核心逻辑
+   * 优先按 localPath 跨 SKU 删除，缺少 localPath 时回退到单图删除
    */
   const executeDelete = async (imageToDelete) => {
     try {
       setError(null);
-
-      // 验证localPath
-      if (!imageToDelete.localPath) {
-        console.warn('⚠️ [executeDelete] 图片缺少localPath，无法跨SKU删除:', imageToDelete);
-        setError('该图片尚未下载到本地，无法删除');
-        return;
-      }
+      const shouldDeleteAcrossSkus = Boolean(imageToDelete.localPath);
 
       console.log('🗑️ [executeDelete] 开始跨SKU删除图片:', {
         imageUrl: imageToDelete.imageUrl,
         localPath: imageToDelete.localPath,
         type: imageToDelete.type,
         index: imageToDelete.index,
-        skuIndex: imageToDelete.skuIndex
+        skuIndex: imageToDelete.skuIndex,
+        deleteMode: shouldDeleteAcrossSkus ? 'across_skus' : 'single_image_fallback'
       });
 
       // 保存当前滚动位置（在修改状态前保存）
@@ -4540,31 +4536,63 @@ const ProductDetail = ({
         console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
       }
 
-      // 先从本地状态中移除图片，提供即时视觉反馈
-      removeImageFromStateByLocalPath(imageToDelete.localPath);
+      if (shouldDeleteAcrossSkus) {
+        // 先从本地状态中移除图片，提供即时视觉反馈
+        removeImageFromStateByLocalPath(imageToDelete.localPath);
+      } else {
+        console.log('ℹ️ [executeDelete] 图片缺少localPath，回退到单图删除:', imageToDelete);
+        removeImageFromState(imageToDelete);
+      }
 
       // 异步同步到LocalImageManager（不阻塞UI）
       try {
-        const result = await localImageManager.deleteImageByLocalPathAcrossSkus(
-          currentProduct.applyCode,
-          imageToDelete.localPath
-        );
+        if (shouldDeleteAcrossSkus) {
+          const result = await localImageManager.deleteImageByLocalPathAcrossSkus(
+            currentProduct.applyCode,
+            imageToDelete.localPath
+          );
 
-        if (result.success) {
-          console.log(`✅ [executeDelete] 跨SKU删除成功，共删除 ${result.deletedCount} 条记录`);
-          // 通知父组件数据已更新
-          onUpdate?.(currentProduct);
-        } else {
-          console.error('❌ [executeDelete] 跨SKU删除失败，需要重新加载数据');
-          setError('删除图片失败，正在重新加载数据');
-          // 保存滚动位置
-          if (contentRef.current) {
-            const currentScrollPosition = contentRef.current.scrollTop;
-            setSavedScrollPosition(currentScrollPosition);
-            console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+          if (result.success) {
+            console.log(`✅ [executeDelete] 跨SKU删除成功，共删除 ${result.deletedCount} 条记录`);
+            // 通知父组件数据已更新
+            onUpdate?.(currentProduct);
+          } else {
+            console.error('❌ [executeDelete] 跨SKU删除失败，需要重新加载数据');
+            setError('删除图片失败，正在重新加载数据');
+            // 保存滚动位置
+            if (contentRef.current) {
+              const currentScrollPosition = contentRef.current.scrollTop;
+              setSavedScrollPosition(currentScrollPosition);
+              console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+            }
+            // 如果数据层删除失败，重新初始化数据以保持一致性
+            await initializeImageData();
           }
-          // 如果数据层删除失败，重新初始化数据以保持一致性
-          await initializeImageData();
+        } else {
+          const deleteTarget = imageToDelete.type === 'sku'
+            ? imageToDelete.imageUrl
+            : (imageToDelete.imageUrl || imageToDelete.index);
+
+          const success = await localImageManager.deleteImageByIndex(
+            currentProduct.applyCode,
+            imageToDelete.type,
+            deleteTarget,
+            imageToDelete.type === 'sku' ? imageToDelete.skuIndex : null
+          );
+
+          if (success) {
+            console.log('✅ [executeDelete] 单图删除成功');
+            onUpdate?.(currentProduct);
+          } else {
+            console.error('❌ [executeDelete] 单图删除失败，需要重新加载数据');
+            setError('删除图片失败，正在重新加载数据');
+            if (contentRef.current) {
+              const currentScrollPosition = contentRef.current.scrollTop;
+              setSavedScrollPosition(currentScrollPosition);
+              console.log('💾 [executeDelete] 保存滚动位置:', currentScrollPosition);
+            }
+            await initializeImageData();
+          }
         }
       } catch (syncError) {
         console.error('❌ [executeDelete] 数据同步失败:', syncError);
